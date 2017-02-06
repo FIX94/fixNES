@@ -91,7 +91,7 @@ static int StartPlayer(StreamPlayer *player)
         if(!data) break;
 
         alBufferSamplesSOFT(player->buffers[i], player->rate, player->format,
-                            BytesToFrames(APU_BUF_SIZE_BYTES, player->channels, player->type),
+                            BytesToFrames(apuGetBufSize(), player->channels, player->type),
                             player->channels, player->type, data);
     }
     if(alGetError() != AL_NO_ERROR)
@@ -128,7 +128,7 @@ int audioInit()
     player = NewPlayer();
 
 	player->channels = AL_MONO_SOFT;
-	player->rate = APU_FREQUENCY;
+	player->rate = apuGetFrequency();
 	player->type = AL_FLOAT_SOFT;
 
     player->format = GetFormat(player->channels, player->type, alIsBufferFormatSupportedSOFT);
@@ -172,7 +172,7 @@ int audioUpdate()
 	if(data != NULL)
 	{
 		alBufferSamplesSOFT(bufid, player->rate, player->format,
-							BytesToFrames(APU_BUF_SIZE_BYTES, player->channels, player->type),
+							BytesToFrames(apuGetBufSize(), player->channels, player->type),
 							player->channels, player->type, data);
 		alSourceQueueBuffers(player->source, 1, &bufid);
 	}

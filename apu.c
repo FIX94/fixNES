@@ -14,12 +14,6 @@
 #include "mem.h"
 #include "cpu.h"
 
-//LP at 22kHz for 893415Hz input
-static const float lpVal = 0.13398995f;
-
-//HP at 40Hz for 893415Hz input
-static const float hpVal = 0.99971876f;
-
 #define P1_ENABLE (1<<0)
 #define P2_ENABLE (1<<1)
 #define TRI_ENABLE (1<<2)
@@ -36,8 +30,13 @@ static const float hpVal = 0.99971876f;
 
 static uint8_t APU_IO_Reg[0x18];
 
+static float lpVal;
+static float hpVal;
 static float *apuOutBuf;
+static uint32_t apuBufSize;
+static uint32_t apuBufSizeBytes;
 static uint32_t curBufPos;
+static uint32_t apuFrequency;
 static uint16_t freq1;
 static uint16_t freq2;
 static uint16_t triFreq;
@@ -106,23 +105,51 @@ static const uint8_t triSeq[32] = {
 	 0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15,
 };
 
-static const uint16_t noisePeriod[16] = {
+static const uint16_t noisePeriodNtsc[16] = {
 	4, 8, 16, 32, 64, 96, 128, 160, 202, 254, 380, 508, 762, 1016, 2034, 4068,
 };
 
-static const uint16_t dmcPeriod[16] = {
+static const uint16_t noisePeriodPal[16] = {
+	4, 8, 14, 30, 60, 88, 118, 148, 188, 236, 354, 472, 708,  944, 1890, 3778,
+};
+
+static const uint16_t dmcPeriodNtsc[16] = {
 	428, 380, 340, 320, 286, 254, 226, 214, 190, 160, 142, 128, 106,  84,  72,  54,
 };
+
+static const uint16_t dmcPeriodPal[16] = {
+	398, 354, 316, 298, 276, 236, 210, 198, 176, 148, 132, 118, 98, 78, 66, 50,
+};
+
+static const uint16_t *dmcPeriod, *noisePeriod;
 
 static const uint8_t *p1seq = pulseSeqs[0], 
 					*p2seq = pulseSeqs[1];
 extern bool dmc_interrupt;
 
+#define M_2_PI 6.28318530717958647692
+
+extern bool nesPAL;
 void apuInit()
 {
 	memset(APU_IO_Reg,0,0x18);
-	apuOutBuf = (float*)malloc(APU_BUF_SIZE_BYTES);
-	memset(apuOutBuf, 0, APU_BUF_SIZE_BYTES);
+	noisePeriod = nesPAL ? noisePeriodPal : noisePeriodNtsc;
+	dmcPeriod = nesPAL ? dmcPeriodPal : dmcPeriodNtsc;
+	//effective frequencies for 50.000Hz and 60.000Hz Video out
+	apuFrequency = nesPAL ? 831187 : 893415;
+	double dt = 1.0/((double)apuFrequency);
+	//LP at 22kHz
+	double rc = 1.0/(M_2_PI * 22000.0);
+	lpVal = dt / (rc + dt);
+	//HP at 40Hz
+	rc = 1.0/(M_2_PI * 40.0);
+	hpVal = rc / (rc + dt);
+
+	apuBufSize = apuFrequency/60;
+	apuBufSizeBytes = apuBufSize*sizeof(float);
+
+	apuOutBuf = (float*)malloc(apuBufSizeBytes);
+	memset(apuOutBuf, 0, apuBufSizeBytes);
 	curBufPos = 0;
 
 	freq1 = 0; freq2 = 0; triFreq = 0; noiseFreq = 0, dmcFreq = 0;
@@ -272,7 +299,7 @@ extern bool emuSkipVsync;
 
 int apuCycle()
 {
-	if(curBufPos == APU_BUF_SIZE)
+	if(curBufPos == apuBufSize)
 	{
 		int updateRes = audioUpdate();
 		if(updateRes == 0)
@@ -633,4 +660,14 @@ uint8_t apuGet8(uint8_t reg)
 uint8_t *apuGetBuf()
 {
 	return (uint8_t*)apuOutBuf;
+}
+
+uint32_t apuGetBufSize()
+{
+	return apuBufSizeBytes;
+}
+
+uint32_t apuGetFrequency()
+{
+	return apuFrequency;
 }

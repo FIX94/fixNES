@@ -27,7 +27,7 @@
 #define DEBUG_KEY 0
 #define DEBUG_LOAD_INFO 1
 
-static const char *VERSION_STRING = "fixNES Alpha v0.2";
+static const char *VERSION_STRING = "fixNES Alpha v0.3";
 
 static void nesEmuDisplayFrame(void);
 static void nesEmuMainLoop(void);
@@ -47,6 +47,7 @@ uint8_t *textureImage = NULL;
 bool nesPause = false;
 bool ppuDebugPauseFrame = false;
 bool doOverscan = true;
+bool nesPAL = false;
 
 static bool inPause = false;
 static bool inOverscanToggle = false;
@@ -62,7 +63,6 @@ static DWORD emuTotalElapsed = 0;
 #endif
 
 #define DOTS 341
-#define LINES 262
 
 #define VISIBLE_DOTS 256
 #define VISIBLE_LINES 240
@@ -70,6 +70,7 @@ static DWORD emuTotalElapsed = 0;
 static const int visibleImg = VISIBLE_DOTS*VISIBLE_LINES*4;
 static int scaleFactor = 2;
 static bool emuSaveEnabled = false;
+static int emuApuClockCycles;
 
 //from input.c
 extern uint8_t inValReads[8];
@@ -79,6 +80,7 @@ int main(int argc, char** argv)
 	puts(VERSION_STRING);
 	if(argc >= 2 && (strstr(argv[1],".nes") != NULL || strstr(argv[1],".NES") != NULL))
 	{
+		nesPAL = (strstr(argv[1],"(E)") != NULL);
 		FILE *nesF = fopen(argv[1],"rb");
 		if(!nesF) return EXIT_SUCCESS;
 		fseek(nesF,0,SEEK_END);
@@ -152,6 +154,7 @@ int main(int argc, char** argv)
 	}
 	if(emuNesROM == NULL)
 		return EXIT_SUCCESS;
+	emuApuClockCycles = nesPAL ? 8313 : 7457;
 	glutInit(&argc, argv);
 	glutInitWindowSize(VISIBLE_DOTS*scaleFactor, VISIBLE_LINES*scaleFactor);
 	glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGBA);
@@ -166,17 +169,17 @@ int main(int argc, char** argv)
 	glutIdleFunc(&nesEmuMainLoop);
 	#if WINDOWS_BUILD
 	/* Enable OpenGL VSync */
-    wglSwapIntervalEXT = (PFNWGLSWAPINTERVALEXTPROC) wglGetProcAddress("wglSwapIntervalEXT");
+	wglSwapIntervalEXT = (PFNWGLSWAPINTERVALEXTPROC)wglGetProcAddress("wglSwapIntervalEXT");
 	wglSwapIntervalEXT(1);
 	#endif
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    glTexImage2D(GL_TEXTURE_2D, 0, 4, VISIBLE_DOTS, VISIBLE_LINES, 0, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV, textureImage);
-    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
-    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
-    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glEnable(GL_TEXTURE_2D);
-    glShadeModel(GL_FLAT);
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+	glTexImage2D(GL_TEXTURE_2D, 0, 4, VISIBLE_DOTS, VISIBLE_LINES, 0, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV, textureImage);
+	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
+	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
+	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glEnable(GL_TEXTURE_2D);
+	glShadeModel(GL_FLAT);
 
 	glutMainLoop();
 
@@ -223,7 +226,7 @@ static int emuApuClock = 0;
 //do one scanline per idle loop
 #define MAIN_LOOP_RUNS 341
 static int mainClock = 0, mainLoopPos = MAIN_LOOP_RUNS;
-
+static int ppuExtraCycles = 0;
 static void nesEmuMainLoop(void)
 {
 	do
@@ -246,7 +249,7 @@ static void nesEmuMainLoop(void)
 				mapperCycle();
 			//mCycles++;
 			//channel timer updates
-			if(emuApuClock == 7457)
+			if(emuApuClock == emuApuClockCycles)
 			{
 				apuLenCycle();
 				emuApuClock = 0;
@@ -260,6 +263,19 @@ static void nesEmuMainLoop(void)
 		//3 PPU dots per CPU cycle
 		if(!ppuCycle())
 			exit(EXIT_SUCCESS);
+		if(nesPAL)
+		{
+			// Extra PPU cycle every 15 to get to 3.2
+			// dots every cpu cycle to match 50Hz timing
+			if(ppuExtraCycles == 15)
+			{
+				if(!ppuCycle())
+					exit(EXIT_SUCCESS);
+				ppuExtraCycles = 0;
+			}
+			else
+				ppuExtraCycles++;
+		}
 		if(ppuDrawDone())
 		{
 			//printf("%i\n",mCycles);
@@ -598,25 +614,25 @@ static void nesEmuDisplayFrame()
 		emuRenderFrame = false;
 	}
 
-    glClear(GL_COLOR_BUFFER_BIT);
+	glClear(GL_COLOR_BUFFER_BIT);
 
-    glMatrixMode(GL_PROJECTION);
-    glLoadIdentity();
-    glOrtho(0, glutGet(GLUT_WINDOW_WIDTH), 0, glutGet(GLUT_WINDOW_HEIGHT), -1, 1);
-    glMatrixMode(GL_MODELVIEW);
-    glLoadIdentity();
+	glMatrixMode(GL_PROJECTION);
+	glLoadIdentity();
+	glOrtho(0, glutGet(GLUT_WINDOW_WIDTH), 0, glutGet(GLUT_WINDOW_HEIGHT), -1, 1);
+	glMatrixMode(GL_MODELVIEW);
+	glLoadIdentity();
 
 	double upscaleVal = round((((double)glutGet(GLUT_WINDOW_HEIGHT))/((double)VISIBLE_LINES))*20.0)/20.0;
 	double windowMiddle = ((double)glutGet(GLUT_WINDOW_WIDTH))/2.0;
 	double drawMiddle = (((double)VISIBLE_DOTS)*upscaleVal)/2.0;
 	double drawHeight = ((double)VISIBLE_LINES)*upscaleVal;
 
-    glBegin(GL_QUADS);
+	glBegin(GL_QUADS);
 		glTexCoord2f(0,0); glVertex2f(windowMiddle-drawMiddle,drawHeight);
 		glTexCoord2f(1,0); glVertex2f(windowMiddle+drawMiddle,drawHeight);
 		glTexCoord2f(1,1); glVertex2f(windowMiddle+drawMiddle,0);
 		glTexCoord2f(0,1); glVertex2f(windowMiddle-drawMiddle,0);
-    glEnd();
+	glEnd();
 
 	glutSwapBuffers();
 }

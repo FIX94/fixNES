@@ -35,7 +35,6 @@
 #define PPU_FLAG_VBLANK (1<<7)
 
 #define DOTS 341
-#define LINES 262
 
 #define VISIBLE_DOTS 256
 #define VISIBLE_LINES 240
@@ -86,6 +85,8 @@ static uint8_t PPU_Sprites[0x20];
 
 //static uint32_t ppuCycles;
 static uint16_t curLine;
+static uint16_t ppuLinesTotal;
+static uint16_t ppuPreRenderLine;
 static uint16_t curDot;
 static uint16_t ppuVramAddr;
 static uint16_t ppuTmpVramAddr;
@@ -112,6 +113,8 @@ static bool ppuCurVBlankStat;
 static bool ppuCurNMIStat;
 static bool ppuOddFrame;
 
+extern bool nesPAL;
+
 void ppuInit()
 {
 	memset(PPU_Reg,0,8);
@@ -123,7 +126,9 @@ void ppuInit()
 	//ppuCycles = 0;
 	//start out being in vblank
 	PPU_Reg[2] |= PPU_FLAG_VBLANK;
-	curLine = 251;
+	ppuLinesTotal = nesPAL ? 312 : 262;
+	ppuPreRenderLine = ppuLinesTotal - 1;
+	curLine = ppuLinesTotal - 11;
 	curDot = 0;
 	ppuVramAddr = 0;
 	ppuToDraw = 0;
@@ -194,7 +199,7 @@ bool ppuCycle()
 
 	/* VBlank ends at first dot of the pre-render line */
 	/* Though results are better when clearing it a bit later */
-	if(curDot == 12 && curLine == 261)
+	if(curDot == 12 && curLine == ppuPreRenderLine)
 	{
 		#if PPU_DEBUG_VSYNC
 		printf("PPU End VBlank\n");
@@ -204,7 +209,7 @@ bool ppuCycle()
 	bool pictureOutput = (PPU_Reg[1] & (PPU_BG_ENABLE | PPU_SPRITE_ENABLE)) != 0;
 
 	/* Do Background Updates */
-	if(pictureOutput && (curLine == 261 || curLine < VISIBLE_LINES))
+	if(pictureOutput && (curLine == ppuPreRenderLine || curLine < VISIBLE_LINES))
 	{
 		/* Update tile address if needed */
 		if((curDot <= VISIBLE_DOTS) && (curDot & 7) == 0)
@@ -325,13 +330,13 @@ bool ppuCycle()
 		ppuCurOverflowAdd = 0;
 	}
 	/* Update vertical values on pre-render scanline */
-	if(pictureOutput && curLine == 261 && curDot >= 280 && curDot <= 304)
+	if(pictureOutput && curLine == ppuPreRenderLine && curDot >= 280 && curDot <= 304)
 	{
 		ppuVramAddr &= ~PPU_VRAM_VERTICAL_MASK;
 		ppuVramAddr |= (ppuTmpVramAddr & PPU_VRAM_VERTICAL_MASK);
 	}
 	/* Clear out OAM2 for next eval */
-	if(curDot < 64 && ((curDot&1) == 0) && (curLine == 261 || curLine < VISIBLE_LINES))
+	if(curDot < 64 && ((curDot&1) == 0) && (curLine == ppuPreRenderLine || curLine < VISIBLE_LINES))
 	{
 		PPU_OAM2[ppuOAM2pos] = 0xFF;
 		ppuOAM2pos++; ppuOAM2pos &= 0x1F;
@@ -372,7 +377,7 @@ bool ppuCycle()
 		//printf("%i\n", ppuOAMpos);
 	}
 	/* Grab Sprite Tiles to be drawn next line */
-	if(curDot >= 260 && curDot <= 316 && (curDot&7) == 4 && (curLine == 261 || curLine < VISIBLE_LINES) && pictureOutput)
+	if(curDot >= 260 && curDot <= 316 && (curDot&7) == 4 && (curLine == ppuPreRenderLine || curLine < VISIBLE_LINES) && pictureOutput)
 	{
 		uint8_t cSpriteLn = PPU_OAM2[ppuSpriteTilePos];
 		uint8_t cSpriteIndex = PPU_OAM2[ppuSpriteTilePos+1];
@@ -410,7 +415,7 @@ bool ppuCycle()
 
 	/* increase pos */
 	curDot++;
-	if(curDot == 340 && curLine == 261)
+	if(curDot == 340 && curLine == ppuPreRenderLine && !nesPAL)
 	{
 		ppuOddFrame ^= true;
 		if(ppuOddFrame && (PPU_Reg[1] & PPU_BG_ENABLE))
@@ -438,7 +443,7 @@ bool ppuCycle()
 		#endif
 	}
 	/* Wrap back down after pre-render line */
-	if(curLine == LINES)
+	if(curLine == ppuLinesTotal)
 	{
 		ppuFrameDone = true;
 		curLine = 0;
