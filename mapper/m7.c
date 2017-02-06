@@ -28,7 +28,7 @@ void m7init(uint8_t *prgROMin, uint32_t prgROMsizeIn,
 	m7_prgROMsize = prgROMsizeIn;
 	(void)prgRAMin;
 	(void)prgRAMsizeIn;
-	m7_curPRGBank = prgROMsizeIn - 0x8000;
+	m7_curPRGBank = (prgROMsizeIn - 0x8000)&(m7_prgROMsize-1);
 	if(chrROMsizeIn > 0)
 	{
 		m7_chrROM = chrROMin;
@@ -63,7 +63,7 @@ void m7set8(uint16_t addr, uint8_t val)
 		//printf("000\n");
 		ppuForceTableAddr = 0;
 	}
-	m7_curPRGBank = (val & 7) * 0x8000;
+	m7_curPRGBank = ((val & 7)<<15)&(m7_prgROMsize-1);
 }
 
 uint8_t m7chrGet8(uint16_t addr)

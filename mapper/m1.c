@@ -179,7 +179,7 @@ void m1set8(uint16_t addr, uint8_t val)
 			else if(addr < 0xC000)
 			{
 				if(m1_single_chr_bank) m1_sr &= ~1;
-				m1_curCHRBank0 = (m1_sr*0x1000)&(m1_chrROMsize-1);
+				m1_curCHRBank0 = (m1_sr<<12)&(m1_chrROMsize-1);
 				//printf("chr bank 0 now %04x\n", m1_curCHRBank0);
 				if(m1_prgROMsize > 0x40000)
 					m1_256KPRGBank = (m1_sr&0x10)<<14;
@@ -188,7 +188,7 @@ void m1set8(uint16_t addr, uint8_t val)
 			{
 				if(!m1_single_chr_bank)
 				{
-					m1_curCHRBank1 = (m1_sr*0x1000)&(m1_chrROMsize-1);
+					m1_curCHRBank1 = (m1_sr<<12)&(m1_chrROMsize-1);
 					//printf("chr bank 1 now %04x\n", m1_curCHRBank1);
 					if(m1_prgROMsize > 0x40000)
 						m1_256KPRGBank = (m1_sr&0x10)<<14;
@@ -197,7 +197,7 @@ void m1set8(uint16_t addr, uint8_t val)
 			else
 			{
 				if(m1_single_prg_bank) m1_sr &= ~1;
-				m1_curPRGBank = ((m1_sr&15)*0x4000)&(m1_prgROMsize-1);
+				m1_curPRGBank = ((m1_sr&15)<<14)&(m1_prgROMsize-1);
 				//printf("switchable bank now %04x\n", m1_curPRGBank);
 			}
 			//m1_sr = 0;//(m1_sr<<4);

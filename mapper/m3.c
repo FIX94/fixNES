@@ -44,7 +44,7 @@ void m3set8(uint16_t addr, uint8_t val)
 	//printf("%04x %02x\n", addr, val);
 	if(addr < 0x8000)
 		return;
-	m3_curCHRBank = ((val * 0x2000)&(m3_chrROMsize-1));
+	m3_curCHRBank = ((val<<13)&(m3_chrROMsize-1));
 }
 
 uint8_t m3chrGet8(uint16_t addr)

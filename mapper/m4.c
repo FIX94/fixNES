@@ -160,7 +160,7 @@ void m4set8(uint16_t addr, uint8_t val)
 		}
 		else if(addr < 0xC000)
 		{
-			if((addr&1) == 0)
+			if((addr&1) == 0 && ppuScreenMode != PPU_MODE_FOURSCREEN)
 			{
 				if((val&1) == 0)
 				{

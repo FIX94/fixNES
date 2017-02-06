@@ -27,7 +27,7 @@
 #define DEBUG_KEY 0
 #define DEBUG_LOAD_INFO 1
 
-static const char *VERSION_STRING = "fixNES Alpha v0.1";
+static const char *VERSION_STRING = "fixNES Alpha v0.2";
 
 static void nesEmuDisplayFrame(void);
 static void nesEmuMainLoop(void);
@@ -90,9 +90,9 @@ int main(int argc, char** argv)
 		uint8_t mapper = ((emuNesROM[6] & 0xF0) >> 4) | ((emuNesROM[7] & 0xF0));
 		emuSaveEnabled = (emuNesROM[6] & (1<<1)) != 0;
 		bool trainer = (emuNesROM[6] & (1<<2)) != 0;
-		if(emuNesROM[6] & 4)
+		if(emuNesROM[6] & 8)
 			ppuScreenMode = PPU_MODE_FOURSCREEN;
-		if(emuNesROM[6] & 1)
+		else if(emuNesROM[6] & 1)
 			ppuScreenMode = PPU_MODE_VERTICAL;
 		else
 			ppuScreenMode = PPU_MODE_HORIZONTAL;
@@ -428,6 +428,7 @@ static void nesEmuHandleKeyDown(unsigned char key, int x, int y)
 				inOverscanToggle = true;
 				doOverscan ^= true;
 			}
+			break;
 		default:
 			break;
 	}
@@ -488,6 +489,10 @@ static void nesEmuHandleKeyUp(unsigned char key, int x, int y)
 		case '4': case '5':	case '6':
 		case '7': case '8':	case '9':
 			inResize = false;
+			break;
+		case 'o':
+		case 'O':
+			inOverscanToggle = false;
 			break;
 		default:
 			break;
