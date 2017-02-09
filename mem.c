@@ -28,9 +28,9 @@ uint8_t memGet8(uint16_t addr)
 {
 	uint8_t val = memLastVal;
 	//printf("memGet8 %04x\n", addr);
-	if(addr >= 0x6000)
+	if(addr >= 0x4100)
 		val = mapperGet8(addr);
-	else if(addr & 0x4000)
+	else if(addr >= 0x4000)
 	{
 		if(addr == 0x4015)
 			val = apuGet8(0x15);
@@ -42,7 +42,7 @@ uint8_t memGet8(uint16_t addr)
 		else if(addr == 0x4017)
 			val &= ~0x1F; //player 2
 	}
-	else if(addr & 0x2000)
+	else if(addr >= 0x2000)
 		val = ppuGet8(addr&7);
 	else
 		val = Main_Mem[addr&0x7FF];
@@ -54,10 +54,12 @@ uint8_t memGet8(uint16_t addr)
 void memSet8(uint16_t addr, uint8_t val)
 {
 	//printf("memSet8 %04x %02x\n", addr, val);
-	if(addr >= 0x6000)
-		mapperSet8(addr, val);
-	else if(addr & 0x4000)
+	if(addr >= 0x4000)
 	{
+		//everything starting from 0x4000 has to
+		//go to mapper, even if used later on
+		mapperSet8(addr, val);
+		//all other devices
 		if(addr == 0x4014)
 		{
 			uint16_t dmaAddr = (val<<8);
@@ -83,7 +85,7 @@ void memSet8(uint16_t addr, uint8_t val)
 		else if(addr < 0x4018)
 			apuSet8(addr&0x1F, val);
 	}
-	else if(addr & 0x2000)
+	else if(addr >= 0x2000)
 		ppuSet8(addr&7, val);
 	else
 		Main_Mem[addr&0x7FF] = val;

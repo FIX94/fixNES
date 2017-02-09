@@ -27,7 +27,7 @@
 #define DEBUG_KEY 0
 #define DEBUG_LOAD_INFO 1
 
-static const char *VERSION_STRING = "fixNES Alpha v0.3";
+static const char *VERSION_STRING = "fixNES Alpha v0.4";
 
 static void nesEmuDisplayFrame(void);
 static void nesEmuMainLoop(void);
@@ -111,7 +111,11 @@ int main(int argc, char** argv)
 			((ppuScreenMode == PPU_MODE_HORIZONTAL) ? "Horizontal" : "4-Screen"));
 		#endif
 		uint8_t *prgROM = emuNesROM+16;
-		if(trainer) prgROM += 512;
+		if(trainer)
+		{
+			memcpy(emuPrgRAM+0x1000,prgROM,0x200);
+			prgROM += 512;
+		}
 		uint8_t *chrROM = NULL;
 		if(chrROMsize)
 		{

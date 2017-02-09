@@ -51,8 +51,9 @@ uint8_t m7get8(uint16_t addr)
 
 void m7set8(uint16_t addr, uint8_t val)
 {
-	//printf("m1set8 %04x %02x\n", addr, val);
-	(void)addr;
+	//printf("m7set8 %04x %02x\n", addr, val);
+	if(addr < 0x8000)
+		return;
 	if(val & (1<<4))
 	{
 		//printf("400\n");

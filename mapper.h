@@ -16,15 +16,6 @@ typedef void (*chrSet8FuncT)(uint16_t, uint8_t);
 typedef uint8_t* (*getChrFuncT)();
 typedef void (*cycleFuncT)();
 
-typedef struct _mapperList_t {
-	initFuncT initF;
-	get8FuncT get8F;
-	set8FuncT set8F;
-	chrGet8FuncT chrGet8F;
-	chrSet8FuncT chrSet8F;
-	cycleFuncT cycleFuncF;
-} mapperList_t;
-
 bool mapperInit(uint8_t mapper, uint8_t *prgROM, uint32_t prgROMsize, uint8_t *prgRAM, uint32_t prgRAMsize, uint8_t *chrROM, uint32_t chrROMsize);
 
 extern get8FuncT mapperGet8;

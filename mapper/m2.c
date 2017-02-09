@@ -52,8 +52,9 @@ uint8_t m2get8(uint16_t addr)
 
 void m2set8(uint16_t addr, uint8_t val)
 {
-	//printf("m1set8 %04x %02x\n", addr, val);
-	(void)addr;
+	//printf("m2set8 %04x %02x\n", addr, val);
+	if(addr < 0x8000)
+		return;
 	m2_curPRGBank = ((val & 15)<<14)&(m2_prgROMsize-1);
 }
 

@@ -65,9 +65,9 @@ void m1init(uint8_t *prgROMin, uint32_t prgROMsizeIn,
 
 uint8_t m1get8(uint16_t addr)
 {
-	if(addr < 0x8000)
+	if(addr >= 0x6000 && addr < 0x8000)
 		return m1_prgRAM[addr&0x1FFF];
-	else
+	else if(addr >= 0x8000)
 	{
 		if(m1_single_prg_bank)
 		{
@@ -86,17 +86,18 @@ uint8_t m1get8(uint16_t addr)
 			return m1_prgROM[(m1_curPRGBank&~0x3FFF)+(addr&0x3FFF)+m1_256KPRGBank];
 		}
 	}
+	return 0;
 }
 
 extern bool cpuWriteTMP;
 void m1set8(uint16_t addr, uint8_t val)
 {
-	if(addr < 0x8000)
+	if(addr >= 0x6000 && addr < 0x8000)
 	{
 		//printf("m1set8 %04x %02x\n", addr, val);
 		m1_prgRAM[addr&0x1FFF] = val;
 	}
-	else
+	else if(addr >= 0x8000)
 	{
 		// mmc1 regs cant be written to
 		// with just 1 cpu cycle delay

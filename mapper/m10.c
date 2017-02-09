@@ -48,7 +48,9 @@ void m10init(uint8_t *prgROMin, uint32_t prgROMsizeIn,
 
 uint8_t m10get8(uint16_t addr)
 {
-	if(addr < 0x8000)
+	if(addr < 0x6000)
+		return 0;
+	else if(addr < 0x8000)
 		return m10_prgRAM[addr&0x1FFF];
 	else
 	{
@@ -61,7 +63,9 @@ uint8_t m10get8(uint16_t addr)
 void m10set8(uint16_t addr, uint8_t val)
 {
 	//printf("m10set8 %04x %02x\n", addr, val);
-	if(addr < 0x8000)
+	if(addr < 0x6000)
+		return;
+	else if(addr < 0x8000)
 		m10_prgRAM[addr&0x1FFF] = val;
 	else if(addr < 0xA000)
 		return;
@@ -74,7 +78,7 @@ void m10set8(uint16_t addr, uint8_t val)
 	else if(addr < 0xE000)
 		m10_curCHRBank10 = ((val&0x1F)<<12)&(m10_chrROMsize-1);
 	else if(addr < 0xF000)
-		m10_curCHRBank11 = ((val&0x1F)<<12);
+		m10_curCHRBank11 = ((val&0x1F)<<12)&(m10_chrROMsize-1);
 	else
 	{
 		if((val&1) == 0)

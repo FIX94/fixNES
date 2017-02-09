@@ -16,8 +16,6 @@ static uint8_t *m4_chrROM;
 static uint32_t m4_prgROMsize;
 static uint32_t m4_prgRAMsize;
 static uint32_t m4_chrROMsize;
-static uint32_t m4_prgROMand;
-static uint32_t m4_chrROMand;
 static uint8_t m4_chrRAM[0x2000];
 static uint32_t m4_curPRGBank0;
 static uint32_t m4_curPRGBank1;
@@ -37,6 +35,11 @@ extern bool mapper_interrupt;
 extern bool ppuForceTable;
 extern uint16_t ppuForceTableAddr;
 static uint16_t m4_prevAddr;
+//used externally
+uint32_t m4_prgROMadd;
+uint32_t m4_chrROMadd;
+uint32_t m4_prgROMand;
+uint32_t m4_chrROMand;
 
 void m4init(uint8_t *prgROMin, uint32_t prgROMsizeIn, 
 			uint8_t *prgRAMin, uint32_t prgRAMsizeIn,
@@ -75,44 +78,47 @@ void m4init(uint8_t *prgROMin, uint32_t prgROMsizeIn,
 	m4_chr_bank_flip = false;
 	m4_prg_bank_flip = false;
 	m4_prevAddr = 0;
+	m4_prgROMadd = 0;
+	m4_chrROMadd = 0;
 	printf("Mapper 4 inited\n");
 }
 
 uint8_t m4get8(uint16_t addr)
 {
-	if(addr < 0x8000)
+	if(addr >= 0x6000 && addr < 0x8000)
 		return m4_prgRAM[addr&0x1FFF];
-	else
+	else if(addr >= 0x8000)
 	{
 		if(addr < 0xA000)
 		{
 			if(m4_prg_bank_flip)
-				return m4_prgROM[(m4_lastM1PRGBank+(addr&0x1FFF))&m4_prgROMand];
+				return m4_prgROM[(((m4_lastM1PRGBank+(addr&0x1FFF)))&m4_prgROMand)+m4_prgROMadd];
 			else
-				return m4_prgROM[((m4_curPRGBank0<<13)+(addr&0x1FFF))&m4_prgROMand];
+				return m4_prgROM[(((m4_curPRGBank0<<13)+(addr&0x1FFF))&m4_prgROMand)+m4_prgROMadd];
 		}
 		else if(addr < 0xC000)
-			return m4_prgROM[((m4_curPRGBank1<<13)+(addr&0x1FFF))&m4_prgROMand];
+			return m4_prgROM[(((m4_curPRGBank1<<13)+(addr&0x1FFF))&m4_prgROMand)+m4_prgROMadd];
 		else if(addr < 0xE000)
 		{
 			if(m4_prg_bank_flip)
-				return m4_prgROM[((m4_curPRGBank0<<13)+(addr&0x1FFF))&m4_prgROMand];
+				return m4_prgROM[(((m4_curPRGBank0<<13)+(addr&0x1FFF))&m4_prgROMand)+m4_prgROMadd];
 			else
-				return m4_prgROM[(m4_lastM1PRGBank+(addr&0x1FFF))&m4_prgROMand];
+				return m4_prgROM[((m4_lastM1PRGBank+(addr&0x1FFF))&m4_prgROMand)+m4_prgROMadd];
 		}
-		return m4_prgROM[(m4_lastPRGBank+(addr&0x1FFF))&m4_prgROMand];
+		return m4_prgROM[((m4_lastPRGBank+(addr&0x1FFF))&m4_prgROMand)+m4_prgROMadd];
 	}
+	return 0;
 }
 
 extern bool cpuWriteTMP;
 void m4set8(uint16_t addr, uint8_t val)
 {
-	if(addr < 0x8000)
+	if(addr >= 0x6000 && addr < 0x8000)
 	{
 		//printf("m4set8 %04x %02x\n", addr, val);
 		m4_prgRAM[addr&0x1FFF] = val;
 	}
-	else
+	else if(addr >= 0x8000)
 	{
 		// mmc1 regs cant be written to
 		// with just 1 cpu cycle delay
@@ -243,16 +249,16 @@ uint8_t m4chrGet8(uint16_t addr)
 	if(m4_chr_bank_flip)
 		addr ^= 0x1000;
 	if(addr < 0x800)
-		return m4_chrROM[((m4_CHRBank[0]<<10)+(addr&0x7FF))&m4_chrROMand];
+		return m4_chrROM[(((m4_CHRBank[0]<<10)+(addr&0x7FF))&m4_chrROMand)+m4_chrROMadd];
 	else if(addr < 0x1000)
-		return m4_chrROM[((m4_CHRBank[1]<<10)+(addr&0x7FF))&m4_chrROMand];
+		return m4_chrROM[(((m4_CHRBank[1]<<10)+(addr&0x7FF))&m4_chrROMand)+m4_chrROMadd];
 	else if(addr < 0x1400)
-		return m4_chrROM[((m4_CHRBank[2]<<10)+(addr&0x3FF))&m4_chrROMand];
+		return m4_chrROM[(((m4_CHRBank[2]<<10)+(addr&0x3FF))&m4_chrROMand)+m4_chrROMadd];
 	else if(addr < 0x1800)
-		return m4_chrROM[((m4_CHRBank[3]<<10)+(addr&0x3FF))&m4_chrROMand];
+		return m4_chrROM[(((m4_CHRBank[3]<<10)+(addr&0x3FF))&m4_chrROMand)+m4_chrROMadd];
 	else if(addr < 0x1C00)
-		return m4_chrROM[((m4_CHRBank[4]<<10)+(addr&0x3FF))&m4_chrROMand];
-	return m4_chrROM[((m4_CHRBank[5]<<10)+(addr&0x3FF))&m4_chrROMand];
+		return m4_chrROM[(((m4_CHRBank[4]<<10)+(addr&0x3FF))&m4_chrROMand)+m4_chrROMadd];
+	return m4_chrROM[(((m4_CHRBank[5]<<10)+(addr&0x3FF))&m4_chrROMand)+m4_chrROMadd];
 }
 
 void m4chrSet8(uint16_t addr, uint8_t val)

@@ -360,16 +360,16 @@ bool cpuCycle()
 		if(p_irq_req == 1)
 		{
 			#if DEBUG_INTR
-			printf("Setting irq disable %02x %02x %d %d %d %d line %i dot %i\n", p, P_FLAG_IRQ_DISABLE, cpu_interrupt_req, apu_interrupt, 
-				!(p & P_FLAG_IRQ_DISABLE), (p & P_FLAG_IRQ_DISABLE) == 0, curLine, curDot);
+			printf("Setting irq disable %02x %02x %d %d %d %d\n", p, P_FLAG_IRQ_DISABLE, cpu_interrupt_req, apu_interrupt, 
+				!(p & P_FLAG_IRQ_DISABLE), (p & P_FLAG_IRQ_DISABLE) == 0);
 			#endif
 			p |= P_FLAG_IRQ_DISABLE;
 		}
 		else
 		{
 			#if DEBUG_INTR
-			printf("Clearing irq disable %02x %02x %d %d %d %d line %i dot %i\n", p, P_FLAG_IRQ_DISABLE, cpu_interrupt_req, apu_interrupt, 
-				!(p & P_FLAG_IRQ_DISABLE), (p & P_FLAG_IRQ_DISABLE) == 0, curLine, curDot);
+			printf("Clearing irq disable %02x %02x %d %d %d %d\n", p, P_FLAG_IRQ_DISABLE, cpu_interrupt_req, apu_interrupt, 
+				!(p & P_FLAG_IRQ_DISABLE), (p & P_FLAG_IRQ_DISABLE) == 0);
 			#endif
 			p &= ~P_FLAG_IRQ_DISABLE;
 		}
@@ -378,7 +378,7 @@ bool cpuCycle()
 	if(ppu_nmi_handler_req)
 	{
 		#if DEBUG_INTR
-		printf("NMI from p %02x pc %04x line %i dot %i ",p,pc, curLine, curDot);
+		printf("NMI from p %02x pc %04x ",p,pc);
 		#endif
 		p |= P_FLAG_S2;
 		p &= ~P_FLAG_S1;
@@ -395,7 +395,7 @@ bool cpuCycle()
 	else if(cpu_interrupt_req)
 	{
 		#if DEBUG_INTR
-		printf("INTR %d %d %d from p %02x pc %04x line %i dot %i ",interrupt,dmc_interrupt,apu_interrupt,p,pc, curLine, curDot);
+		printf("INTR %d %d %d from p %02x pc %04x ",interrupt,dmc_interrupt,apu_interrupt,p,pc);
 		#endif
 		intrBackup();
 		p |= P_FLAG_IRQ_DISABLE;
@@ -408,7 +408,6 @@ bool cpuCycle()
 		waitCycles+=5;
 	}
 	uint16_t instrPtr = pc;
-	//printf("%04x\n", instrPtr);
 	/*if(intrPrintUpdate == 100)
 	{
 		printf("%04x\n", instrPtr);
@@ -417,6 +416,7 @@ bool cpuCycle()
 	else
 		intrPrintUpdate++;*/
 	uint8_t instr = memGet8(instrPtr);
+	//printf("%04x %02x\n", instrPtr, instr);
 	uint8_t tmp, zPage;
 	uint16_t absAddr, val;
 	pc++; waitCycles++;
@@ -825,7 +825,7 @@ bool cpuCycle()
 		case 0x40: //RTI
 			memGet8(pc);
 			#if DEBUG_INTR
-			printf("RTI from p %02x pc %04x line %i dot %i ",p,pc, curLine, curDot);
+			printf("RTI from p %02x pc %04x ",p,pc);
 			#endif
 			//get back p from stack
 			s++;
