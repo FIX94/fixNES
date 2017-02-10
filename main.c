@@ -27,7 +27,7 @@
 #define DEBUG_KEY 0
 #define DEBUG_LOAD_INFO 1
 
-static const char *VERSION_STRING = "fixNES Alpha v0.4";
+static const char *VERSION_STRING = "fixNES Alpha v0.5";
 
 static void nesEmuDisplayFrame(void);
 static void nesEmuMainLoop(void);
@@ -48,6 +48,7 @@ bool nesPause = false;
 bool ppuDebugPauseFrame = false;
 bool doOverscan = true;
 bool nesPAL = false;
+bool nesEmuNSFPlayback = false;
 
 static bool inPause = false;
 static bool inOverscanToggle = false;
@@ -71,6 +72,7 @@ static const int visibleImg = VISIBLE_DOTS*VISIBLE_LINES*4;
 static int scaleFactor = 2;
 static bool emuSaveEnabled = false;
 static int emuApuClockCycles;
+static int emuApuClock;
 
 //from input.c
 extern uint8_t inValReads[8];
@@ -146,19 +148,45 @@ int main(int argc, char** argv)
 		}
 		if(argc == 5 && (strstr(argv[2],".fm2") != NULL || strstr(argv[2],".FM2") != NULL))
 			fm2playInit(argv[2], atoi(argv[3]), !!atoi(argv[4]));
-		#if WINDOWS_BUILD
-		emuFrameStart = GetTickCount();
-		#endif
-		textureImage = malloc(visibleImg);
-		memset(textureImage,0,visibleImg);
-		//make sure image is visible
-		int i;
-		for(i = 0; i < visibleImg; i+=4)
-			textureImage[i+3] = 0xFF;
+	}
+	else if(argc >= 2 && (strstr(argv[1],".nsf") != NULL || strstr(argv[1],".NSF") != NULL))
+	{
+		FILE *nesF = fopen(argv[1],"rb");
+		if(!nesF) return EXIT_SUCCESS;
+		fseek(nesF,0,SEEK_END);
+		size_t fsize = ftell(nesF);
+		rewind(nesF);
+		emuNesROM = malloc(fsize);
+		fread(emuNesROM,1,fsize,nesF);
+		fclose(nesF);
+		emuPrgRAMsize = 0x2000;
+		emuPrgRAM = malloc(emuPrgRAMsize);
+		cpuInit();
+		ppuInit();
+		memInit();
+		apuInit();
+		inputInit();
+		if(!mapperInitNSF(emuNesROM, fsize, emuPrgRAM, emuPrgRAMsize))
+		{
+			printf("NSF init failed!\n");
+			free(emuNesROM);
+			return EXIT_SUCCESS;
+		}
+		nesEmuNSFPlayback = true;
 	}
 	if(emuNesROM == NULL)
 		return EXIT_SUCCESS;
+	#if WINDOWS_BUILD
+	emuFrameStart = GetTickCount();
+	#endif
+	textureImage = malloc(visibleImg);
+	memset(textureImage,0,visibleImg);
+	//make sure image is visible
+	int i;
+	for(i = 0; i < visibleImg; i+=4)
+		textureImage[i+3] = 0xFF;
 	emuApuClockCycles = nesPAL ? 8313 : 7457;
+	emuApuClock = emuApuClockCycles - (nesPAL ? 1066 : 1137);
 	glutInit(&argc, argv);
 	glutInitWindowSize(VISIBLE_DOTS*scaleFactor, VISIBLE_LINES*scaleFactor);
 	glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGBA);
@@ -226,7 +254,6 @@ bool emuSkipVsync = false;
 
 //static int mCycles = 0;
 static bool emuApuDoCycle = false;
-static int emuApuClock = 0;
 //do one scanline per idle loop
 #define MAIN_LOOP_RUNS 341
 static int mainClock = 0, mainLoopPos = MAIN_LOOP_RUNS;
@@ -280,7 +307,7 @@ static void nesEmuMainLoop(void)
 			else
 				ppuExtraCycles++;
 		}
-		if(ppuDrawDone())
+		if(!nesEmuNSFPlayback && ppuDrawDone())
 		{
 			//printf("%i\n",mCycles);
 			//mCycles = 0;

@@ -522,7 +522,7 @@ void apuSet8(uint8_t reg, uint8_t val)
 	}
 	else if(reg == 3)
 	{
-		//p1Cycle = 0;
+		p1Cycle = 0;
 		if(APU_IO_Reg[0x15] & P1_ENABLE)
 			p1LengthCtr = lengthLookupTbl[val>>3];
 		freq1 = (freq1&0xFF) | ((val&7)<<8);
@@ -553,7 +553,7 @@ void apuSet8(uint8_t reg, uint8_t val)
 	}
 	else if(reg == 7)
 	{
-		//p2Cycle = 0;
+		p2Cycle = 0;
 		if(APU_IO_Reg[0x15] & P2_ENABLE)
 			p2LengthCtr = lengthLookupTbl[val>>3];
 		freq2 = (freq2&0xFF) | ((val&7)<<8);

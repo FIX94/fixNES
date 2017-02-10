@@ -8,9 +8,7 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <inttypes.h>
-#include "mapper_h/p8c8.h"
 #include "mapper_h/m1.h"
-#include "mapper_h/m2.h"
 #include "mapper_h/m4.h"
 #include "mapper_h/m4add.h"
 #include "mapper_h/m7.h"
@@ -18,6 +16,8 @@
 #include "mapper_h/m10.h"
 #include "mapper_h/m13.h"
 #include "mapper_h/m15.h"
+#include "mapper_h/p8c8.h"
+#include "mapper_h/p16.h"
 #include "mapper_h/p32c8.h"
 #include "mapper.h"
 #include "mapperList.h"
@@ -25,7 +25,7 @@
 mapperList_t mapperList[256] = {
 	{ p32c8init,	p32c8get8,		m0_set8,		p32c8chrGet8,	p32c8chrSet8,	NULL },
 	{ m1init,		m1get8,			m1set8,			m1chrGet8,		m1chrSet8,		NULL },
-	{ m2init,		m2get8,			m2set8,			m2chrGet8,		m2chrSet8,		NULL },
+	{ p16init,		p16get8,		m2_set8,		p16chrGet8,		p16chrSet8,		NULL },
 	{ p8c8init,		p8c8get8,		m3_set8,		p8c8chrGet8,	p8c8chrSet8,	NULL },
 	{ m4init,		m4get8,			m4set8,			m4chrGet8,		m4chrSet8,		m4cycle },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
@@ -94,7 +94,7 @@ mapperList_t mapperList[256] = {
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
-	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
+	{ p16init,		p16get8,		m71_set8,		p16chrGet8,		p16chrSet8,		NULL },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },

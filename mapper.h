@@ -17,6 +17,7 @@ typedef uint8_t* (*getChrFuncT)();
 typedef void (*cycleFuncT)();
 
 bool mapperInit(uint8_t mapper, uint8_t *prgROM, uint32_t prgROMsize, uint8_t *prgRAM, uint32_t prgRAMsize, uint8_t *chrROM, uint32_t chrROMsize);
+bool mapperInitNSF(uint8_t *nsfBIN, uint32_t nsfBINsize, uint8_t *prgRAM, uint32_t prgRAMsize);
 
 extern get8FuncT mapperGet8;
 extern set8FuncT mapperSet8;

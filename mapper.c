@@ -10,6 +10,7 @@
 #include <inttypes.h>
 #include "mapper.h"
 #include "mapperList.h"
+#include "mapper_h/nsf.h"
 
 get8FuncT mapperGet8;
 set8FuncT mapperSet8;
@@ -31,5 +32,16 @@ bool mapperInit(uint8_t mapper, uint8_t *prgROM, uint32_t prgROMsize, uint8_t *p
 	mapperChrGet8 = mapperList[mapper].chrGet8F;
 	mapperChrSet8 = mapperList[mapper].chrSet8F;
 	mapperCycle = mapperList[mapper].cycleFuncF;
+	return true;
+}
+
+bool mapperInitNSF(uint8_t *nsfBIN, uint32_t nsfBINsize, uint8_t *prgRAM, uint32_t prgRAMsize)
+{
+	nsfinit(nsfBIN, nsfBINsize, prgRAM, prgRAMsize);
+	mapperGet8 = nsfget8;
+	mapperSet8 = nsfset8;
+	mapperChrGet8 = nsfchrGet8;
+	mapperChrSet8 = nsfchrSet8;
+	mapperCycle = nsfcycle;
 	return true;
 }

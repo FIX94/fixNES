@@ -9,6 +9,8 @@
 #define _cpu_h_
 
 void cpuInit();
+void cpuInitNSF(uint16_t addr, uint8_t newA, uint8_t newX);
+void cpuPlayNSF(uint16_t addr);
 bool cpuCycle();
 void cpuIncWaitCycles(uint32_t inc);
 uint16_t cpuGetPc();

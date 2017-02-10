@@ -10,6 +10,7 @@
 #include <inttypes.h>
 #include "mem.h"
 #include "ppu.h"
+#include "apu.h"
 
 #define P_FLAG_CARRY (1<<0)
 #define P_FLAG_ZERO (1<<1)
@@ -1912,4 +1913,40 @@ void cpuIncWaitCycles(uint32_t inc)
 uint16_t cpuGetPc()
 {
 	return pc;
+}
+
+void cpuPlayNSF(uint16_t addr)
+{
+	//used in NSF mapper to detect init/play return
+	uint16_t initRet = 0x4567-1;
+	memSet8(0x100+s,initRet>>8);
+	s--;
+	memSet8(0x100+s,initRet&0xFF);
+	s--;
+	pc = addr;
+	//printf("Playback at %04x\n", addr);
+}
+
+void cpuInitNSF(uint16_t addr, uint8_t newA, uint8_t newX)
+{
+	//full reset
+	cpuInit();
+	ppuInit();
+	memInit();
+	apuInit();
+	//do init
+	reset = false;
+	interrupt = false;
+	dmc_interrupt = false;
+	apu_interrupt = false;
+	p = (P_FLAG_IRQ_DISABLE | P_FLAG_S1 | P_FLAG_S2);
+	a = newA;
+	x = newX;
+	y = 0;
+	s = 0xFD;
+	waitCycles = 0;
+	//initial "play" addr is init
+	apuSet8(0x15,0xF);
+	apuSet8(0x17,0x40);
+	cpuPlayNSF(addr);
 }
