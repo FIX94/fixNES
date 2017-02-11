@@ -29,6 +29,7 @@ static bool interrupt;
 //used externally
 bool dmc_interrupt;
 bool apu_interrupt;
+uint32_t cpu_oam_dma;
 extern bool nesPause;
 
 void cpuInit()
@@ -37,6 +38,7 @@ void cpuInit()
 	interrupt = false;
 	dmc_interrupt = false;
 	apu_interrupt = false;
+	cpu_oam_dma = 0;
 	p = (P_FLAG_IRQ_DISABLE | P_FLAG_S1 | P_FLAG_S2);
 	a = 0;
 	x = 0;
@@ -343,6 +345,11 @@ bool cpuCycle()
 	if(waitCycles)
 	{
 		waitCycles--;
+		return true;
+	}
+	if(cpu_oam_dma)
+	{
+		cpu_oam_dma--;
 		return true;
 	}
 	//grab reset from vector
@@ -1939,6 +1946,7 @@ void cpuInitNSF(uint16_t addr, uint8_t newA, uint8_t newX)
 	interrupt = false;
 	dmc_interrupt = false;
 	apu_interrupt = false;
+	cpu_oam_dma = 0;
 	p = (P_FLAG_IRQ_DISABLE | P_FLAG_S1 | P_FLAG_S2);
 	a = newA;
 	x = newX;

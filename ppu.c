@@ -107,7 +107,8 @@ static uint8_t ppuBGAttribRegA;
 static uint8_t ppuBGAttribRegB;
 static uint8_t ppuCurOverflowAdd;
 static uint8_t ppulastVal;
-
+static uint16_t ppuVblankStartDot;
+static uint16_t ppuVblankEndDot;
 static bool ppuHasZSprite;
 static bool ppuNextHasZSprite;
 static bool ppuFrameDone;
@@ -135,6 +136,9 @@ void ppuInit()
 	ppuLinesTotal = nesPAL ? 312 : 262;
 	ppuPreRenderLine = ppuLinesTotal - 1;
 	curLine = ppuLinesTotal - 11;
+	//not quite sure about how pal is supposed to work yet...
+	ppuVblankStartDot = nesPAL ? 201 : 11;
+	ppuVblankEndDot = nesPAL ? 194 : 4;
 	curDot = 0;
 	ppuVramAddr = 0;
 	ppuToDraw = 0;
@@ -486,7 +490,7 @@ bool ppuCycle()
 		ppuSprite0hit--;
 	/* VBlank start at first dot after post-render line */
 	/* Though results are better when starting it a bit later */
-	if(curDot == 8 && curLine == 241)
+	if(curDot == ppuVblankStartDot && curLine == 241)
 	{
 		ppuNMITriggered = false;
 		if(!ppuReadReg2)
@@ -498,7 +502,7 @@ bool ppuCycle()
 	ppuReadReg2 = false;
 	/* VBlank ends at first dot of the pre-render line */
 	/* Though results are better when clearing it a bit later */
-	if(curDot == 8 && curLine == ppuPreRenderLine)
+	if(curDot == ppuVblankEndDot && curLine == ppuPreRenderLine)
 	{
 		#if PPU_DEBUG_VSYNC
 		printf("PPU End VBlank\n");
@@ -561,7 +565,7 @@ static uint8_t ppuDoSprites(uint8_t color, uint8_t dot)
 				sprCol |= 2;
 			if(i == 0 && ppuHasZSprite && dot < 255 && ((color&3) != 0) && (sprCol != 0) && !(PPU_Reg[2] & PPU_FLAG_SPRITEZERO) && !ppuSprite0hit)
 			{
-				ppuSprite0hit = 5;
+				ppuSprite0hit = (nesPAL ? 25 : 5);
 				#if PPU_DEBUG_ULTRA
 				printf("Zero sprite hit at x %i y %i cSpriteDot %i "
 							"table %04x color %02x sprCol %02x\n", dot, curLine, cSpriteDot, ppuGetVramTbl((PPU_Reg[0]&3)<<10), color, sprCol);

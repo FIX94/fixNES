@@ -50,7 +50,7 @@ uint8_t memGet8(uint16_t addr)
 	memLastVal = val;
 	return val;
 }
-
+extern uint32_t cpu_oam_dma;
 void memSet8(uint16_t addr, uint8_t val)
 {
 	//printf("memSet8 %04x %02x\n", addr, val);
@@ -65,7 +65,7 @@ void memSet8(uint16_t addr, uint8_t val)
 			uint16_t dmaAddr = (val<<8);
 			//printf("ppuLoadOAM %04x\n", dmaAddr);
 			if(!fm2playRunning() || (fm2playRunning() && fm2playWaitDMAcycles()))
-				cpuIncWaitCycles(514);
+				cpu_oam_dma = 514;
 			int i;
 			if(dmaAddr < 0x2000)
 			{

@@ -52,7 +52,7 @@ static uint8_t dmcSampleRemain;
 static bool mode5 = false;
 static int modePos = 0;
 static uint16_t p1freqCtr, p2freqCtr, triFreqCtr, noiseFreqCtr, dmcFreqCtr;
-static uint8_t p1Cycle, p2Cycle, triCycle, dmcCycle;
+static uint8_t p1Cycle, p2Cycle, triCycle;//, dmcCycle;
 static bool p1haltloop, p2haltloop, trihaltloop, noisehaltloop, dmchaltloop;
 static bool dmcstart;
 static bool dmcirqenable;
@@ -161,7 +161,7 @@ void apuInit()
 	dmcCurAddr = 0, dmcCurLen = 0; dmcCurVol = 0;
 	dmcSampleRemain = 0;
 	p1freqCtr = 0; p2freqCtr = 0; triFreqCtr = 0, noiseFreqCtr = 0, dmcFreqCtr = 0;
-	p1Cycle = 0; p2Cycle = 0; triCycle = 0; dmcCycle = 0;
+	p1Cycle = 0; p2Cycle = 0; triCycle = 0;// dmcCycle = 0;
 
 	memset(&p1Env,0,sizeof(envelope_t));
 	memset(&p2Env,0,sizeof(envelope_t));
@@ -194,69 +194,66 @@ void apuDeinit()
 		free(apuOutBuf);
 	apuOutBuf = NULL;
 }
-
+extern uint32_t cpu_oam_dma;
 void apuClockTimers()
 {
 	if(p1LengthCtr && (APU_IO_Reg[0x15] & P1_ENABLE))
 	{
-		if(p1freqCtr/2 > freq1)
+		if(p1freqCtr)
+			p1freqCtr--;
+		if(p1freqCtr == 0)
 		{
-			p1freqCtr = 0;
+			p1freqCtr = (freq1+1)*2;
 			p1Cycle++;
 		}
 		if(p1Cycle >= 8)
 			p1Cycle = 0;
-		p1freqCtr++;
 	}
 	if(p2LengthCtr && (APU_IO_Reg[0x15] & P2_ENABLE))
 	{
-		if(p2freqCtr/2 > freq2)
+		if(p2freqCtr)
+			p2freqCtr--;
+		if(p2freqCtr == 0)
 		{
-			p2freqCtr = 0;
+			p2freqCtr = (freq2+1)*2;
 			p2Cycle++;
 		}
 		if(p2Cycle >= 8)
 			p2Cycle = 0;
-		p2freqCtr++;
 	}
 	if(triLengthCtr && triCurLinearCtr && (APU_IO_Reg[0x15] & TRI_ENABLE))
 	{
-		if(triFreqCtr > triFreq)
+		if(triFreqCtr)
+			triFreqCtr--;
+		if(triFreqCtr == 0)
 		{
-			triFreqCtr = 0;
+			triFreqCtr = triFreq+1;
 			triCycle++;
 		}
 		if(triCycle >= 32)
 			triCycle = 0;
-		triFreqCtr++;
 	}
 	if(noiseLengthCtr && (APU_IO_Reg[0x15] & NOISE_ENABLE))
 	{
-		if(noiseFreqCtr > noiseFreq)
+		if(noiseFreqCtr)
+			noiseFreqCtr--;
+		if(noiseFreqCtr == 0)
 		{
-			noiseFreqCtr = 0;
+			noiseFreqCtr = noiseFreq;
 			uint8_t cmpBit = noiseMode1 ? (noiseShiftReg>>6)&1 : (noiseShiftReg>>1)&1;
 			uint8_t cmpRes = (noiseShiftReg&1)^cmpBit;
 			noiseShiftReg>>=1;
 			noiseShiftReg|=cmpRes<<14;
 		}
-		noiseFreqCtr++;
 	}
 	if(dmcLen && (APU_IO_Reg[0x15] & DMC_ENABLE))
 	{
-		if(dmcstart)
+		if(dmcFreqCtr)
+			dmcFreqCtr--;
+		if(dmcFreqCtr == 0)
 		{
-			dmcCurAddr = dmcAddr;
-			dmcCurLen = dmcLen;
-			//dmcCurVol = dmcVol;
-			//if(!dmcSampleRemain)
-				dmcCycle = 8;
-			dmcstart = false;
-		}
-		if(dmcFreqCtr >= dmcFreq)
-		{
-			dmcFreqCtr = 0;
-			dmcCycle++;
+			dmcFreqCtr = dmcFreq;
+			//dmcCycle++;
 			if(dmcSampleRemain)
 			{
 				if(dmcSampleBuf&1)
@@ -269,26 +266,37 @@ void apuClockTimers()
 				dmcSampleBuf>>=1;
 				dmcSampleRemain--;
 			}
-		}
-		if(dmcCycle >= 8)
-		{
-			if(dmcCurLen)
+			if(!dmcSampleRemain)
 			{
-				dmcSampleBuf = memGet8(dmcCurAddr);
-				cpuIncWaitCycles(4);
-				dmcCurAddr++;
-				if(dmcCurAddr < 0x8000)
-					dmcCurAddr |= 0x8000;
-				dmcCurLen--;
-				dmcSampleRemain = 8;
+				if(dmcCurLen)
+				{
+					dmcSampleBuf = memGet8(dmcCurAddr);
+					if(cpu_oam_dma > 0)
+						cpuIncWaitCycles(2);
+					else
+						cpuIncWaitCycles(4);
+					dmcCurAddr++;
+					if(dmcCurAddr < 0x8000)
+						dmcCurAddr |= 0x8000;
+					dmcCurLen--;
+					if(!dmcCurLen)
+					{
+						if(dmchaltloop)
+						{
+							dmcCurAddr = dmcAddr;
+							dmcCurLen = dmcLen;
+						}
+						else if(dmcirqenable)
+						{
+							//printf("DMC IRQ\n");
+							dmc_interrupt = true;
+						}
+					}
+					dmcSampleRemain = 8;
+				}
+				//dmcCycle = 0;
 			}
-			else if(dmchaltloop)
-				dmcstart = true;
-			else if(dmcirqenable)
-				dmc_interrupt = true;
-			dmcCycle = 0;
 		}
-		dmcFreqCtr++;
 	}
 }
 
@@ -600,6 +608,7 @@ void apuSet8(uint8_t reg, uint8_t val)
 	}
 	else if(reg == 0x10)
 	{
+		//printf("Set 0x10 %02x\n", val);
 		dmcFreq = dmcPeriod[val&0xF];
 		dmchaltloop = ((val&DMC_HALT_LOOP) != 0);
 		dmcirqenable = ((val&DMC_IRQ_ENABLE) != 0);
@@ -612,7 +621,10 @@ void apuSet8(uint8_t reg, uint8_t val)
 	else if(reg == 0x12)
 		dmcAddr = 0xC000+(val*64);
 	else if(reg == 0x13)
+	{
+		//printf("Set 0x13 %02x\n", val);
 		dmcLen = (val*16)+1;
+	}
 	else if(reg == 0x15)
 	{
 		//printf("Set 0x15 %02x\n",val);
@@ -627,7 +639,10 @@ void apuSet8(uint8_t reg, uint8_t val)
 		if(!(val & DMC_ENABLE))
 			dmcCurLen = 0;
 		else if(dmcCurLen == 0)
-			dmcstart = true;
+		{
+			dmcCurAddr = dmcAddr;
+			dmcCurLen = dmcLen;
+		}
 		dmc_interrupt = false;
 	}
 	else if(reg == 0x17)
