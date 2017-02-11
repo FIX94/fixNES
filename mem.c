@@ -65,7 +65,7 @@ void memSet8(uint16_t addr, uint8_t val)
 			uint16_t dmaAddr = (val<<8);
 			//printf("ppuLoadOAM %04x\n", dmaAddr);
 			if(!fm2playRunning() || (fm2playRunning() && fm2playWaitDMAcycles()))
-				cpuIncWaitCycles(513);
+				cpuIncWaitCycles(514);
 			int i;
 			if(dmaAddr < 0x2000)
 			{

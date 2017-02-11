@@ -249,11 +249,11 @@ void apuClockTimers()
 			dmcCurAddr = dmcAddr;
 			dmcCurLen = dmcLen;
 			//dmcCurVol = dmcVol;
-			if(!dmcSampleRemain)
+			//if(!dmcSampleRemain)
 				dmcCycle = 8;
 			dmcstart = false;
 		}
-		if(dmcFreqCtr > dmcFreq)
+		if(dmcFreqCtr >= dmcFreq)
 		{
 			dmcFreqCtr = 0;
 			dmcCycle++;

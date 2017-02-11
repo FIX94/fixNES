@@ -24,6 +24,7 @@
 #define PPU_FLAG_NMI (1<<7)
 
 //2001
+#define PPU_GRAY (1<<0)
 #define PPU_BG_8PX (1<<1)
 #define PPU_SPRITE_8PX (1<<2)
 #define PPU_BG_ENABLE (1<<3)
@@ -96,8 +97,12 @@ static uint8_t ppuOAMpos;
 static uint8_t ppuOAM2pos;
 static uint8_t ppuFineXScroll;
 static uint8_t ppuSpriteTilePos;
+static uint16_t ppuBGValA;
+static uint16_t ppuBGValB;
 static uint16_t ppuBGRegA;
 static uint16_t ppuBGRegB;
+static uint8_t ppuBGAttribValA;
+static uint8_t ppuBGAttribValB;
 static uint8_t ppuBGAttribRegA;
 static uint8_t ppuBGAttribRegB;
 static uint8_t ppuCurOverflowAdd;
@@ -112,6 +117,7 @@ static bool ppuSpriteSearch;
 static bool ppuCurVBlankStat;
 static bool ppuCurNMIStat;
 static bool ppuOddFrame;
+static bool ppuReadReg2;
 
 extern bool nesPAL;
 
@@ -152,6 +158,7 @@ void ppuInit()
 	ppuCurVBlankStat = false;
 	ppuCurNMIStat = false;
 	ppuOddFrame = false;
+	ppuReadReg2 = false;
 }
 
 static uint16_t ppuGetVramTbl(uint16_t tblStart)
@@ -191,85 +198,25 @@ static uint16_t ppuGetVramTbl(uint16_t tblStart)
 	}
 	return tblStart;
 }
-
+static int ppuSprite0hit = 0;
 bool ppuCycle()
 {
 	ppuCurVBlankStat = !!(PPU_Reg[2] & PPU_FLAG_VBLANK);
 	ppuCurNMIStat = !!(PPU_Reg[0] & PPU_FLAG_NMI);
 
-	/* VBlank ends at first dot of the pre-render line */
-	/* Though results are better when clearing it a bit later */
-	if(curDot == 12 && curLine == ppuPreRenderLine)
-	{
-		#if PPU_DEBUG_VSYNC
-		printf("PPU End VBlank\n");
-		#endif
-		PPU_Reg[2] &= ~(PPU_FLAG_VBLANK | PPU_FLAG_SPRITEZERO | PPU_FLAG_OVERFLOW);
-	}
 	bool pictureOutput = (PPU_Reg[1] & (PPU_BG_ENABLE | PPU_SPRITE_ENABLE)) != 0;
 
 	/* Do Background Updates */
-	if(pictureOutput && (curLine == ppuPreRenderLine || curLine < VISIBLE_LINES))
+	if((curLine == ppuPreRenderLine || curLine < VISIBLE_LINES))
 	{
-		/* Update tile address if needed */
-		if((curDot <= VISIBLE_DOTS) && (curDot & 7) == 0)
-		{
-			if((ppuVramAddr & 0x1F) == 0x1F)
-			{
-				ppuVramAddr &= ~0x1F;
-				ppuVramAddr ^= 0x400;
-			}
-			else
-				ppuVramAddr++;
-		}
-		/* update Y position for writes */
-		if(curDot == VISIBLE_DOTS)
-		{
-			if(((ppuVramAddr>>12)&7) != 7)
-				ppuVramAddr += (1<<12);
-			else
-			{
-				ppuVramAddr &= ~0x7000;
-				uint8_t coarseY = (ppuVramAddr&0x3E0)>>5;
-				if(coarseY == 29)
-				{
-					coarseY = 0;
-					ppuVramAddr ^= 0x800;
-				}
-				else if(coarseY == 31)
-					coarseY = 0;
-				else
-					coarseY++;
-				ppuVramAddr &= ~0x3E0;
-				ppuVramAddr |= (coarseY<<5);
-			}
-		} /* Update horizontal values after scanline */
-		else if(curDot == VISIBLE_DOTS+1)
-		{
-			ppuVramAddr &= ~PPU_VRAM_HORIZONTAL_MASK;
-			ppuVramAddr |= (ppuTmpVramAddr & PPU_VRAM_HORIZONTAL_MASK);
-		}
 		/* Do BG Reg Updates */
-		if((curDot >= 319 || curDot <= VISIBLE_DOTS) && (curDot & 7) == 0)
+		if((curDot >= 319 || (curDot && curDot <= VISIBLE_DOTS)) && (curDot & 7) == 0)
 		{
 			uint16_t cPpuTbl = ppuGetVramTbl(ppuVramAddr & 0xC00);
-			/* Select new BG Tiles */
-			uint16_t chrROMBG = (PPU_Reg[0] & PPU_BACKGROUND_ADDR) ? 0x1000 : 0;
-			uint16_t workAddr = cPpuTbl | (ppuVramAddr & 0x3FF);
-			uint8_t curBGtile = PPU_VRAM[workAddr];
-			uint8_t curTileY = (ppuVramAddr>>12)&7;
-			uint16_t curBGTile = chrROMBG+(curBGtile<<4)+curTileY;
 			/* Select new BG Background Attribute */
 			uint8_t cAttrib = ((ppuVramAddr>>4)&0x38) | ((ppuVramAddr>>2)&7);
 			uint16_t attributeAddr = cPpuTbl | (0x3C0 | cAttrib);
 			uint8_t cPalByte = PPU_VRAM[attributeAddr];
-			/* Update BG Tile Regs */
-			ppuBGRegA >>= 8;
-			ppuBGRegB >>= 8;
-			ppuBGRegA |= mapperChrGet8(curBGTile)<<8;
-			ppuBGRegB |= mapperChrGet8(curBGTile+8)<<8;
-			/* Update BG Background Attribute Regs */
-			ppuBGAttribRegA = ppuBGAttribRegB;
 			uint8_t coarseX = (ppuVramAddr & 0x1F);
 			uint8_t coarseY = ((ppuVramAddr & 0x3E0)>>5);
 			bool left = ((coarseX&2) == 0);
@@ -277,17 +224,109 @@ bool ppuCycle()
 			if(top)
 			{
 				if(left)
-					ppuBGAttribRegB = (cPalByte&3)<<2;
+				{
+					ppuBGAttribValA = (cPalByte)&1;
+					ppuBGAttribValB = (cPalByte>>1)&1;
+				}
 				else
-					ppuBGAttribRegB = (cPalByte&12);
+				{
+					ppuBGAttribValA = (cPalByte>>2)&1;
+					ppuBGAttribValB = (cPalByte>>3)&1;
+				}
 			}
 			else
 			{
 				if(left)
-					ppuBGAttribRegB = (cPalByte&48)>>2;
+				{
+					ppuBGAttribValA = (cPalByte>>4)&1;
+					ppuBGAttribValB = (cPalByte>>5)&1;
+				}
 				else
-					ppuBGAttribRegB = (cPalByte&192)>>4;
+				{
+					ppuBGAttribValA = (cPalByte>>6)&1;
+					ppuBGAttribValB = (cPalByte>>7)&1;
+				}
 			}
+			if(curDot == 328)
+			{
+				int i;
+				for(i = 0; i < 8; i++)
+				{
+					ppuBGAttribRegA <<= 1;
+					ppuBGAttribRegB <<= 1;
+					ppuBGAttribRegA |= ppuBGAttribValA;
+					ppuBGAttribRegB |= ppuBGAttribValB;
+				}
+			}
+		}
+		if(pictureOutput)
+		{
+			/* Update tile address if needed */
+			if((curDot >= 328 || (curDot >= 8 && curDot <= VISIBLE_DOTS)) && (curDot & 7) == 0)
+			{
+				if((ppuVramAddr & 0x1F) == 0x1F)
+				{
+					ppuVramAddr &= ~0x1F;
+					ppuVramAddr ^= 0x400;
+				}
+				else
+					ppuVramAddr++;
+			}
+			/* update Y position for writes */
+			if(curDot == VISIBLE_DOTS)
+			{
+				if(((ppuVramAddr>>12)&7) != 7)
+					ppuVramAddr += (1<<12);
+				else
+				{
+					ppuVramAddr &= ~0x7000;
+					uint8_t coarseY = (ppuVramAddr&0x3E0)>>5;
+					if(coarseY == 29)
+					{
+						coarseY = 0;
+						ppuVramAddr ^= 0x800;
+					}
+					else if(coarseY == 31)
+						coarseY = 0;
+					else
+						coarseY++;
+					ppuVramAddr &= ~0x3E0;
+					ppuVramAddr |= (coarseY<<5);
+				}
+			} /* Update horizontal values after scanline */
+			else if(curDot == VISIBLE_DOTS+1)
+			{
+				ppuVramAddr &= ~PPU_VRAM_HORIZONTAL_MASK;
+				ppuVramAddr |= (ppuTmpVramAddr & PPU_VRAM_HORIZONTAL_MASK);
+			}
+		}
+		/* Do BG Reg Updates */
+		if((curDot >= 319 || curDot <= VISIBLE_DOTS) && (curDot & 7) == 4)
+		{
+			uint16_t cPpuTbl = ppuGetVramTbl(ppuVramAddr & 0xC00);
+			/* Select new BG Tiles */
+			uint16_t chrROMBG = (PPU_Reg[0] & PPU_BACKGROUND_ADDR) ? 0x1000 : 0;
+			uint16_t workAddr = cPpuTbl | (ppuVramAddr & 0x3FF);
+			uint8_t curBGtileReg = PPU_VRAM[workAddr];
+			uint8_t curTileY = (ppuVramAddr>>12)&7;
+			uint16_t curBGTile = chrROMBG+(curBGtileReg<<4)+curTileY;
+			ppuBGValA = mapperChrGet8(curBGTile);
+			ppuBGValB = mapperChrGet8(curBGTile+8);
+		}
+		if(curDot >= 8 && curDot <= VISIBLE_DOTS && ((curDot&7) == 0))
+		{
+			ppuBGRegA |= ppuBGValA;
+			ppuBGRegB |= ppuBGValB;
+		}
+		else if(curDot == 328)
+		{
+			ppuBGRegA = ppuBGValA<<8;
+			ppuBGRegB = ppuBGValB<<8;
+		}
+		else if(curDot == 336)
+		{
+			ppuBGRegA |= ppuBGValA;
+			ppuBGRegB |= ppuBGValB;
 		}
 	}
 
@@ -296,6 +335,12 @@ bool ppuCycle()
 	{
 		/* Grab color to render from BG and Sprites */
 		uint8_t curCol = ppuDoBackground(0, curDot);
+		ppuBGRegA <<= 1;
+		ppuBGRegB <<= 1;
+		ppuBGAttribRegA <<= 1;
+		ppuBGAttribRegB <<= 1;
+		ppuBGAttribRegA |= ppuBGAttribValA;
+		ppuBGAttribRegB |= ppuBGAttribValB;
 		curCol = ppuDoSprites(curCol, curDot);
 		if((curCol&3) == 0) //0,4,8 and C wrap
 			curCol &= ~0x10; //down to 0x00
@@ -307,9 +352,9 @@ bool ppuCycle()
 			curCol = 0xFF;
 		/* Draw current dot on screen */
 		size_t drawPos = (curDot<<2)+(curLine<<10);
-		if(curCol != 0xFF && pictureOutput)
+		if(curCol != 0xFF)
 		{
-			uint8_t cPalIdx = (PPU_PALRAM[curCol]&0x3F)*3;
+			uint8_t cPalIdx = (PPU_PALRAM[curCol]&((PPU_Reg[1]&PPU_GRAY)?0x30:0x3F))*3;
 			textureImage[drawPos] = PPU_Pal[cPalIdx+2];
 			textureImage[drawPos+1] = PPU_Pal[cPalIdx+1];
 			textureImage[drawPos+2] = PPU_Pal[cPalIdx];
@@ -432,15 +477,33 @@ bool ppuCycle()
 		ppuOAM2pos = 0;
 		//printf("Line done\n");
 	}
+	if(ppuSprite0hit == 1)
+	{
+		PPU_Reg[2] |= PPU_FLAG_SPRITEZERO;
+		ppuSprite0hit = 0;
+	}
+	else if(ppuSprite0hit > 1)
+		ppuSprite0hit--;
 	/* VBlank start at first dot after post-render line */
 	/* Though results are better when starting it a bit later */
-	if(curDot == 12 && curLine == 241)
+	if(curDot == 8 && curLine == 241)
 	{
 		ppuNMITriggered = false;
-		PPU_Reg[2] |= PPU_FLAG_VBLANK;
+		if(!ppuReadReg2)
+			PPU_Reg[2] |= PPU_FLAG_VBLANK;
 		#if PPU_DEBUG_VSYNC
 		printf("PPU Start VBlank\n");
 		#endif
+	}
+	ppuReadReg2 = false;
+	/* VBlank ends at first dot of the pre-render line */
+	/* Though results are better when clearing it a bit later */
+	if(curDot == 8 && curLine == ppuPreRenderLine)
+	{
+		#if PPU_DEBUG_VSYNC
+		printf("PPU End VBlank\n");
+		#endif
+		PPU_Reg[2] &= ~(PPU_FLAG_VBLANK | PPU_FLAG_SPRITEZERO | PPU_FLAG_OVERFLOW);
 	}
 	/* Wrap back down after pre-render line */
 	if(curLine == ppuLinesTotal)
@@ -457,24 +520,16 @@ static uint8_t ppuDoBackground(uint8_t color, uint8_t dot)
 	if((dot < 8 && !(PPU_Reg[1] & PPU_BG_8PX)) || !(PPU_Reg[1] & PPU_BG_ENABLE))
 		return color;
 
-	uint8_t curTileX = (dot+ppuFineXScroll)&7;
-	if((dot&7)+ppuFineXScroll <= 7)
+	if(ppuBGRegA & (0x80>>ppuFineXScroll<<8))
+		color |= 1;
+	if(ppuBGRegB & (0x80>>ppuFineXScroll<<8))
+		color |= 2;
+	if(color != 0)
 	{
-		if(ppuBGRegA & (0x80>>curTileX))
-			color |= 1;
-		if(ppuBGRegB & (0x80>>curTileX))
-			color |= 2;
-		if(color != 0)
-			color |= ppuBGAttribRegA;
-	}
-	else
-	{
-		if(ppuBGRegA & (0x8000>>curTileX))
-			color |= 1;
-		if(ppuBGRegB & (0x8000>>curTileX))
-			color |= 2;
-		if(color != 0)
-			color |= ppuBGAttribRegB;
+		if(ppuBGAttribRegA & 0x80>>ppuFineXScroll)
+			color |= 4;
+		if(ppuBGAttribRegB & 0x80>>ppuFineXScroll)
+			color |= 8;
 	}
 
 	#if PPU_DEBUG_ULTRA
@@ -504,9 +559,9 @@ static uint8_t ppuDoSprites(uint8_t color, uint8_t dot)
 				sprCol |= 1;
 			if(PPU_Sprites[i+1] & (0x80>>cSpriteX))
 				sprCol |= 2;
-			if(i == 0 && ppuHasZSprite && dot < 255 && ((color&3) != 0) && (sprCol != 0) && !(PPU_Reg[2] & PPU_FLAG_SPRITEZERO))
+			if(i == 0 && ppuHasZSprite && dot < 255 && ((color&3) != 0) && (sprCol != 0) && !(PPU_Reg[2] & PPU_FLAG_SPRITEZERO) && !ppuSprite0hit)
 			{
-				PPU_Reg[2] |= PPU_FLAG_SPRITEZERO;
+				ppuSprite0hit = 5;
 				#if PPU_DEBUG_ULTRA
 				printf("Zero sprite hit at x %i y %i cSpriteDot %i "
 							"table %04x color %02x sprCol %02x\n", dot, curLine, cSpriteDot, ppuGetVramTbl((PPU_Reg[0]&3)<<10), color, sprCol);
@@ -649,6 +704,7 @@ uint8_t ppuGet8(uint8_t reg)
 		ret = PPU_Reg[reg];
 		PPU_Reg[reg] &= ~PPU_FLAG_VBLANK;
 		ppuTmpWrite = false;
+		ppuReadReg2 = true;
 	}
 	else if(reg == 4)
 		ret = PPU_OAM[ppuOAMpos];
@@ -672,7 +728,7 @@ uint8_t ppuGet8(uint8_t reg)
 			uint8_t palRamAddr = (writeAddr&0x1F);
 			if((palRamAddr&3) == 0)
 				palRamAddr &= ~0x10;
-			ret = PPU_PALRAM[palRamAddr];
+			ret = PPU_PALRAM[palRamAddr]&((PPU_Reg[1]&PPU_GRAY)?0x30:0x3F);
 			//shadow read
 			uint16_t workAddr = ppuGetVramTbl(writeAddr) | (writeAddr & 0x3FF);
 			ppuVramReadBuf = PPU_VRAM[workAddr];
