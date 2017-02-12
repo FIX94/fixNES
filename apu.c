@@ -10,6 +10,7 @@
 #include <inttypes.h>
 #include <malloc.h>
 #include "apu.h"
+#include "audio_vrc6.h"
 #include "audio.h"
 #include "mem.h"
 #include "cpu.h"
@@ -304,7 +305,7 @@ static float lastHPOut = 0, lastLPOut = 0;
 static uint8_t lastP1Out = 0, lastP2Out = 0, lastTriOut = 0, lastNoiseOut = 0;
 
 extern bool emuSkipVsync;
-
+extern bool emuVrc6;
 int apuCycle()
 {
 	if(curBufPos == apuBufSize)
@@ -352,6 +353,13 @@ int apuCycle()
 			noiseOut = 0;
 	}
 	float curIn = pulseLookupTbl[p1Out + p2Out] + tndLookupTbl[(3*triOut) + (2*noiseOut) + dmcVol];
+	//very rough still
+	if(vrc6enabled)
+	{
+		curIn *= 0.665f;
+		vrc6Cycle();
+		curIn += ((float)vrc6Out)*0.0053f;
+	}
 	float curLPout = lastLPOut+(lpVal*(curIn-lastLPOut));
 	float curHPOut = hpVal*(lastHPOut+curLPout-curIn);
 	//set output

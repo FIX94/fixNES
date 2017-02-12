@@ -1922,16 +1922,18 @@ uint16_t cpuGetPc()
 	return pc;
 }
 
-void cpuPlayNSF(uint16_t addr)
+uint16_t cpuPlayNSF(uint16_t addr)
 {
-	//used in NSF mapper to detect init/play return
-	uint16_t initRet = 0x4567-1;
-	memSet8(0x100+s,initRet>>8);
+	//used in NSF mapper to detect play return
+	uint16_t absAddr = 0x456A-1;
+	memSet8(0x100+s,absAddr>>8);
 	s--;
-	memSet8(0x100+s,initRet&0xFF);
+	memSet8(0x100+s,absAddr&0xFF);
 	s--;
-	pc = addr;
+	uint16_t lastAddr = pc;
+	pc = addr; //jump to play
 	//printf("Playback at %04x\n", addr);
+	return lastAddr;
 }
 
 void cpuInitNSF(uint16_t addr, uint8_t newA, uint8_t newX)
@@ -1953,8 +1955,15 @@ void cpuInitNSF(uint16_t addr, uint8_t newA, uint8_t newX)
 	y = 0;
 	s = 0xFD;
 	waitCycles = 0;
-	//initial "play" addr is init
+	//prepare APU regs
 	apuSet8(0x15,0xF);
 	apuSet8(0x17,0x40);
-	cpuPlayNSF(addr);
+	//used in NSF mapper to detect init return
+	uint16_t initRet = 0x4567-1;
+	memSet8(0x100+s,initRet>>8);
+	s--;
+	memSet8(0x100+s,initRet&0xFF);
+	s--;
+	pc = addr;
+	//printf("Init at %04x\n", addr);
 }
