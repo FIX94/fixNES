@@ -12,6 +12,8 @@
 #include "../cpu.h"
 #include "../input.h"
 #include "../mem.h"
+#include "../audio_fds.h"
+#include "../audio_mmc5.h"
 #include "../audio_vrc6.h"
 
 static uint8_t *nsf_prgROM;
@@ -30,7 +32,6 @@ static uint8_t nsf_curTrack;
 static bool nsf_bankEnable;
 static bool nsf_playing;
 static bool nsf_init;
-static bool nsf_fdsEnabled;
 static uint8_t nsf_init_timeout;
 static uint8_t nsf_chrRAM[0x2000];
 extern bool nesPAL;
@@ -46,7 +47,13 @@ static void nsfInitPlayback()
 	cpuInitNSF(nsf_initAddr, nsf_curTrack-1, nesPAL ? 1 : 0);
 	if(vrc6enabled)
 		vrc6Init();
+	if(mmc5enabled)
+		mmc5AudioInit();
+	if(fdsEnabled)
+		fdsAudioInit();
 }
+
+#define onOff(x) (x ? "On" : "Off")
 
 void nsfinit(uint8_t *nsfBIN, uint32_t nsfBINsize, uint8_t *prgRAMin, uint32_t prgRAMsizeIn)
 {
@@ -59,9 +66,13 @@ void nsfinit(uint8_t *nsfBIN, uint32_t nsfBINsize, uint8_t *prgRAMin, uint32_t p
 	nsf_playAddr = *(uint16_t*)(nsfBIN+0xC);
 	nsf_retAddr = 0x456A;
 	nesPAL = ((nsfBIN[0x7A]&1) != 0);
-	nsf_fdsEnabled = ((nsfBIN[0x7B]&4) != 0);
+
 	if((nsfBIN[0x7B]&1) != 0)
 		vrc6Init();
+	if((nsfBIN[0x7B]&4) != 0)
+		fdsAudioInit();
+	if((nsfBIN[0x7B]&8) != 0)
+		mmc5AudioInit();
 	nsf_bankEnable = false;
 	int i;
 	for(i = 0; i < 8; i++)
@@ -76,8 +87,8 @@ void nsfinit(uint8_t *nsfBIN, uint32_t nsfBINsize, uint8_t *prgRAMin, uint32_t p
 	nsf_curTrack = 1;
 	nsf_trackTotal = nsfBIN[6];
 	memset(nsf_prevValReads, 0, 8);
-	printf("NSF Player inited in %s Mode (FDS %s, VRC6 %s) %s banking\n", nesPAL ? "PAL" : "NTSC", 
-		nsf_fdsEnabled ? "On" : "Off", vrc6enabled ? "On" : "Off", nsf_bankEnable ? "with" : "without");
+	printf("NSF Player inited in %s Mode (VRC6 %s, FDS %s, MMC5 %s) %s banking\n", nesPAL ? "PAL" : "NTSC", 
+		onOff(vrc6enabled), onOff(fdsEnabled), onOff(mmc5enabled), nsf_bankEnable ? "with" : "without");
 	if(nsfBIN[0xE] != 0) printf("Playing back %.32s\n", nsfBIN+0xE);
 	printf("Track %i/%i         ", nsf_curTrack, nsf_trackTotal);
 	nsfInitPlayback();
@@ -86,7 +97,7 @@ void nsfinit(uint8_t *nsfBIN, uint32_t nsfBINsize, uint8_t *prgRAMin, uint32_t p
 static uint32_t nsfgetromAddr(uint16_t addr)
 {
 	uint32_t romAddr;
-	if(addr < 0x8000 && (!nsf_fdsEnabled || !nsf_bankEnable))
+	if(addr < 0x8000 && (!fdsEnabled || !nsf_bankEnable))
 		romAddr = 0xFFFFFFFF;
 	else if(addr >= 0x8000 && !nsf_bankEnable)
 		romAddr = (addr&0x7FFF);
@@ -113,11 +124,32 @@ static uint32_t nsfgetromAddr(uint16_t addr)
 	return romAddr;
 }
 
+static uint8_t nsf_mmc5_mul1 = 0, nsf_mmc5_mul2 = 0;
+static uint16_t nsf_mmc5_mulRes = 0;
+
 uint8_t nsfget8(uint16_t addr)
 {
 	//printf("nsfget8 %04x\n", addr);
 	if(addr < 0x6000)
 	{
+		/* FDS Audio Regs */
+		if(fdsEnabled)
+		{
+			if(addr >= 0x4040 && addr <= 0x407F)
+				return fdsAudioGetWave(addr&0x3F);
+			else if(addr == 0x4090 || addr == 0x4092)
+				return fdsAudioGet8(addr&3);
+		}
+		/* MMC5 Regs */
+		if(mmc5enabled)
+		{
+			if(addr == 0x5015)
+				return mmc5AudioGet8(0x15);
+			else if(addr == 0x5205)
+				return (nsf_mmc5_mulRes&0xFF);
+			else if(addr == 0x5206)
+				return (nsf_mmc5_mulRes>>8);
+		}
 		/* Init Loop Routine */
 		if(addr == 0x4567)
 			return 0x4C; //JMP Absolute
@@ -146,18 +178,18 @@ uint8_t nsfget8(uint16_t addr)
 	}
 	else 
 	{
-		if(addr < 0x8000 && (!nsf_fdsEnabled || !nsf_bankEnable))
+		if(addr < 0x8000 && (!fdsEnabled || !nsf_bankEnable))
 			return nsf_prgRAM[addr&0x1FFF];
 		uint32_t romAddr = nsfgetromAddr(addr);
 		if(romAddr >= nsf_loadAddr && (romAddr-nsf_loadAddr) < nsf_prgROMsize)
 		{
 			uint8_t ret = nsf_prgROM[romAddr-nsf_loadAddr];
 			//printf("Ret from ROM %04x with %02x\n", romAddr-nsf_loadAddr, ret);
-			if(addr < 0xE000 && nsf_fdsEnabled)
+			if(addr < 0xE000 && fdsEnabled)
 				nsf_FillRAM[addr-0x6000] = ret;
 			return ret;
 		}
-		else if(addr < 0xE000 && nsf_fdsEnabled)
+		else if(addr < 0xE000 && fdsEnabled)
 			return nsf_FillRAM[addr-0x6000];
 		else
 			return 0;
@@ -167,6 +199,30 @@ uint8_t nsfget8(uint16_t addr)
 void nsfset8(uint16_t addr, uint8_t val)
 {
 	//printf("nsfset8 %04x %02x\n", addr, val);
+	/* FDS Audio Regs */
+	if(fdsEnabled)
+	{
+		if(addr >= 0x4040 && addr <= 0x407F)
+			fdsAudioSetWave(addr&0x3F, val);
+		else if(addr >= 0x4080 && addr <= 0x408A)
+			fdsAudioSet8(addr&0x1F, val);
+	}
+	/* MMC5 Regs */
+	if(mmc5enabled)
+	{
+		if(addr >= 0x5000 && addr <= 0x5015)
+			mmc5AudioSet8(addr&0x1F, val);
+		else if(addr == 0x5205)
+		{
+			nsf_mmc5_mul1 = val;
+			nsf_mmc5_mulRes = nsf_mmc5_mul1*nsf_mmc5_mul2;
+		}
+		else if(addr == 0x5206)
+		{
+			nsf_mmc5_mul2 = val;
+			nsf_mmc5_mulRes = nsf_mmc5_mul1*nsf_mmc5_mul2;
+		}
+	}
 	if(addr >= 0x5FF6 && addr < 0x6000)
 	{
 		if(addr == 0x5FF6)
@@ -192,9 +248,9 @@ void nsfset8(uint16_t addr, uint8_t val)
 	}
 	else
 	{
-		if(addr < 0x8000 && (!nsf_fdsEnabled || !nsf_bankEnable))
+		if(addr < 0x8000 && (!fdsEnabled || !nsf_bankEnable))
 			nsf_prgRAM[addr&0x1FFF] = val;
-		else if(addr < 0xE000 && nsf_fdsEnabled)
+		else if(addr < 0xE000 && fdsEnabled)
 			nsf_FillRAM[addr-0x6000] = val;
 		else if(vrc6enabled && ((addr >= 0x9000 && addr <= 0x9003) ||
 								(addr >= 0xA000 && addr <= 0xA002) ||
@@ -219,6 +275,10 @@ void nsfcycle()
 {
 	if(vrc6enabled)
 		vrc6ClockTimers();
+	if(fdsEnabled)
+		fdsAudioClockTimers();
+	if(mmc5enabled)
+		mmc5AudioClockTimers();
 
 	if(inValReads[BUTTON_RIGHT] && !nsf_prevValReads[BUTTON_RIGHT])
 	{

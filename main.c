@@ -22,12 +22,13 @@
 #include "fm2play.h"
 #include "apu.h"
 #include "audio.h"
+#include "audio_fds.h"
 
 #define DEBUG_HZ 0
 #define DEBUG_KEY 0
 #define DEBUG_LOAD_INFO 1
 
-static const char *VERSION_STRING = "fixNES Alpha v0.5.3";
+static const char *VERSION_STRING = "fixNES Alpha v0.5.4";
 
 static void nesEmuDisplayFrame(void);
 static void nesEmuMainLoop(void);
@@ -73,7 +74,10 @@ static int scaleFactor = 2;
 static bool emuSaveEnabled = false;
 static int emuApuClockCycles;
 static int emuApuClock;
-
+static int mainLoopRuns;
+static int mainLoopPos;
+static int ppuCycleTimer;
+static int cpuCycleTimer;
 //from input.c
 extern uint8_t inValReads[8];
 
@@ -187,6 +191,11 @@ int main(int argc, char** argv)
 		textureImage[i+3] = 0xFF;
 	emuApuClockCycles = nesPAL ? 8313 : 7457;
 	emuApuClock = emuApuClockCycles - (nesPAL ? 1066 : 1137);
+	cpuCycleTimer = nesPAL ? 16 : 12;
+	//do one scanline per idle loop
+	ppuCycleTimer = nesPAL ? 5 : 4;
+	mainLoopRuns = nesPAL ? 341*ppuCycleTimer : 341*ppuCycleTimer;
+	mainLoopPos = mainLoopRuns;
 	glutInit(&argc, argv);
 	glutInitWindowSize(VISIBLE_DOTS*scaleFactor, VISIBLE_LINES*scaleFactor);
 	glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGBA);
@@ -254,17 +263,17 @@ bool emuSkipVsync = false;
 
 //static int mCycles = 0;
 static bool emuApuDoCycle = false;
-//do one scanline per idle loop
-#define MAIN_LOOP_RUNS 341
-static int mainClock = 0, mainLoopPos = MAIN_LOOP_RUNS;
-static int ppuExtraCycles = 0;
+
+static int mainClock = 1;
+static int ppuClock = 1;
+
 static void nesEmuMainLoop(void)
 {
 	do
 	{
 		if((!emuSkipVsync && emuRenderFrame) || nesPause)
 			return;
-		if(mainClock == 2)
+		if(mainClock == cpuCycleTimer)
 		{
 			//runs every second cpu clock
 			if(emuApuDoCycle && !apuCycle())
@@ -287,54 +296,48 @@ static void nesEmuMainLoop(void)
 			}
 			else
 				emuApuClock++;
-			mainClock = 0;
+			mainClock = 1;
 		}
 		else
 			mainClock++;
-		//3 PPU dots per CPU cycle
-		if(!ppuCycle())
-			exit(EXIT_SUCCESS);
-		if(nesPAL)
+		if(ppuClock == ppuCycleTimer)
 		{
-			// Extra PPU cycle every 15 to get to 3.2
-			// dots every cpu cycle to match 50Hz timing
-			if(ppuExtraCycles == 15)
+			if(!ppuCycle())
+				exit(EXIT_SUCCESS);
+			if(!nesEmuNSFPlayback && ppuDrawDone())
 			{
-				if(!ppuCycle())
-					exit(EXIT_SUCCESS);
-				ppuExtraCycles = 0;
-			}
-			else
-				ppuExtraCycles++;
-		}
-		if(!nesEmuNSFPlayback && ppuDrawDone())
-		{
-			//printf("%i\n",mCycles);
-			//mCycles = 0;
-			emuRenderFrame = true;
-			if(fm2playRunning())
-				fm2playUpdate();
-			#if WINDOWS_BUILD
-			emuTimesCalled++;
-			DWORD end = GetTickCount();
-			emuTotalElapsed += end - emuFrameStart;
-			if(emuTotalElapsed >= 1000)
-			{
-				#if DEBUG_HZ
-				printf("\r%iHz   ", emuTimesCalled);
+				//printf("%i\n",mCycles);
+				//mCycles = 0;
+				emuRenderFrame = true;
+				if(fm2playRunning())
+					fm2playUpdate();
+				#if WINDOWS_BUILD
+				emuTimesCalled++;
+				DWORD end = GetTickCount();
+				emuTotalElapsed += end - emuFrameStart;
+				if(emuTotalElapsed >= 1000)
+				{
+					#if DEBUG_HZ
+					printf("\r%iHz   ", emuTimesCalled);
+					#endif
+					emuTimesCalled = 0;
+					emuTotalElapsed = 0;
+				}
+				emuFrameStart = end;
 				#endif
-				emuTimesCalled = 0;
-				emuTotalElapsed = 0;
+				glutPostRedisplay();
+				if(ppuDebugPauseFrame)
+					nesPause = true;
 			}
-			emuFrameStart = end;
-			#endif
-			glutPostRedisplay();
-			if(ppuDebugPauseFrame)
-				nesPause = true;
+			ppuClock = 1;
 		}
+		else
+			ppuClock++;
+		if(fdsEnabled)
+			fdsAudioMasterUpdate();
 	}
 	while(mainLoopPos--);
-	mainLoopPos = MAIN_LOOP_RUNS;
+	mainLoopPos = mainLoopRuns;
 }
 
 void nesEmuResetApuClock(void)

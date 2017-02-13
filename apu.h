@@ -21,4 +21,17 @@ void apuSet8(uint8_t reg, uint8_t val);
 uint8_t apuGet8(uint8_t reg);
 void apuLenCycle();
 
+
+typedef struct _envelope_t {
+	bool start;
+	bool constant;
+	bool loop;
+	uint8_t vol;
+	//uint8_t envelope;
+	uint8_t divider;
+	uint8_t decay;
+} envelope_t;
+
+void doEnvelopeLogic(envelope_t *env);
+
 #endif

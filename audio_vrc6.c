@@ -184,6 +184,9 @@ void vrc6Set8(uint16_t addr, uint8_t val)
 		vrc6_sawFreq = (vrc6_sawFreq&0xFF) | ((val&0xF)<<8);
 		vrc6_sawenable = ((val&0x80) != 0);
 		if(!vrc6_sawenable)
-			vrc6_sawenable = 0;
+		{
+			vrc6_sawCycle = 0;
+			vrc6_sawVol = 0;
+		}
 	}
 }

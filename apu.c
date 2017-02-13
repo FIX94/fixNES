@@ -10,6 +10,8 @@
 #include <inttypes.h>
 #include <malloc.h>
 #include "apu.h"
+#include "audio_fds.h"
+#include "audio_mmc5.h"
 #include "audio_vrc6.h"
 #include "audio.h"
 #include "mem.h"
@@ -61,16 +63,6 @@ static bool trireload;
 static bool noiseMode1;
 static bool apu_enable_irq;
 
-typedef struct _envelope_t {
-	bool start;
-	bool constant;
-	bool loop;
-	uint8_t vol;
-	//uint8_t envelope;
-	uint8_t divider;
-	uint8_t decay;
-} envelope_t;
-
 static envelope_t p1Env, p2Env, noiseEnv;
 
 typedef struct _sweep_t {
@@ -89,12 +81,14 @@ static sweep_t p1Sweep, p2Sweep;
 static float pulseLookupTbl[32];
 static float tndLookupTbl[204];
 
-static const uint8_t lengthLookupTbl[0x20] = {
+//used externally
+const uint8_t lengthLookupTbl[0x20] = {
 	10,254, 20,  2, 40,  4, 80,  6, 160,  8, 60, 10, 14, 12, 26, 14,
 	12, 16, 24, 18, 48, 20, 96, 22, 192, 24, 72, 26, 16, 28, 32, 30
 };
 
-static const uint8_t pulseSeqs[4][8] = {
+//used externally
+const uint8_t pulseSeqs[4][8] = {
 	{ 0, 1, 0, 0, 0, 0, 0, 0 },
 	{ 0, 1, 1, 0, 0, 0, 0, 0 },
 	{ 0, 1, 1, 1, 1, 0, 0, 0 },
@@ -122,7 +116,8 @@ static const uint16_t dmcPeriodPal[16] = {
 	398, 354, 316, 298, 276, 236, 210, 198, 176, 148, 132, 118, 98, 78, 66, 50,
 };
 
-static const uint16_t *dmcPeriod, *noisePeriod;
+//used externally
+const uint16_t *dmcPeriod, *noisePeriod;
 
 static const uint8_t *p1seq = pulseSeqs[0], 
 					*p2seq = pulseSeqs[1];
@@ -305,7 +300,7 @@ static float lastHPOut = 0, lastLPOut = 0;
 static uint8_t lastP1Out = 0, lastP2Out = 0, lastTriOut = 0, lastNoiseOut = 0;
 
 extern bool emuSkipVsync;
-extern bool emuVrc6;
+
 int apuCycle()
 {
 	if(curBufPos == apuBufSize)
@@ -356,9 +351,21 @@ int apuCycle()
 	//very rough still
 	if(vrc6enabled)
 	{
-		curIn *= 0.665f;
 		vrc6Cycle();
-		curIn += ((float)vrc6Out)*0.0053f;
+		curIn += ((float)vrc6Out)*0.008f;
+		curIn *= 0.665f;
+	}
+	if(fdsEnabled)
+	{
+		fdsAudioCycle();
+		curIn += ((float)fdsOut)*0.00617f;
+		curIn *= 0.72f;
+	}
+	if(mmc5enabled)
+	{
+		mmc5AudioCycle();
+		curIn += pulseLookupTbl[mmc5Out];
+		curIn *= 0.78f;
 	}
 	float curLPout = lastLPOut+(lpVal*(curIn-lastLPOut));
 	float curHPOut = hpVal*(lastHPOut+curLPout-curIn);
@@ -371,7 +378,7 @@ int apuCycle()
 	return 1;
 }
 
-static void doEnvelopeLogic(envelope_t *env)
+void doEnvelopeLogic(envelope_t *env)
 {
 	if(env->start)
 	{
@@ -484,6 +491,9 @@ extern void nesEmuResetApuClock(void);
 
 void apuLenCycle()
 {
+	if(mmc5enabled)
+		mmc5AudioLenCycle();
+
 	if(mode5 == false)
 	{
 		if(modePos >= 4)
