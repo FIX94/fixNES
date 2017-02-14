@@ -6,6 +6,7 @@ NTSC and PAL .nes ROMs are supported right now, it also creates .sav files if th
 Supported Mappers: 0,1,2,3,4,7,9,10,11,13,15,36,37,38,44,46,47,66,71,79,87,99,101,113,133,140,144,145,146,147,148,149,185,240 and 242.  
 To start a game, simply drag and drop its .nes file into it or call it via command line with the .nes file as argument.  
 If you are starting a PAL NES title then make sure it has (E) in the name to be started in PAL mode.  
+You can also play FDS titles if you have the FDS BIOS named disksys.rom in the same folder as your .fds files.  
 You can also listen to .nsf files by dragging them in, changing tracks works by pressing left/right.    
 
 Controls right now are keyboard only and do the following:  
@@ -16,6 +17,7 @@ S is select
 Arrow Keys is DPad  
 Keys 1-9 integer-scale the window to number  
 P is Pause  
+B is Disk Switching (for FDS)  
 O is Enable/Disable vertical Overscan    
 
 That is all I can say about it right now, who knows if I will write some more on it.  

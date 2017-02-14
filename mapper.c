@@ -11,6 +11,7 @@
 #include "mapper.h"
 #include "mapperList.h"
 #include "mapper_h/nsf.h"
+#include "mapper_h/fds.h"
 
 get8FuncT mapperGet8;
 set8FuncT mapperSet8;
@@ -43,5 +44,39 @@ bool mapperInitNSF(uint8_t *nsfBIN, uint32_t nsfBINsize, uint8_t *prgRAM, uint32
 	mapperChrGet8 = nsfchrGet8;
 	mapperChrSet8 = nsfchrSet8;
 	mapperCycle = nsfcycle;
+	return true;
+}
+
+static uint8_t fdsBIOS[0x2000];
+bool mapperInitFDS(uint8_t *fdsFile, bool fdsSideB, uint8_t *prgRAM, uint32_t prgRAMsize)
+{
+	if(fdsFile == NULL)
+	{
+		printf("No FDS loaded!\n");
+		return false;
+	}
+	FILE *f = fopen("disksys.rom","rb");
+	if(f == NULL)
+	{
+		printf("disksys.rom not found!\n");
+		return false;
+	}
+	fseek(f,0,SEEK_END);
+	size_t fsize = ftell(f);
+	rewind(f);
+	if(fsize != 0x2000)
+	{
+		printf("disksys.rom has a wrong size, is %i bytes, should be 8192 bytes!\n", fsize);
+		fclose(f);
+		return false;
+	}
+	fread(fdsBIOS, 1, 0x2000, f);
+	fclose(f);
+	fdsinit(fdsBIOS, fsize, fdsFile, fdsSideB, prgRAM, prgRAMsize);
+	mapperGet8 = fdsget8;
+	mapperSet8 = fdsset8;
+	mapperChrGet8 = fdschrGet8;
+	mapperChrSet8 = fdschrSet8;
+	mapperCycle = fdscycle;
 	return true;
 }

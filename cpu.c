@@ -30,6 +30,8 @@ static bool interrupt;
 bool dmc_interrupt;
 bool mmc5_dmc_interrupt;
 bool apu_interrupt;
+bool fds_interrupt;
+bool fds_transfer_interrupt;
 uint32_t cpu_oam_dma;
 extern bool nesPause;
 
@@ -40,6 +42,8 @@ void cpuInit()
 	dmc_interrupt = false;
 	mmc5_dmc_interrupt = false;
 	apu_interrupt = false;
+	fds_interrupt = false;
+	fds_transfer_interrupt = false;
 	cpu_oam_dma = 0;
 	p = (P_FLAG_IRQ_DISABLE | P_FLAG_S1 | P_FLAG_S2);
 	a = 0;
@@ -415,6 +419,8 @@ bool cpuCycle()
 		#endif
 		if(interrupt)
 			interrupt = false;
+		if(fds_transfer_interrupt)
+			fds_transfer_interrupt = false;
 		waitCycles+=5;
 	}
 	uint16_t instrPtr = pc;
@@ -1906,7 +1912,8 @@ bool cpuCycle()
 	}
 	//update interrupt values
 	ppu_nmi_handler_req = ppuNMI();
-	cpu_interrupt_req = (interrupt || ((mapper_interrupt || dmc_interrupt || apu_interrupt || mmc5_dmc_interrupt) && !(p & P_FLAG_IRQ_DISABLE)));
+	cpu_interrupt_req = (interrupt || ((mapper_interrupt || dmc_interrupt || apu_interrupt || 
+			fds_interrupt || fds_transfer_interrupt || mmc5_dmc_interrupt) && !(p & P_FLAG_IRQ_DISABLE)));
 	//if(instrPtr > 0xa980 && instrPtr < 0xa9C0) printf("%d %d %d %04x %04x\n",a,x,y,instrPtr,memGet8(instrPtr)|(memGet8(instrPtr+1)<<8));
 	return true;
 }

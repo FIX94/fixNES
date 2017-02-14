@@ -28,7 +28,7 @@ uint8_t memGet8(uint16_t addr)
 {
 	uint8_t val = memLastVal;
 	//printf("memGet8 %04x\n", addr);
-	if(addr >= 0x4100)
+	if(addr >= 0x4020)
 		val = mapperGet8(addr);
 	else if(addr >= 0x4000)
 	{

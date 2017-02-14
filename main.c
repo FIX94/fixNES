@@ -28,11 +28,12 @@
 #define DEBUG_KEY 0
 #define DEBUG_LOAD_INFO 1
 
-static const char *VERSION_STRING = "fixNES Alpha v0.5.4";
+static const char *VERSION_STRING = "fixNES Alpha v0.5.5";
 
 static void nesEmuDisplayFrame(void);
 static void nesEmuMainLoop(void);
 static void nesEmuDeinit(void);
+static void nesEmuFdsSetup(uint8_t *src, uint8_t *dst);
 
 static void nesEmuHandleKeyDown(unsigned char key, int x, int y);
 static void nesEmuHandleKeyUp(unsigned char key, int x, int y);
@@ -54,6 +55,7 @@ bool nesEmuNSFPlayback = false;
 static bool inPause = false;
 static bool inOverscanToggle = false;
 static bool inResize = false;
+static bool inDiskSwitch = false;
 
 #if WINDOWS_BUILD
 #include <windows.h>
@@ -72,6 +74,7 @@ static DWORD emuTotalElapsed = 0;
 static const int visibleImg = VISIBLE_DOTS*VISIBLE_LINES*4;
 static int scaleFactor = 2;
 static bool emuSaveEnabled = false;
+static bool emuFdsHasSideB = false;
 static int emuApuClockCycles;
 static int emuApuClock;
 static int mainLoopRuns;
@@ -178,6 +181,101 @@ int main(int argc, char** argv)
 		}
 		nesEmuNSFPlayback = true;
 	}
+	else if(argc >= 2 && (strstr(argv[1],".fds") != NULL || strstr(argv[1],".FDS") != NULL
+						|| strstr(argv[1],".qd") != NULL || strstr(argv[1],".QD") != NULL))
+	{
+		emuSaveName = strdup(argv[1]);
+		memcpy(emuSaveName+strlen(emuSaveName)-3,"sav",3);
+		bool saveValid = false;
+		FILE *save = fopen(emuSaveName, "rb");
+		if(save)
+		{
+			fseek(save,0,SEEK_END);
+			size_t saveSize = ftell(save);
+			if(saveSize == 0x10000 || saveSize == 0x20000)
+			{
+				emuNesROM = malloc(saveSize);
+				rewind(save);
+				fread(emuNesROM,1,saveSize,save);
+				saveValid = true;
+				if(saveSize == 0x20000)
+					emuFdsHasSideB = true;
+			}
+			else
+				printf("Save file ignored\n");
+			fclose(save);
+		}
+		if(!saveValid)
+		{
+			FILE *nesF = fopen(argv[1],"rb");
+			if(!nesF) return EXIT_SUCCESS;
+			fseek(nesF,0,SEEK_END);
+			size_t fsize = ftell(nesF);
+			rewind(nesF);
+			uint8_t *nesFread = malloc(fsize);
+			fread(nesFread,1,fsize,nesF);
+			fclose(nesF);
+			uint8_t *fds_src;
+			uint32_t fds_src_len;
+			if(nesFread[0] == 0x46 && nesFread[1] == 0x44 && nesFread[2] == 0x53)
+			{
+				fds_src = nesFread+0x10;
+				fds_src_len = fsize-0x10;
+			}
+			else
+			{
+				fds_src = nesFread;
+				fds_src_len = fsize;
+			}
+			bool fds_no_crc = (fds_src[0x38] == 0x02 && fds_src[0x3A] == 0x03 && fds_src[0x3A] != 0x02 && fds_src[0x3E] != 0x03);
+			if(fds_no_crc)
+			{
+				if(fds_src_len == 0x1FFB8)
+				{
+					emuFdsHasSideB = true;
+					emuNesROM = malloc(0x20000);
+					memset(emuNesROM, 0, 0x20000);
+					nesEmuFdsSetup(fds_src, emuNesROM); //setup individually
+					nesEmuFdsSetup(fds_src+0xFFDC, emuNesROM+0x10000);
+				}
+				else if(fds_src_len == 0xFFDC)
+				{
+					emuNesROM = malloc(0x10000);
+					memset(emuNesROM, 0, 0x10000);
+					nesEmuFdsSetup(fds_src, emuNesROM);
+				}
+			}
+			else
+			{
+				if(fds_src_len == 0x20000)
+				{
+					emuFdsHasSideB = true;
+					emuNesROM = malloc(0x20000);
+					memcpy(emuNesROM, fds_src, 0x20000);
+				}
+				else if(fds_src_len == 0x10000)
+				{
+					emuNesROM = malloc(0x10000);
+					memcpy(emuNesROM, fds_src, 0x10000);
+				}
+			}
+			free(nesFread);
+		}
+		emuPrgRAMsize = 0x8000;
+		emuPrgRAM = malloc(emuPrgRAMsize);
+		cpuInit();
+		ppuInit();
+		memInit();
+		apuInit();
+		inputInit();
+		if(!mapperInitFDS(emuNesROM, emuFdsHasSideB, emuPrgRAM, emuPrgRAMsize))
+		{
+			printf("FDS init failed!\n");
+			free(emuNesROM);
+			emuNesROM = NULL;
+			return EXIT_SUCCESS;
+		}
+	}
 	if(emuNesROM == NULL)
 		return EXIT_SUCCESS;
 	#if WINDOWS_BUILD
@@ -236,7 +334,21 @@ static void nesEmuDeinit(void)
 	audioDeinit();
 	apuDeinit();
 	if(emuNesROM != NULL)
+	{
+		if(fdsEnabled)
+		{
+			FILE *save = fopen(emuSaveName, "wb");
+			if(save)
+			{
+				if(emuFdsHasSideB)
+					fwrite(emuNesROM,1,0x20000,save);
+				else
+					fwrite(emuNesROM,1,0x10000,save);
+				fclose(save);
+			}
+		}
 		free(emuNesROM);
+	}
 	emuNesROM = NULL;
 	if(emuPrgRAM != NULL)
 	{
@@ -344,7 +456,7 @@ void nesEmuResetApuClock(void)
 {
 	emuApuClock = 0;
 }
-
+extern bool fdsSwitch;
 static void nesEmuHandleKeyDown(unsigned char key, int x, int y)
 {
 	(void)x;
@@ -396,6 +508,14 @@ static void nesEmuHandleKeyDown(unsigned char key, int x, int y)
 		case '\x1B': //Escape
 			memDumpMainMem();
 			exit(EXIT_SUCCESS);
+			break;
+		case 'b':
+		case 'B':
+			if(!inDiskSwitch)
+			{
+				fdsSwitch = true;
+				inDiskSwitch = true;
+			}
 			break;
 		case 'p':
 		case 'P':
@@ -527,6 +647,10 @@ static void nesEmuHandleKeyUp(unsigned char key, int x, int y)
 			printf("start up\n");
 			#endif
 			inValReads[BUTTON_START]=0;
+			break;
+		case 'b':
+		case 'B':
+			inDiskSwitch = false;
 			break;
 		case 'p':
 		case 'P':
@@ -669,4 +793,25 @@ static void nesEmuDisplayFrame()
 	glEnd();
 
 	glutSwapBuffers();
+}
+
+static void nesEmuFdsSetup(uint8_t *src, uint8_t *dst)
+{
+	memcpy(dst, src, 0x38);
+	memcpy(dst+0x3A, src+0x38, 2);
+	uint16_t cDiskPos = 0x3E;
+	uint16_t cROMPos = 0x3A;
+	do
+	{
+		if(src[cROMPos] != 0x03)
+			break;
+		memcpy(dst+cDiskPos, src+cROMPos, 0x10);
+		uint16_t copySize = (*(uint16_t*)(src+cROMPos+0xD))+1;
+		cDiskPos+=0x12;
+		cROMPos+=0x10;
+		memcpy(dst+cDiskPos, src+cROMPos, copySize);
+		cDiskPos+=copySize+2;
+		cROMPos+=copySize;
+	} while(cROMPos < 0xFFDC && cDiskPos < 0xFFFF);
+	printf("%04x -> %04x\n", cROMPos, cDiskPos);
 }
