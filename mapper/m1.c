@@ -28,9 +28,6 @@ static bool m1_single_prg_bank;
 static bool m1_last_bank_fixed;
 static bool m1_single_chr_bank;
 
-extern bool ppuForceTable;
-extern uint16_t ppuForceTableAddr;
-
 void m1init(uint8_t *prgROMin, uint32_t prgROMsizeIn, 
 			uint8_t *prgRAMin, uint32_t prgRAMsizeIn,
 			uint8_t *chrROMin, uint32_t chrROMsizeIn)
@@ -118,34 +115,33 @@ void m1set8(uint16_t addr, uint8_t val)
 			//printf("m1 sr full, addr %04x sr %02x\n", addr, m1_sr);
 			if(addr < 0xA000)
 			{
-				if((m1_sr & 3) == 2)
+				if(!ppu4Screen)
 				{
-					//printf("Vertical mode\n");
-					ppuScreenMode = PPU_MODE_VERTICAL;
-					ppuForceTable = false;
-				}
-				else if((m1_sr & 3) == 3)
-				{
-					//printf("Horizontal mode\n");
-					ppuScreenMode = PPU_MODE_HORIZONTAL;
-					ppuForceTable = false;
-				}
-				else
-				{
-					ppuScreenMode = PPU_MODE_SINGLE;
-					ppuForceTable = true;
-					if((m1_sr & 3) == 1)
+					if((m1_sr & 3) == 2)
 					{
-						//printf("Upper CHR Mode\n");
-						//m1_small_upper_chr = true;
-						ppuForceTableAddr = 0x400;
+						//printf("Vertical mode\n");
+						ppuSetNameTblVertical();
+					}
+					else if((m1_sr & 3) == 3)
+					{
+						//printf("Horizontal mode\n");
+						ppuSetNameTblHorizontal();
 					}
 					else
 					{
-						
-						//printf("Lower CHR Mode\n");
-						//m1_small_upper_chr = false;
-						ppuForceTableAddr = 0;
+						if((m1_sr & 3) == 1)
+						{
+							//printf("Upper CHR Mode\n");
+							//m1_small_upper_chr = true;
+							ppuSetNameTblSingleUpper();
+						}
+						else
+						{
+							
+							//printf("Lower CHR Mode\n");
+							//m1_small_upper_chr = false;
+							ppuSetNameTblSingleLower();
+						}
 					}
 				}
 				if(((m1_sr>>2) & 3) == 2)

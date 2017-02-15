@@ -5,5 +5,6 @@
 int audioInit();
 int audioUpdate();
 void audioDeinit();
+void audioSleep();
 
 #endif

@@ -18,11 +18,13 @@ bool ppuNMI();
 void ppuDumpMem();
 uint16_t ppuGetCurVramAddr();
 
-extern uint8_t ppuScreenMode;
+void ppuSetNameTblSingleLower();
+void ppuSetNameTblSingleUpper();
+void ppuSetNameTblVertical();
+void ppuSetNameTblHorizontal();
+void ppuSetNameTbl4Screen();
+void ppuSetNameTblCustom(uint16_t addrA, uint16_t addrB, uint16_t addrC, uint16_t addrD);
 
-#define PPU_MODE_SINGLE 0
-#define PPU_MODE_VERTICAL 1
-#define PPU_MODE_HORIZONTAL 2
-#define PPU_MODE_FOURSCREEN 3
+extern bool ppu4Screen;
 
 #endif

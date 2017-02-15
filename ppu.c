@@ -48,9 +48,7 @@
 #define PPU_DEBUG_VSYNC 0
 
 //set or used externally
-bool ppuForceTable = false;
-uint16_t ppuForceTableAddr = 0;
-uint8_t ppuScreenMode = PPU_MODE_SINGLE;
+bool ppu4Screen = false;
 
 //from main.c
 extern uint8_t *textureImage;
@@ -83,6 +81,8 @@ static uint8_t PPU_OAM2[0x20];
 static uint8_t PPU_PALRAM[0x20];
 //internally processed, ready to draw
 static uint8_t PPU_Sprites[0x20];
+
+static uint16_t ppuNameTbl[4] = { 0, 0, 0, 0 };
 
 //static uint32_t ppuCycles;
 static uint16_t curLine;
@@ -160,46 +160,16 @@ void ppuInit()
 	ppuReadReg2 = false;
 }
 
-static uint16_t ppuGetVramTbl(uint16_t tblStart)
+static inline uint16_t ppuGetVramTbl(uint16_t tblStart)
 {
-	//printf("%d %04x\n", ppuForceTable, ppuForceTableAddr);
-	//take mapper input unless specified 4-screen ram
-	if(ppuForceTable && ppuScreenMode != PPU_MODE_FOURSCREEN)
-		return ppuForceTableAddr;
-	//no mapper input, check requested address
-	if(ppuScreenMode == PPU_MODE_SINGLE)
-		return 0;
-	tblStart &= 0xFFF;
-	if(tblStart < 0x400)
-		tblStart = 0;
-	else if(tblStart < 0x800)
-	{
-		if(ppuScreenMode == PPU_MODE_VERTICAL || ppuScreenMode == PPU_MODE_FOURSCREEN)
-			tblStart = 0x400;
-		else //horizontal
-			tblStart = 0;
-	}
-	else if(tblStart < 0xC00)
-	{
-		if(ppuScreenMode == PPU_MODE_FOURSCREEN)
-			tblStart = 0x800;
-		else if(ppuScreenMode == PPU_MODE_VERTICAL)
-			tblStart = 0;
-		else //horizontal
-			tblStart = 0x400;
-	}
-	else // <= 0xFFF
-	{
-		if(ppuScreenMode == PPU_MODE_FOURSCREEN)
-			tblStart = 0xC00;
-		else //horizontal and vertical
-			tblStart = 0x400;
-	}
-	return tblStart;
+	return ppuNameTbl[(tblStart>>10)&3];
 }
+extern bool nesEmuNSFPlayback;
 static int ppuSprite0hit = 0;
 bool ppuCycle()
 {
+	if(nesEmuNSFPlayback)
+		goto ppuIncreasePos;
 	ppuCurVBlankStat = !!(PPU_Reg[2] & PPU_FLAG_VBLANK);
 	ppuCurNMIStat = !!(PPU_Reg[0] & PPU_FLAG_NMI);
 
@@ -208,19 +178,17 @@ bool ppuCycle()
 	/* Do Background Updates */
 	if((curLine == ppuPreRenderLine || curLine < VISIBLE_LINES))
 	{
-		/* Do BG Reg Updates */
-		if((curDot >= 319 || (curDot && curDot <= VISIBLE_DOTS)) && (curDot & 7) == 0)
+		/* Do BG Reg Updates every 8 dots */
+		if((curDot & 7) == 0 && (curDot >= 319 || (curDot && curDot <= VISIBLE_DOTS)))
 		{
-			uint16_t cPpuTbl = ppuGetVramTbl(ppuVramAddr & 0xC00);
+			uint16_t cPpuTbl = ppuGetVramTbl(ppuVramAddr);
 			/* Select new BG Background Attribute */
 			uint8_t cAttrib = ((ppuVramAddr>>4)&0x38) | ((ppuVramAddr>>2)&7);
 			uint16_t attributeAddr = cPpuTbl | (0x3C0 | cAttrib);
 			uint8_t cPalByte = PPU_VRAM[attributeAddr];
-			uint8_t coarseX = (ppuVramAddr & 0x1F);
-			uint8_t coarseY = ((ppuVramAddr & 0x3E0)>>5);
-			bool left = ((coarseX&2) == 0);
-			bool top = ((coarseY&2) == 0);
-			if(top)
+			bool left = ((ppuVramAddr&2) == 0);
+			//top tiles
+			if((ppuVramAddr&0x40) == 0)
 			{
 				if(left)
 				{
@@ -233,7 +201,7 @@ bool ppuCycle()
 					ppuBGAttribValB = (cPalByte>>3)&1;
 				}
 			}
-			else
+			else //bottom tiles
 			{
 				if(left)
 				{
@@ -260,8 +228,8 @@ bool ppuCycle()
 		}
 		if(pictureOutput)
 		{
-			/* Update tile address if needed */
-			if((curDot >= 328 || (curDot >= 8 && curDot <= VISIBLE_DOTS)) && (curDot & 7) == 0)
+			/* Update tile address every 8 dots */
+			if((curDot & 7) == 0 && (curDot >= 328 || (curDot >= 8 && curDot <= VISIBLE_DOTS)))
 			{
 				if((ppuVramAddr & 0x1F) == 0x1F)
 				{
@@ -299,10 +267,10 @@ bool ppuCycle()
 				ppuVramAddr |= (ppuTmpVramAddr & PPU_VRAM_HORIZONTAL_MASK);
 			}
 		}
-		/* Do BG Reg Updates */
-		if((curDot >= 319 || curDot <= VISIBLE_DOTS) && (curDot & 7) == 4)
+		/* Do BG Reg Updates every 8 dots */
+		if((curDot & 7) == 4 && (curDot >= 319 || curDot <= VISIBLE_DOTS))
 		{
-			uint16_t cPpuTbl = ppuGetVramTbl(ppuVramAddr & 0xC00);
+			uint16_t cPpuTbl = ppuGetVramTbl(ppuVramAddr);
 			/* Select new BG Tiles */
 			uint16_t chrROMBG = (PPU_Reg[0] & PPU_BACKGROUND_ADDR) ? 0x1000 : 0;
 			uint16_t workAddr = cPpuTbl | (ppuVramAddr & 0x3FF);
@@ -312,7 +280,7 @@ bool ppuCycle()
 			ppuBGValA = mapperChrGet8(curBGTile);
 			ppuBGValB = mapperChrGet8(curBGTile+8);
 		}
-		if(curDot >= 8 && curDot <= VISIBLE_DOTS && ((curDot&7) == 0))
+		if((curDot&7) == 0 && curDot >= 8 && curDot <= VISIBLE_DOTS)
 		{
 			ppuBGRegA |= ppuBGValA;
 			ppuBGRegB |= ppuBGValB;
@@ -456,7 +424,7 @@ bool ppuCycle()
 		PPU_Sprites[ppuSpriteTilePos+3] = cSpriteByte3;
 		ppuSpriteTilePos+=4;
 	}
-
+ppuIncreasePos:
 	/* increase pos */
 	curDot++;
 	if(curDot == 340 && curLine == ppuPreRenderLine && !nesPAL)
@@ -519,9 +487,9 @@ static uint8_t ppuDoBackground(uint8_t color, uint8_t dot)
 	if((dot < 8 && !(PPU_Reg[1] & PPU_BG_8PX)) || !(PPU_Reg[1] & PPU_BG_ENABLE))
 		return color;
 
-	if(ppuBGRegA & (0x80>>ppuFineXScroll<<8))
+	if(ppuBGRegA & (0x8000>>ppuFineXScroll))
 		color |= 1;
-	if(ppuBGRegB & (0x80>>ppuFineXScroll<<8))
+	if(ppuBGRegB & (0x8000>>ppuFineXScroll))
 		color |= 2;
 	if(color != 0)
 	{
@@ -788,4 +756,35 @@ void ppuDumpMem()
 uint16_t ppuGetCurVramAddr()
 {
 	return ppuVramAddr;
+}
+
+void ppuSetNameTblSingleLower()
+{
+	ppuNameTbl[0] = 0; ppuNameTbl[1] = 0; ppuNameTbl[2] = 0; ppuNameTbl[3] = 0;
+}
+
+void ppuSetNameTblSingleUpper()
+{
+	ppuNameTbl[0] = 0x400; ppuNameTbl[1] = 0x400; ppuNameTbl[2] = 0x400; ppuNameTbl[3] = 0x400;
+}
+
+void ppuSetNameTblVertical()
+{
+	ppuNameTbl[0] = 0; ppuNameTbl[1] = 0x400; ppuNameTbl[2] = 0; ppuNameTbl[3] = 0x400;
+}
+
+void ppuSetNameTblHorizontal()
+{
+	ppuNameTbl[0] = 0; ppuNameTbl[1] = 0; ppuNameTbl[2] = 0x400; ppuNameTbl[3] = 0x400;
+}
+
+void ppuSetNameTbl4Screen()
+{
+	ppu4Screen = true;
+	ppuNameTbl[0] = 0; ppuNameTbl[1] = 0x400; ppuNameTbl[2] = 0x800; ppuNameTbl[3] = 0xC00;
+}
+
+void ppuSetNameTblCustom(uint16_t addrA, uint16_t addrB, uint16_t addrC, uint16_t addrD)
+{
+	ppuNameTbl[0] = addrA; ppuNameTbl[1] = addrB; ppuNameTbl[2] = addrC; ppuNameTbl[3] = addrD;
 }

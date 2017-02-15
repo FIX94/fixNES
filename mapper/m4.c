@@ -32,8 +32,6 @@ static uint8_t m4_irqReloadVal;
 static uint8_t m4_irqCooldown;
 static uint8_t m4_irqStart;
 extern bool mapper_interrupt;
-extern bool ppuForceTable;
-extern uint16_t ppuForceTableAddr;
 static uint16_t m4_prevAddr;
 //used externally
 uint32_t m4_prgROMadd;
@@ -166,19 +164,20 @@ void m4set8(uint16_t addr, uint8_t val)
 		}
 		else if(addr < 0xC000)
 		{
-			if((addr&1) == 0 && ppuScreenMode != PPU_MODE_FOURSCREEN)
+			if((addr&1) == 0)
 			{
-				if((val&1) == 0)
+				if(!ppu4Screen)
 				{
-					//printf("Vertical mode\n");
-					ppuScreenMode = PPU_MODE_VERTICAL;
-					ppuForceTable = false;
-				}
-				else
-				{
-					//printf("Horizontal mode\n");
-					ppuScreenMode = PPU_MODE_HORIZONTAL;
-					ppuForceTable = false;
+					if((val&1) == 0)
+					{
+						//printf("Vertical mode\n");
+						ppuSetNameTblVertical();
+					}
+					else
+					{
+						//printf("Horizontal mode\n");
+						ppuSetNameTblHorizontal();
+					}
 				}
 			}
 		}

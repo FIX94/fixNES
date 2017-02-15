@@ -25,10 +25,11 @@
 #include "audio_fds.h"
 
 #define DEBUG_HZ 0
+#define DEBUG_MAIN_CALLS 0
 #define DEBUG_KEY 0
 #define DEBUG_LOAD_INFO 1
 
-static const char *VERSION_STRING = "fixNES Alpha v0.5.5";
+static const char *VERSION_STRING = "fixNES Alpha v0.5.6";
 
 static void nesEmuDisplayFrame(void);
 static void nesEmuMainLoop(void);
@@ -61,9 +62,17 @@ static bool inDiskSwitch = false;
 #include <windows.h>
 typedef bool (APIENTRY *PFNWGLSWAPINTERVALEXTPROC) (int interval);
 PFNWGLSWAPINTERVALEXTPROC wglSwapIntervalEXT = NULL;
+#if DEBUG_HZ
 static DWORD emuFrameStart = 0;
 static DWORD emuTimesCalled = 0;
 static DWORD emuTotalElapsed = 0;
+#endif
+#if DEBUG_MAIN_CALLS
+static DWORD emuMainFrameStart = 0;
+static DWORD emuMainTimesCalled = 0;
+static DWORD emuMainTimesSkipped = 0;
+static DWORD emuMainTotalElapsed = 0;
+#endif
 #endif
 
 #define DOTS 341
@@ -101,24 +110,11 @@ int main(int argc, char** argv)
 		uint8_t mapper = ((emuNesROM[6] & 0xF0) >> 4) | ((emuNesROM[7] & 0xF0));
 		emuSaveEnabled = (emuNesROM[6] & (1<<1)) != 0;
 		bool trainer = (emuNesROM[6] & (1<<2)) != 0;
-		if(emuNesROM[6] & 8)
-			ppuScreenMode = PPU_MODE_FOURSCREEN;
-		else if(emuNesROM[6] & 1)
-			ppuScreenMode = PPU_MODE_VERTICAL;
-		else
-			ppuScreenMode = PPU_MODE_HORIZONTAL;
 		uint32_t prgROMsize = emuNesROM[4] * 0x4000;
 		uint32_t chrROMsize = emuNesROM[5] * 0x2000;
 		emuPrgRAMsize = emuNesROM[8] * 0x2000;
 		if(emuPrgRAMsize == 0) emuPrgRAMsize = 0x2000;
 		emuPrgRAM = malloc(emuPrgRAMsize);
-		#if DEBUG_LOAD_INFO
-		printf("Read in %s\n", argv[1]);
-		printf("Used Mapper: %i\n", mapper);
-		printf("PRG: 0x%x bytes PRG RAM: 0x%x bytes CHR: 0x%x bytes\n", prgROMsize, emuPrgRAMsize, chrROMsize);
-		printf("Trainer: %i Saving: %i VRAM Mode: %s\n", trainer, emuSaveEnabled, (ppuScreenMode == PPU_MODE_VERTICAL) ? "Vertical" : 
-			((ppuScreenMode == PPU_MODE_HORIZONTAL) ? "Horizontal" : "4-Screen"));
-		#endif
 		uint8_t *prgROM = emuNesROM+16;
 		if(trainer)
 		{
@@ -131,6 +127,7 @@ int main(int argc, char** argv)
 			chrROM = emuNesROM+16+prgROMsize;
 			if(trainer) chrROM += 512;
 		}
+		apuInitBufs();
 		cpuInit();
 		ppuInit();
 		memInit();
@@ -140,8 +137,22 @@ int main(int argc, char** argv)
 		{
 			printf("Mapper init failed!\n");
 			free(emuNesROM);
+			emuNesROM = NULL;
 			return EXIT_SUCCESS;
 		}
+		if(emuNesROM[6] & 8)
+			ppuSetNameTbl4Screen();
+		else if(emuNesROM[6] & 1)
+			ppuSetNameTblVertical();
+		else
+			ppuSetNameTblHorizontal();
+		#if DEBUG_LOAD_INFO
+		printf("Read in %s\n", argv[1]);
+		printf("Used Mapper: %i\n", mapper);
+		printf("PRG: 0x%x bytes PRG RAM: 0x%x bytes CHR: 0x%x bytes\n", prgROMsize, emuPrgRAMsize, chrROMsize);
+		printf("Trainer: %i Saving: %i VRAM Mode: %s\n", trainer, emuSaveEnabled, (emuNesROM[6] & 1) ? "Vertical" : 
+			((!(emuNesROM[6] & 1)) ? "Horizontal" : "4-Screen"));
+		#endif
 		if(emuSaveEnabled)
 		{
 			emuSaveName = strdup(argv[1]);
@@ -168,6 +179,7 @@ int main(int argc, char** argv)
 		fclose(nesF);
 		emuPrgRAMsize = 0x2000;
 		emuPrgRAM = malloc(emuPrgRAMsize);
+		apuInitBufs();
 		cpuInit();
 		ppuInit();
 		memInit();
@@ -227,7 +239,8 @@ int main(int argc, char** argv)
 				fds_src = nesFread;
 				fds_src_len = fsize;
 			}
-			bool fds_no_crc = (fds_src[0x38] == 0x02 && fds_src[0x3A] == 0x03 && fds_src[0x3A] != 0x02 && fds_src[0x3E] != 0x03);
+			bool fds_no_crc = (fds_src[0x38] == 0x02 && fds_src[0x3A] == 0x03 
+							&& fds_src[0x3A] != 0x02 && fds_src[0x3E] != 0x03);
 			if(fds_no_crc)
 			{
 				if(fds_src_len == 0x1FFB8)
@@ -263,6 +276,7 @@ int main(int argc, char** argv)
 		}
 		emuPrgRAMsize = 0x8000;
 		emuPrgRAM = malloc(emuPrgRAMsize);
+		apuInitBufs();
 		cpuInit();
 		ppuInit();
 		memInit();
@@ -279,7 +293,12 @@ int main(int argc, char** argv)
 	if(emuNesROM == NULL)
 		return EXIT_SUCCESS;
 	#if WINDOWS_BUILD
+	#if DEBUG_HZ
 	emuFrameStart = GetTickCount();
+	#endif
+	#if DEBUG_MAIN_CALLS
+	emuMainFrameStart = GetTickCount();
+	#endif
 	#endif
 	textureImage = malloc(visibleImg);
 	memset(textureImage,0,visibleImg);
@@ -292,7 +311,7 @@ int main(int argc, char** argv)
 	cpuCycleTimer = nesPAL ? 16 : 12;
 	//do one scanline per idle loop
 	ppuCycleTimer = nesPAL ? 5 : 4;
-	mainLoopRuns = nesPAL ? 341*ppuCycleTimer : 341*ppuCycleTimer;
+	mainLoopRuns = nesPAL ? DOTS*ppuCycleTimer : DOTS*ppuCycleTimer;
 	mainLoopPos = mainLoopRuns;
 	glutInit(&argc, argv);
 	glutInitWindowSize(VISIBLE_DOTS*scaleFactor, VISIBLE_LINES*scaleFactor);
@@ -332,7 +351,7 @@ static void nesEmuDeinit(void)
 	//printf("\n");
 	emuRenderFrame = false;
 	audioDeinit();
-	apuDeinit();
+	apuDeinitBufs();
 	if(emuNesROM != NULL)
 	{
 		if(fdsEnabled)
@@ -384,12 +403,24 @@ static void nesEmuMainLoop(void)
 	do
 	{
 		if((!emuSkipVsync && emuRenderFrame) || nesPause)
+		{
+			#if (WINDOWS_BUILD && DEBUG_MAIN_CALLS)
+			emuMainTimesSkipped++;
+			#endif
+			audioSleep();
 			return;
+		}
 		if(mainClock == cpuCycleTimer)
 		{
 			//runs every second cpu clock
 			if(emuApuDoCycle && !apuCycle())
+			{
+				#if (WINDOWS_BUILD && DEBUG_MAIN_CALLS)
+				emuMainTimesSkipped++;
+				#endif
+				audioSleep();
 				return;
+			}
 			emuApuDoCycle ^= true;
 			//runs every cpu cycle
 			apuClockTimers();
@@ -423,15 +454,13 @@ static void nesEmuMainLoop(void)
 				emuRenderFrame = true;
 				if(fm2playRunning())
 					fm2playUpdate();
-				#if WINDOWS_BUILD
+				#if (WINDOWS_BUILD && DEBUG_HZ)
 				emuTimesCalled++;
 				DWORD end = GetTickCount();
 				emuTotalElapsed += end - emuFrameStart;
 				if(emuTotalElapsed >= 1000)
 				{
-					#if DEBUG_HZ
 					printf("\r%iHz   ", emuTimesCalled);
-					#endif
 					emuTimesCalled = 0;
 					emuTotalElapsed = 0;
 				}
@@ -450,6 +479,19 @@ static void nesEmuMainLoop(void)
 	}
 	while(mainLoopPos--);
 	mainLoopPos = mainLoopRuns;
+	#if (WINDOWS_BUILD && DEBUG_MAIN_CALLS)
+	emuMainTimesCalled++;
+	DWORD end = GetTickCount();
+	emuMainTotalElapsed += end - emuMainFrameStart;
+	if(emuMainTotalElapsed >= 1000)
+	{
+		printf("\r%i calls, %i skips   ", emuMainTimesCalled, emuMainTimesSkipped);
+		emuMainTimesCalled = 0;
+		emuMainTimesSkipped = 0;
+		emuMainTotalElapsed = 0;
+	}
+	emuMainFrameStart = end;
+	#endif
 }
 
 void nesEmuResetApuClock(void)

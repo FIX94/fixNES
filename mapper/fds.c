@@ -201,12 +201,12 @@ void fdsset8(uint16_t addr, uint8_t val)
 		if((val&8) == 0)
 		{
 			//printf("Vertical mode\n");
-			ppuScreenMode = PPU_MODE_VERTICAL;
+			ppuSetNameTblVertical();
 		}
 		else
 		{
 			//printf("Horizontal mode\n");
-			ppuScreenMode = PPU_MODE_HORIZONTAL;
+			ppuSetNameTblHorizontal();
 		}
 		if(val&0x10 && !fds_data_read)
 		{

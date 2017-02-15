@@ -84,12 +84,12 @@ void m9set8(uint16_t addr, uint8_t val)
 		if((val&1) == 0)
 		{
 			//printf("Vertical mode\n");
-			ppuScreenMode = PPU_MODE_VERTICAL;
+			ppuSetNameTblVertical();
 		}
 		else
 		{
 			//printf("Horizontal mode\n");
-			ppuScreenMode = PPU_MODE_HORIZONTAL;
+			ppuSetNameTblHorizontal();
 		}
 	}
 }

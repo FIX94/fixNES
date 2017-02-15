@@ -126,9 +126,8 @@ extern bool dmc_interrupt;
 #define M_2_PI 6.28318530717958647692
 
 extern bool nesPAL;
-void apuInit()
+void apuInitBufs()
 {
-	memset(APU_IO_Reg,0,0x18);
 	noisePeriod = nesPAL ? noisePeriodPal : noisePeriodNtsc;
 	dmcPeriod = nesPAL ? dmcPeriodPal : dmcPeriodNtsc;
 	//effective frequencies for 50.000Hz and 60.000Hz Video out
@@ -145,6 +144,25 @@ void apuInit()
 	apuBufSizeBytes = apuBufSize*sizeof(float);
 
 	apuOutBuf = (float*)malloc(apuBufSizeBytes);
+
+	/* https://wiki.nesdev.com/w/index.php/APU_Mixer#Lookup_Table */
+	int i;
+	for(i = 0; i < 32; i++)
+		pulseLookupTbl[i] = 95.52 / ((8128.0 / i) + 100);
+	for(i = 0; i < 204; i++)
+		tndLookupTbl[i] = 163.67 / ((24329.0 / i) + 100);
+}
+
+void apuDeinitBufs()
+{
+	if(apuOutBuf)
+		free(apuOutBuf);
+	apuOutBuf = NULL;
+}
+
+void apuInit()
+{
+	memset(APU_IO_Reg,0,0x18);
 	memset(apuOutBuf, 0, apuBufSizeBytes);
 	curBufPos = 0;
 
@@ -176,20 +194,8 @@ void apuInit()
 	noiseMode1 = false;
 	//4017 starts out as 0, so enable
 	apu_enable_irq = true;
-	/* https://wiki.nesdev.com/w/index.php/APU_Mixer#Lookup_Table */
-	int i;
-	for(i = 0; i < 32; i++)
-		pulseLookupTbl[i] = 95.52 / ((8128.0 / i) + 100);
-	for(i = 0; i < 204; i++)
-		tndLookupTbl[i] = 163.67 / ((24329.0 / i) + 100);
 }
 
-void apuDeinit()
-{
-	if(apuOutBuf)
-		free(apuOutBuf);
-	apuOutBuf = NULL;
-}
 extern uint32_t cpu_oam_dma;
 void apuClockTimers()
 {

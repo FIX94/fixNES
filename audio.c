@@ -8,6 +8,11 @@
 #include "AL/alext.h"
 #include "alhelpers.h"
 #include "apu.h"
+#if WINDOWS_BUILD
+#include <windows.h>
+#else
+#include <unistd.h>
+#endif
 
 static LPALBUFFERSAMPLESSOFT alBufferSamplesSOFT = wrap_BufferSamples;
 static LPALISBUFFERFORMATSUPPORTEDSOFT alIsBufferFormatSupportedSOFT;
@@ -207,4 +212,13 @@ void audioDeinit()
 		player = NULL;
 	}
     CloseAL();
+}
+
+void audioSleep()
+{
+#if WINDOWS_BUILD
+	Sleep(1);
+#else
+	usleep(1000);
+#endif
 }

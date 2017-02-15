@@ -97,30 +97,44 @@ void nsfinit(uint8_t *nsfBIN, uint32_t nsfBINsize, uint8_t *prgRAMin, uint32_t p
 static uint32_t nsfgetromAddr(uint16_t addr)
 {
 	uint32_t romAddr;
-	if(addr < 0x8000 && (!fdsEnabled || !nsf_bankEnable))
-		romAddr = 0xFFFFFFFF;
-	else if(addr >= 0x8000 && !nsf_bankEnable)
-		romAddr = (addr&0x7FFF);
-	else if(addr < 0x7000)
-		romAddr = nsf_RAMBank[0]+(addr&0xFFF);
-	else if(addr < 0x8000)
-		romAddr = nsf_RAMBank[1]+(addr&0xFFF);
-	else if(addr < 0x9000)
-		romAddr = nsf_PRGBank[0]+(addr&0xFFF);
-	else if(addr < 0xA000)
-		romAddr = nsf_PRGBank[1]+(addr&0xFFF);
-	else if(addr < 0xB000)
-		romAddr = nsf_PRGBank[2]+(addr&0xFFF);
-	else if(addr < 0xC000)
-		romAddr = nsf_PRGBank[3]+(addr&0xFFF);
-	else if(addr < 0xD000)
-		romAddr = nsf_PRGBank[4]+(addr&0xFFF);
-	else if(addr < 0xE000)
-		romAddr = nsf_PRGBank[5]+(addr&0xFFF);
-	else if(addr < 0xF000)
-		romAddr = nsf_PRGBank[6]+(addr&0xFFF);
+	if(nsf_bankEnable)
+	{
+		switch(addr>>12)
+		{
+			case 0x6:
+				romAddr = nsf_RAMBank[0]+(addr&0xFFF);
+				break;
+			case 0x7:
+				romAddr = nsf_RAMBank[1]+(addr&0xFFF);
+				break;
+			case 0x8:
+				romAddr = nsf_PRGBank[0]+(addr&0xFFF);
+				break;
+			case 0x9:
+				romAddr = nsf_PRGBank[1]+(addr&0xFFF);
+				break;
+			case 0xA:
+				romAddr = nsf_PRGBank[2]+(addr&0xFFF);
+				break;
+			case 0xB:
+				romAddr = nsf_PRGBank[3]+(addr&0xFFF);
+				break;
+			case 0xC:
+				romAddr = nsf_PRGBank[4]+(addr&0xFFF);
+				break;
+			case 0xD:
+				romAddr = nsf_PRGBank[5]+(addr&0xFFF);
+				break;
+			case 0xE:
+				romAddr = nsf_PRGBank[6]+(addr&0xFFF);
+				break;
+			default: //0xF
+				romAddr = nsf_PRGBank[7]+(addr&0xFFF);
+				break;
+		}
+	}
 	else
-		romAddr = nsf_PRGBank[7]+(addr&0xFFF);
+		romAddr = (addr&0x7FFF);
 	return romAddr;
 }
 

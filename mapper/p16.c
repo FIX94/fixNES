@@ -18,8 +18,6 @@ static uint32_t p16_curPRGBank;
 static uint32_t p16_lastPRGBank;
 
 static uint8_t p16_chrRAM[0x2000];
-extern bool ppuForceTable;
-extern uint16_t ppuForceTableAddr;
 
 void p16init(uint8_t *prgROMin, uint32_t prgROMsizeIn, 
 			uint8_t *prgRAMin, uint32_t prgRAMsizeIn,

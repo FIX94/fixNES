@@ -22,7 +22,6 @@ static uint8_t m15_bankMode;
 static bool m15_upperPRGBank;
 
 static uint8_t m15_chrRAM[0x2000];
-extern uint16_t ppuForceTableAddr;
 
 void m15init(uint8_t *prgROMin, uint32_t prgROMsizeIn, 
 			uint8_t *prgRAMin, uint32_t prgRAMsizeIn,
@@ -85,12 +84,12 @@ void m15set8(uint16_t addr, uint8_t val)
 		if((val&(1<<6)) == 0)
 		{
 			//printf("Vertical mode\n");
-			ppuScreenMode = PPU_MODE_VERTICAL;
+			ppuSetNameTblVertical();
 		}
 		else
 		{
 			//printf("Horizontal mode\n");
-			ppuScreenMode = PPU_MODE_HORIZONTAL;
+			ppuSetNameTblHorizontal();
 		}
 	}
 }

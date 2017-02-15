@@ -17,8 +17,6 @@ static uint32_t m7_chrROMsize;
 static uint32_t m7_curPRGBank;
 
 static uint8_t m7_chrRAM[0x2000];
-extern bool ppuForceTable;
-extern uint16_t ppuForceTableAddr;
 
 void m7init(uint8_t *prgROMin, uint32_t prgROMsizeIn, 
 			uint8_t *prgRAMin, uint32_t prgRAMsizeIn, 
@@ -36,9 +34,7 @@ void m7init(uint8_t *prgROMin, uint32_t prgROMsizeIn,
 		printf("M7 ???\n");
 	}
 	memset(m7_chrRAM,0,0x2000);
-	ppuScreenMode = PPU_MODE_SINGLE;
-	ppuForceTable= true;
-	ppuForceTableAddr = 0;
+	ppuSetNameTblSingleLower();
 	printf("Mapper 7 inited\n");
 }
 
@@ -57,12 +53,12 @@ void m7set8(uint16_t addr, uint8_t val)
 	if(val & (1<<4))
 	{
 		//printf("400\n");
-		ppuForceTableAddr = 0x400;
+		ppuSetNameTblSingleUpper();
 	}
 	else
 	{
 		//printf("000\n");
-		ppuForceTableAddr = 0;
+		ppuSetNameTblSingleLower();
 	}
 	m7_curPRGBank = ((val & 7)<<15)&(m7_prgROMsize-1);
 }

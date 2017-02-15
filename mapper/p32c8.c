@@ -21,8 +21,6 @@ static uint32_t p32c8_curPRGBank;
 static uint32_t p32c8_curCHRBank;
 static uint8_t m36_regstat;
 static uint8_t m36_mode;
-extern bool ppuForceTable;
-extern uint16_t ppuForceTableAddr;
 
 void p32c8init(uint8_t *prgROMin, uint32_t prgROMsizeIn, 
 			uint8_t *prgRAMin, uint32_t prgRAMsizeIn,
@@ -180,9 +178,9 @@ void m113_set8(uint16_t addr, uint8_t val)
 		p32c8_curCHRBank = ((((val>>3)&8)|(val&7))<<13)&(p32c8_chrROMsize-1);
 		p32c8_curPRGBank = (((val>>3)&7)<<15)&(p32c8_prgROMsize-1);
 		if((val&(1<<7)) == 0)
-			ppuScreenMode = PPU_MODE_HORIZONTAL;
+			ppuSetNameTblHorizontal();
 		else
-			ppuScreenMode = PPU_MODE_VERTICAL;
+			ppuSetNameTblVertical();
 	}
 }
 
@@ -262,9 +260,9 @@ void m242_set8(uint16_t addr, uint8_t val)
 		val = addr; //ignore value, address location is val here
 		p32c8_curPRGBank = (((val>>3)&0xF)<<15)&(p32c8_prgROMsize-1);
 		if((val&2) == 0)
-			ppuScreenMode = PPU_MODE_VERTICAL;
+			ppuSetNameTblVertical();
 		else
-			ppuScreenMode = PPU_MODE_HORIZONTAL;
+			ppuSetNameTblHorizontal();
 	}
 }
 

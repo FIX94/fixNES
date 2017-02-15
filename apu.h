@@ -10,8 +10,9 @@
 
 #define NUM_BUFFERS 8
 
+void apuInitBufs();
+void apuDeinitBufs();
 void apuInit();
-void apuDeinit();
 int apuCycle();
 void apuClockTimers();
 uint8_t *apuGetBuf();
