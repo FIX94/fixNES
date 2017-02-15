@@ -12,6 +12,7 @@
 #include "../cpu.h"
 #include "../input.h"
 #include "../mem.h"
+#include "../apu.h"
 #include "../audio_fds.h"
 #include "../audio_mmc5.h"
 #include "../audio_vrc6.h"
@@ -66,7 +67,7 @@ void nsfinit(uint8_t *nsfBIN, uint32_t nsfBINsize, uint8_t *prgRAMin, uint32_t p
 	nsf_playAddr = *(uint16_t*)(nsfBIN+0xC);
 	nsf_retAddr = 0x456A;
 	nesPAL = ((nsfBIN[0x7A]&1) != 0);
-
+	apuInitBufs();
 	if((nsfBIN[0x7B]&1) != 0)
 		vrc6Init();
 	if((nsfBIN[0x7B]&4) != 0)
@@ -91,6 +92,7 @@ void nsfinit(uint8_t *nsfBIN, uint32_t nsfBINsize, uint8_t *prgRAMin, uint32_t p
 		onOff(vrc6enabled), onOff(fdsEnabled), onOff(mmc5enabled), nsf_bankEnable ? "with" : "without");
 	if(nsfBIN[0xE] != 0) printf("Playing back %.32s\n", nsfBIN+0xE);
 	printf("Track %i/%i         ", nsf_curTrack, nsf_trackTotal);
+	inputInit();
 	nsfInitPlayback();
 }
 

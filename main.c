@@ -29,7 +29,7 @@
 #define DEBUG_KEY 0
 #define DEBUG_LOAD_INFO 1
 
-static const char *VERSION_STRING = "fixNES Alpha v0.5.6";
+static const char *VERSION_STRING = "fixNES Alpha v0.5.7";
 
 static void nesEmuDisplayFrame(void);
 static void nesEmuMainLoop(void);
@@ -179,12 +179,6 @@ int main(int argc, char** argv)
 		fclose(nesF);
 		emuPrgRAMsize = 0x2000;
 		emuPrgRAM = malloc(emuPrgRAMsize);
-		apuInitBufs();
-		cpuInit();
-		ppuInit();
-		memInit();
-		apuInit();
-		inputInit();
 		if(!mapperInitNSF(emuNesROM, fsize, emuPrgRAM, emuPrgRAMsize))
 		{
 			printf("NSF init failed!\n");
