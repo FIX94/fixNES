@@ -28,7 +28,7 @@ static bool vrc6_p1const, vrc6_p2const;
 static bool vrc6_p1enable, vrc6_p2enable, vrc6_sawenable;
 static bool vrc6_halt;
 
-void vrc6Init()
+void vrc6AudioInit()
 {
 	vrc6enabled = true;
 	vrc6_freq1 = 0, vrc6_freq2 = 0, vrc6_sawFreq = 0;
@@ -45,7 +45,7 @@ void vrc6Init()
 
 static uint8_t vrc6_lastP1Out = 0, vrc6_lastP2Out = 0, vrc6_lastSawOut = 0;
 
-void vrc6Cycle()
+void vrc6AudioCycle()
 {
 	uint8_t p1Out = vrc6_lastP1Out, p2Out = vrc6_lastP2Out, sawOut = vrc6_lastSawOut;
 	if(vrc6_p1enable)
@@ -68,58 +68,52 @@ void vrc6Cycle()
 	vrc6Out = p1Out+p2Out+sawOut;
 }
 
-void vrc6ClockTimers()
+void vrc6AudioClockTimers()
 {
 	if(vrc6_halt) return;
-	if(vrc6_p1enable)
+
+	if(vrc6_p1freqCtr)
+		vrc6_p1freqCtr--;
+	if(vrc6_p1freqCtr == 0)
 	{
-		if(vrc6_p1freqCtr)
-			vrc6_p1freqCtr--;
-		if(vrc6_p1freqCtr == 0)
-		{
-			if(vrc6_speed == 0)
-				vrc6_p1freqCtr = (vrc6_freq1+1);
-			else if(vrc6_speed == 1)
-				vrc6_p1freqCtr = (vrc6_freq1+1)>>4;
-			else
-				vrc6_p1freqCtr = (vrc6_freq1+1)>>8;
-			vrc6_p1Cycle++;
-		}
+		if(vrc6_speed == 0)
+			vrc6_p1freqCtr = (vrc6_freq1+1);
+		else if(vrc6_speed == 1)
+			vrc6_p1freqCtr = (vrc6_freq1+1)>>4;
+		else
+			vrc6_p1freqCtr = (vrc6_freq1+1)>>8;
+		vrc6_p1Cycle++;
 		if(vrc6_p1Cycle >= 16)
 			vrc6_p1Cycle = 0;
 	}
-	if(vrc6_p2enable)
+
+	if(vrc6_p2freqCtr)
+		vrc6_p2freqCtr--;
+	if(vrc6_p2freqCtr == 0)
 	{
-		if(vrc6_p2freqCtr)
-			vrc6_p2freqCtr--;
-		if(vrc6_p2freqCtr == 0)
-		{
-			if(vrc6_speed == 0)
-				vrc6_p2freqCtr = (vrc6_freq2+1);
-			else if(vrc6_speed == 1)
-				vrc6_p2freqCtr = (vrc6_freq2+1)>>4;
-			else
-				vrc6_p2freqCtr = (vrc6_freq2+1)>>8;
-			vrc6_p2Cycle++;
-		}
+		if(vrc6_speed == 0)
+			vrc6_p2freqCtr = (vrc6_freq2+1);
+		else if(vrc6_speed == 1)
+			vrc6_p2freqCtr = (vrc6_freq2+1)>>4;
+		else
+			vrc6_p2freqCtr = (vrc6_freq2+1)>>8;
+		vrc6_p2Cycle++;
 		if(vrc6_p2Cycle >= 16)
 			vrc6_p2Cycle = 0;
 	}
-	if(vrc6_sawenable)
+
+	if(vrc6_sawFreqCtr)
+		vrc6_sawFreqCtr--;
+	if(vrc6_sawFreqCtr == 0)
 	{
-		if(vrc6_sawFreqCtr)
-			vrc6_sawFreqCtr--;
-		if(vrc6_sawFreqCtr == 0)
-		{
-			if(vrc6_speed == 0)
-				vrc6_sawFreqCtr = (vrc6_sawFreq+1)*2;
-			else if(vrc6_speed == 1)
-				vrc6_sawFreqCtr = (vrc6_sawFreq+1)*2>>4;
-			else
-				vrc6_sawFreqCtr = (vrc6_sawFreq+1)*2>>8;
-			vrc6_sawCycle++;
-			vrc6_sawVol += vrc6_sawAdd;
-		}
+		if(vrc6_speed == 0)
+			vrc6_sawFreqCtr = (vrc6_sawFreq+1)*2;
+		else if(vrc6_speed == 1)
+			vrc6_sawFreqCtr = (vrc6_sawFreq+1)*2>>4;
+		else
+			vrc6_sawFreqCtr = (vrc6_sawFreq+1)*2>>8;
+		vrc6_sawCycle++;
+		vrc6_sawVol += vrc6_sawAdd;
 		if(vrc6_sawCycle >= 7)
 		{
 			vrc6_sawCycle = 0;
@@ -128,7 +122,7 @@ void vrc6ClockTimers()
 	}
 }
 
-void vrc6Set8(uint16_t addr, uint8_t val)
+void vrc6AudioSet8(uint16_t addr, uint8_t val)
 {
 	if(addr == 0x9000)
 	{

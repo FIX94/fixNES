@@ -453,7 +453,7 @@ ppuIncreasePos:
 		ppuSprite0hit--;
 	/* VBlank start at first dot after post-render line */
 	/* Though results are better when starting it a bit later */
-	if(curDot == 11 && curLine == 241)
+	if(curDot == 8 && curLine == 241)
 	{
 		ppuNMITriggered = false;
 		if(!ppuReadReg2)
@@ -465,7 +465,7 @@ ppuIncreasePos:
 	ppuReadReg2 = false;
 	/* VBlank ends at first dot of the pre-render line */
 	/* Though results are better when clearing it a bit later */
-	if(curDot == 4 && curLine == ppuPreRenderLine)
+	if(curDot == 1 && curLine == ppuPreRenderLine)
 	{
 		#if PPU_DEBUG_VSYNC
 		printf("PPU End VBlank\n");

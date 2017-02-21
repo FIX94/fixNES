@@ -29,7 +29,7 @@
 #define DEBUG_KEY 0
 #define DEBUG_LOAD_INFO 1
 
-static const char *VERSION_STRING = "fixNES Alpha v0.5.7";
+static const char *VERSION_STRING = "fixNES Alpha v0.6";
 
 static void nesEmuDisplayFrame(void);
 static void nesEmuMainLoop(void);
@@ -84,8 +84,6 @@ static const int visibleImg = VISIBLE_DOTS*VISIBLE_LINES*4;
 static int scaleFactor = 2;
 static bool emuSaveEnabled = false;
 static bool emuFdsHasSideB = false;
-static int emuApuClockCycles;
-static int emuApuClock;
 static int mainLoopRuns;
 static int mainLoopPos;
 static int ppuCycleTimer;
@@ -300,8 +298,6 @@ int main(int argc, char** argv)
 	int i;
 	for(i = 0; i < visibleImg; i+=4)
 		textureImage[i+3] = 0xFF;
-	emuApuClockCycles = nesPAL ? 8313 : 7457;
-	emuApuClock = emuApuClockCycles - (nesPAL ? 1066 : 1137);
 	cpuCycleTimer = nesPAL ? 16 : 12;
 	//do one scanline per idle loop
 	ppuCycleTimer = nesPAL ? 5 : 4;
@@ -348,7 +344,7 @@ static void nesEmuDeinit(void)
 	apuDeinitBufs();
 	if(emuNesROM != NULL)
 	{
-		if(fdsEnabled)
+		if(!nesEmuNSFPlayback && fdsEnabled)
 		{
 			FILE *save = fopen(emuSaveName, "wb");
 			if(save)
@@ -426,13 +422,7 @@ static void nesEmuMainLoop(void)
 				mapperCycle();
 			//mCycles++;
 			//channel timer updates
-			if(emuApuClock == emuApuClockCycles)
-			{
-				apuLenCycle();
-				emuApuClock = 0;
-			}
-			else
-				emuApuClock++;
+			apuLenCycle();
 			mainClock = 1;
 		}
 		else
@@ -488,10 +478,6 @@ static void nesEmuMainLoop(void)
 	#endif
 }
 
-void nesEmuResetApuClock(void)
-{
-	emuApuClock = 0;
-}
 extern bool fdsSwitch;
 static void nesEmuHandleKeyDown(unsigned char key, int x, int y)
 {

@@ -39,6 +39,8 @@ static uint16_t mmc5_dmcCurAddr, mmc5_dmcCurLen;*/
 static uint8_t mmc5_p1LengthCtr, mmc5_p2LengthCtr;
 //static uint8_t mmc5_dmcVol, mmc5_dmcCurVol;
 //static uint8_t dmcSampleRemain;
+static uint8_t mmc5_modePos = 0;
+static uint16_t mmc5_modeCurCtr = 0;
 static uint16_t mmc5_p1freqCtr, mmc5_p2freqCtr;//, mmc5_dmcFreqCtr;
 static uint8_t mmc5_p1Cycle, mmc5_p2Cycle;//, dmcCycle;
 static bool mmc5_p1haltloop, mmc5_p2haltloop;//, mmc5_dmchaltloop;
@@ -51,6 +53,7 @@ static envelope_t mmc5_p1Env, mmc5_p2Env;
 extern const uint8_t lengthLookupTbl[0x20];
 extern const uint8_t pulseSeqs[4][8];
 extern const uint16_t *dmcPeriod;
+extern const uint16_t *mode4Ctr;
 
 static const uint8_t *mmc5_p1seq = pulseSeqs[0], 
 					*mmc5_p2seq = pulseSeqs[1];
@@ -80,30 +83,26 @@ void mmc5AudioInit()
 extern uint32_t cpu_oam_dma;
 void mmc5AudioClockTimers()
 {
-	if(mmc5_p1LengthCtr && (MMC5_IO_Reg[0x15] & P1_ENABLE))
+	if(mmc5_p1freqCtr)
+		mmc5_p1freqCtr--;
+	if(mmc5_p1freqCtr == 0)
 	{
-		if(mmc5_p1freqCtr)
-			mmc5_p1freqCtr--;
-		if(mmc5_p1freqCtr == 0)
-		{
-			mmc5_p1freqCtr = (mmc5_freq1+1)*2;
-			mmc5_p1Cycle++;
-		}
+		mmc5_p1freqCtr = (mmc5_freq1+1)*2;
+		mmc5_p1Cycle++;
 		if(mmc5_p1Cycle >= 8)
 			mmc5_p1Cycle = 0;
 	}
-	if(mmc5_p2LengthCtr && (MMC5_IO_Reg[0x15] & P2_ENABLE))
+
+	if(mmc5_p2freqCtr)
+		mmc5_p2freqCtr--;
+	if(mmc5_p2freqCtr == 0)
 	{
-		if(mmc5_p2freqCtr)
-			mmc5_p2freqCtr--;
-		if(mmc5_p2freqCtr == 0)
-		{
-			mmc5_p2freqCtr = (mmc5_freq2+1)*2;
-			mmc5_p2Cycle++;
-		}
+		mmc5_p2freqCtr = (mmc5_freq2+1)*2;
+		mmc5_p2Cycle++;
 		if(mmc5_p2Cycle >= 8)
 			mmc5_p2Cycle = 0;
 	}
+
 	/*if(mmc5_dmcLen && (MMC5_IO_Reg[0x15] & DMC_ENABLE))
 	{
 		if(mmc5_dmcFreqCtr)
@@ -184,17 +183,26 @@ int mmc5AudioCycle()
 
 void mmc5AudioLenCycle()
 {
-	if(mmc5_p1LengthCtr)
+	if(mmc5_modeCurCtr)
+		mmc5_modeCurCtr--;
+	if(mmc5_modeCurCtr == 0)
 	{
-		doEnvelopeLogic(&mmc5_p1Env);
-		if(!mmc5_p1haltloop)
-			mmc5_p1LengthCtr--;
-	}
-	if(mmc5_p2LengthCtr)
-	{
-		doEnvelopeLogic(&mmc5_p2Env);
-		if(!mmc5_p2haltloop)
-			mmc5_p2LengthCtr--;
+		if(mmc5_p1LengthCtr)
+		{
+			doEnvelopeLogic(&mmc5_p1Env);
+			if(!mmc5_p1haltloop)
+				mmc5_p1LengthCtr--;
+		}
+		if(mmc5_p2LengthCtr)
+		{
+			doEnvelopeLogic(&mmc5_p2Env);
+			if(!mmc5_p2haltloop)
+				mmc5_p2LengthCtr--;
+		}
+		mmc5_modePos++;
+		if(mmc5_modePos >= 4)
+			mmc5_modePos = 0;
+		mmc5_modeCurCtr = mode4Ctr[mmc5_modePos];
 	}
 }
 

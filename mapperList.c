@@ -19,6 +19,8 @@
 #include "mapper_h/p8c8.h"
 #include "mapper_h/p16.h"
 #include "mapper_h/p32c8.h"
+#include "mapper_h/vrc.h"
+#include "mapper_h/vrc6.h"
 #include "mapper.h"
 #include "mapperList.h"
 
@@ -44,12 +46,12 @@ mapperList_t mapperList[256] = {
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
-	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
-	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
-	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
-	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
-	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
-	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
+	{ vrcinit,		vrcget8,		m21_set8,		vrcchrGet8,		vrcchrSet8,		vrccycle },
+	{ vrcinit,		vrcget8,		m22_set8,		m22_chrGet8,	vrcchrSet8,		vrccycle },
+	{ vrcinit,		vrcget8,		m23_set8,		vrcchrGet8,		vrcchrSet8,		vrccycle },
+	{ vrc6init,		vrc6get8,		m24_set8,		vrc6chrGet8,	vrc6chrSet8,	vrc6cycle },
+	{ vrcinit,		vrcget8,		m25_set8,		vrcchrGet8,		vrcchrSet8,		vrccycle },
+	{ vrc6init,		vrc6get8,		m26_set8,		vrc6chrGet8,	vrc6chrSet8,	vrc6cycle },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },

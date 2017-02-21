@@ -53,9 +53,10 @@ static uint8_t triLengthCtr, triLinearCtr, triCurLinearCtr;
 static uint8_t dmcVol, dmcCurVol;
 static uint8_t dmcSampleRemain;
 static bool mode5 = false;
-static int modePos = 0;
+static uint8_t modePos = 0;
+static uint16_t modeCurCtr = 0;
 static uint16_t p1freqCtr, p2freqCtr, triFreqCtr, noiseFreqCtr, dmcFreqCtr;
-static uint8_t p1Cycle, p2Cycle, triCycle;//, dmcCycle;
+static uint8_t p1Cycle, p2Cycle, triCycle;
 static bool p1haltloop, p2haltloop, trihaltloop, noisehaltloop, dmchaltloop;
 static bool dmcstart;
 static bool dmcirqenable;
@@ -116,8 +117,25 @@ static const uint16_t dmcPeriodPal[16] = {
 	398, 354, 316, 298, 276, 236, 210, 198, 176, 148, 132, 118, 98, 78, 66, 50,
 };
 
+static const uint16_t mode4CtrNtsc[4] = {
+	7456, 7458, 7458, 7458
+};
+
+static const uint16_t mode4CtrPal[4] = {
+	8314, 8312, 8314, 8314
+};
+
+static const uint16_t mode5CtrNtsc[5] = {
+	7458, 7456, 7458, 7458, 7452
+};
+
+static const uint16_t mode5CtrPal[5] = {
+	8314, 8314, 8312, 8314, 8312
+};
+
 //used externally
 const uint16_t *dmcPeriod, *noisePeriod;
+const uint16_t *mode4Ctr, *mode5Ctr;
 
 static const uint8_t *p1seq = pulseSeqs[0], 
 					*p2seq = pulseSeqs[1];
@@ -130,6 +148,8 @@ void apuInitBufs()
 {
 	noisePeriod = nesPAL ? noisePeriodPal : noisePeriodNtsc;
 	dmcPeriod = nesPAL ? dmcPeriodPal : dmcPeriodNtsc;
+	mode4Ctr = nesPAL ? mode4CtrPal : mode4CtrNtsc;
+	mode5Ctr = nesPAL ? mode5CtrPal : mode5CtrNtsc;
 	//effective frequencies for 50.000Hz and 60.000Hz Video out
 	apuFrequency = nesPAL ? 831187 : 893415;
 	double dt = 1.0/((double)apuFrequency);
@@ -175,7 +195,7 @@ void apuInit()
 	dmcCurAddr = 0, dmcCurLen = 0; dmcCurVol = 0;
 	dmcSampleRemain = 0;
 	p1freqCtr = 0; p2freqCtr = 0; triFreqCtr = 0, noiseFreqCtr = 0, dmcFreqCtr = 0;
-	p1Cycle = 0; p2Cycle = 0; triCycle = 0;// dmcCycle = 0;
+	p1Cycle = 0; p2Cycle = 0; triCycle = 0;
 
 	memset(&p1Env,0,sizeof(envelope_t));
 	memset(&p2Env,0,sizeof(envelope_t));
@@ -199,104 +219,91 @@ void apuInit()
 extern uint32_t cpu_oam_dma;
 void apuClockTimers()
 {
-	if(p1LengthCtr && (APU_IO_Reg[0x15] & P1_ENABLE))
+	if(p1freqCtr)
+		p1freqCtr--;
+	if(p1freqCtr == 0)
 	{
-		if(p1freqCtr)
-			p1freqCtr--;
-		if(p1freqCtr == 0)
-		{
-			p1freqCtr = (freq1+1)*2;
-			p1Cycle++;
-		}
+		p1freqCtr = (freq1+1)*2;
+		p1Cycle++;
 		if(p1Cycle >= 8)
 			p1Cycle = 0;
 	}
-	if(p2LengthCtr && (APU_IO_Reg[0x15] & P2_ENABLE))
+
+	if(p2freqCtr)
+		p2freqCtr--;
+	if(p2freqCtr == 0)
 	{
-		if(p2freqCtr)
-			p2freqCtr--;
-		if(p2freqCtr == 0)
-		{
-			p2freqCtr = (freq2+1)*2;
-			p2Cycle++;
-		}
+		p2freqCtr = (freq2+1)*2;
+		p2Cycle++;
 		if(p2Cycle >= 8)
 			p2Cycle = 0;
 	}
-	if(triLengthCtr && triCurLinearCtr && (APU_IO_Reg[0x15] & TRI_ENABLE))
+
+	if(triFreqCtr)
+		triFreqCtr--;
+	if(triFreqCtr == 0)
 	{
-		if(triFreqCtr)
-			triFreqCtr--;
-		if(triFreqCtr == 0)
-		{
-			triFreqCtr = triFreq+1;
-			triCycle++;
-		}
+		triFreqCtr = triFreq+1;
+		triCycle++;
 		if(triCycle >= 32)
 			triCycle = 0;
 	}
-	if(noiseLengthCtr && (APU_IO_Reg[0x15] & NOISE_ENABLE))
+
+	if(noiseFreqCtr)
+		noiseFreqCtr--;
+	if(noiseFreqCtr == 0)
 	{
-		if(noiseFreqCtr)
-			noiseFreqCtr--;
-		if(noiseFreqCtr == 0)
-		{
-			noiseFreqCtr = noiseFreq;
-			uint8_t cmpBit = noiseMode1 ? (noiseShiftReg>>6)&1 : (noiseShiftReg>>1)&1;
-			uint8_t cmpRes = (noiseShiftReg&1)^cmpBit;
-			noiseShiftReg>>=1;
-			noiseShiftReg|=cmpRes<<14;
-		}
+		noiseFreqCtr = noiseFreq;
+		uint8_t cmpBit = noiseMode1 ? (noiseShiftReg>>6)&1 : (noiseShiftReg>>1)&1;
+		uint8_t cmpRes = (noiseShiftReg&1)^cmpBit;
+		noiseShiftReg >>= 1;
+		noiseShiftReg |= cmpRes<<14;
 	}
-	if(dmcLen && (APU_IO_Reg[0x15] & DMC_ENABLE))
+
+	if(dmcFreqCtr)
+		dmcFreqCtr--;
+	if(dmcFreqCtr == 0)
 	{
-		if(dmcFreqCtr)
-			dmcFreqCtr--;
-		if(dmcFreqCtr == 0)
+		dmcFreqCtr = dmcFreq;
+		if(dmcSampleRemain)
 		{
-			dmcFreqCtr = dmcFreq;
-			//dmcCycle++;
-			if(dmcSampleRemain)
+			if(dmcSampleBuf&1)
 			{
-				if(dmcSampleBuf&1)
-				{
-					if(dmcVol <= 125)
-						dmcVol += 2;
-				}
-				else if(dmcVol >= 2)
-					dmcVol -= 2;
-				dmcSampleBuf>>=1;
-				dmcSampleRemain--;
+				if(dmcVol <= 125)
+					dmcVol += 2;
 			}
-			if(!dmcSampleRemain)
+			else if(dmcVol >= 2)
+				dmcVol -= 2;
+			dmcSampleBuf>>=1;
+			dmcSampleRemain--;
+		}
+		if(!dmcSampleRemain)
+		{
+			if(dmcCurLen)
 			{
-				if(dmcCurLen)
+				dmcSampleBuf = memGet8(dmcCurAddr);
+				if(cpu_oam_dma > 0)
+					cpuIncWaitCycles(2);
+				else
+					cpuIncWaitCycles(4);
+				dmcCurAddr++;
+				if(dmcCurAddr < 0x8000)
+					dmcCurAddr |= 0x8000;
+				dmcCurLen--;
+				if(!dmcCurLen)
 				{
-					dmcSampleBuf = memGet8(dmcCurAddr);
-					if(cpu_oam_dma > 0)
-						cpuIncWaitCycles(2);
-					else
-						cpuIncWaitCycles(4);
-					dmcCurAddr++;
-					if(dmcCurAddr < 0x8000)
-						dmcCurAddr |= 0x8000;
-					dmcCurLen--;
-					if(!dmcCurLen)
+					if(dmchaltloop)
 					{
-						if(dmchaltloop)
-						{
-							dmcCurAddr = dmcAddr;
-							dmcCurLen = dmcLen;
-						}
-						else if(dmcirqenable)
-						{
-							//printf("DMC IRQ\n");
-							dmc_interrupt = true;
-						}
+						dmcCurAddr = dmcAddr;
+						dmcCurLen = dmcLen;
 					}
-					dmcSampleRemain = 8;
+					else if(dmcirqenable)
+					{
+						//printf("DMC IRQ\n");
+						dmc_interrupt = true;
+					}
 				}
-				//dmcCycle = 0;
+				dmcSampleRemain = 8;
 			}
 		}
 	}
@@ -357,7 +364,7 @@ int apuCycle()
 	//very rough still
 	if(vrc6enabled)
 	{
-		vrc6Cycle();
+		vrc6AudioCycle();
 		curIn += ((float)vrc6Out)*0.008f;
 		curIn *= 0.665f;
 	}
@@ -493,7 +500,6 @@ void apuClockB()
 }
 
 extern bool apu_interrupt;
-extern void nesEmuResetApuClock(void);
 
 void apuLenCycle()
 {
@@ -502,28 +508,41 @@ void apuLenCycle()
 
 	if(mode5 == false)
 	{
-		if(modePos >= 4)
-			modePos = 0;
-		if(modePos == 1)
-			apuClockA();
-		if(modePos == 3)
+		if(modeCurCtr)
+			modeCurCtr--;
+		if(modeCurCtr == 0)
 		{
-			apuClockA();
-			if(apu_enable_irq)
-				apu_interrupt = true;
+			if(modePos == 1)
+				apuClockA();
+			if(modePos == 3)
+			{
+				apuClockA();
+				if(apu_enable_irq)
+					apu_interrupt = true;
+			}
+			apuClockB();
+			modePos++;
+			if(modePos >= 4)
+				modePos = 0;
+			modeCurCtr = mode4Ctr[modePos];
 		}
-		apuClockB();
 	}
 	else
 	{
-		if(modePos >= 5)
-			modePos = 0;
-		if(modePos == 0 || modePos == 2)
-			apuClockA();
-		if(modePos != 4)
-			apuClockB();
+		if(modeCurCtr)
+			modeCurCtr--;
+		if(modeCurCtr == 0)
+		{
+			if(modePos == 0 || modePos == 2)
+				apuClockA();
+			if(modePos != 4)
+				apuClockB();
+			modePos++;
+			if(modePos >= 5)
+				modePos = 0;
+			modeCurCtr = mode5Ctr[modePos];
+		}
 	}
-	modePos++;
 }
 
 void apuSet8(uint8_t reg, uint8_t val)
@@ -677,9 +696,10 @@ void apuSet8(uint8_t reg, uint8_t val)
 		mode5 = ((val&(1<<7)) != 0);
 		//printf("Set 0x17 %d %d\n", apu_enable_irq, mode5);
 		modePos = 0;
-		nesEmuResetApuClock();
 		if(mode5)
-			apuLenCycle();
+			modeCurCtr = 1;
+		else
+			modeCurCtr = nesPAL ? 7459 : 8315;
 	}
 }
 

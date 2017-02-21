@@ -47,7 +47,7 @@ static void nsfInitPlayback()
 	memset(nsf_FillRAM, 0, 0x8000);
 	cpuInitNSF(nsf_initAddr, nsf_curTrack-1, nesPAL ? 1 : 0);
 	if(vrc6enabled)
-		vrc6Init();
+		vrc6AudioInit();
 	if(mmc5enabled)
 		mmc5AudioInit();
 	if(fdsEnabled)
@@ -69,7 +69,7 @@ void nsfinit(uint8_t *nsfBIN, uint32_t nsfBINsize, uint8_t *prgRAMin, uint32_t p
 	nesPAL = ((nsfBIN[0x7A]&1) != 0);
 	apuInitBufs();
 	if((nsfBIN[0x7B]&1) != 0)
-		vrc6Init();
+		vrc6AudioInit();
 	if((nsfBIN[0x7B]&4) != 0)
 		fdsAudioInit();
 	if((nsfBIN[0x7B]&8) != 0)
@@ -271,7 +271,7 @@ void nsfset8(uint16_t addr, uint8_t val)
 		else if(vrc6enabled && ((addr >= 0x9000 && addr <= 0x9003) ||
 								(addr >= 0xA000 && addr <= 0xA002) ||
 								(addr >= 0xB000 && addr <= 0xB002)))
-			vrc6Set8(addr, val);
+			vrc6AudioSet8(addr, val);
 	}
 }
 
@@ -290,7 +290,7 @@ extern uint8_t inValReads[8];
 void nsfcycle()
 {
 	if(vrc6enabled)
-		vrc6ClockTimers();
+		vrc6AudioClockTimers();
 	if(fdsEnabled)
 		fdsAudioClockTimers();
 	if(mmc5enabled)
