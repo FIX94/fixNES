@@ -16,8 +16,10 @@
 #include "mapper_h/m10.h"
 #include "mapper_h/m13.h"
 #include "mapper_h/m15.h"
+#include "mapper_h/p32c4.h"
+#include "mapper_h/m48.h"
 #include "mapper_h/p8c8.h"
-#include "mapper_h/p16.h"
+#include "mapper_h/p16c8.h"
 #include "mapper_h/p32c8.h"
 #include "mapper_h/vrc.h"
 #include "mapper_h/vrc6.h"
@@ -27,7 +29,7 @@
 mapperList_t mapperList[256] = {
 	{ p32c8init,	p32c8get8,		m0_set8,		p32c8chrGet8,	p32c8chrSet8,	NULL },
 	{ m1init,		m1get8,			m1set8,			m1chrGet8,		m1chrSet8,		NULL },
-	{ p16init,		p16get8,		m2_set8,		p16chrGet8,		p16chrSet8,		NULL },
+	{ p16c8init,	p16c8get8,		m2_set8,		p16c8chrGet8,	p16c8chrSet8,	NULL },
 	{ p8c8init,		p8c8get8,		m3_set8,		p8c8chrGet8,	p8c8chrSet8,	NULL },
 	{ m4init,		m4get8,			m4set8,			m4chrGet8,		m4chrSet8,		m4cycle },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
@@ -58,8 +60,8 @@ mapperList_t mapperList[256] = {
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
-	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
-	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
+	{ m48init,		m48get8,		m33set8,		m48chrGet8,		m48chrSet8,		NULL },
+	{ p32c4init,	p32c4get8,		p32c4set8,		p32c4chrGet8,	p32c4chrSet8,	NULL },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
 	{ p32c8init,	m36_p32c8get8,	m36_set8,		p32c8chrGet8,	p32c8chrSet8,	NULL },
 	{ m37_init,		m4get8,			m37_set8,		m4chrGet8,		m4chrSet8,		m4cycle },
@@ -70,14 +72,14 @@ mapperList_t mapperList[256] = {
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
 	{ m44_init,		m4get8,			m44_set8,		m4chrGet8,		m4chrSet8,		m4cycle },
-	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
+	{ m45_init,		m4get8,			m45_set8,		m4chrGet8,		m4chrSet8,		m4cycle },
 	{ p32c8init,	p32c8get8,		m46_set8,		p32c8chrGet8,	p32c8chrSet8,	NULL },
 	{ m47_init,		m4get8,			m47_set8,		m4chrGet8,		m4chrSet8,		m4cycle },
+	{ m48init,		m48get8,		m48set8,		m48chrGet8,		m48chrSet8,		m48cycle },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
-	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
-	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
+	{ m52_init,		m4get8,			m52_set8,		m4chrGet8,		m4chrSet8,		m4cycle },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
@@ -95,15 +97,15 @@ mapperList_t mapperList[256] = {
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
-	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
-	{ p16init,		p16get8,		m71_set8,		p16chrGet8,		p16chrSet8,		NULL },
-	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
-	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
+	{ p16c8init,	p16c8get8,		m70_set8,		p16c8chrGet8,	p16c8chrSet8,	NULL },
+	{ p16c8init,	p16c8get8,		m71_set8,		p16c8chrGet8,	p16c8chrSet8,	NULL },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
+	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
+	{ p16c8init,	p16c8get8,		m78a_set8,		p16c8chrGet8,	p16c8chrSet8,	NULL },
 	{ p32c8init,	p32c8get8,		m79_set8,		p32c8chrGet8,	p32c8chrSet8,	NULL },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
@@ -177,7 +179,7 @@ mapperList_t mapperList[256] = {
 	{ p8c8init,		p8c8get8,		m149_set8,		p8c8chrGet8,	p8c8chrSet8,	NULL },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
-	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
+	{ p16c8init,	p16c8get8,		m152_set8,		p16c8chrGet8,	p16c8chrSet8,	NULL },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },

@@ -24,7 +24,7 @@ bool mapperInit(uint8_t mapper, uint8_t *prgROM, uint32_t prgROMsize, uint8_t *p
 {
 	if(mapperList[mapper].initF == NULL)
 	{
-		printf("Unsupported Mapper!\n");
+		printf("Unsupported Mapper %i!\n", mapper);
 		return false;
 	}
 	mapperList[mapper].initF(prgROM, prgROMsize, prgRAM, prgRAMsize, chrROM, chrROMsize);

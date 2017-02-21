@@ -90,20 +90,20 @@ uint8_t m4get8(uint16_t addr)
 		if(addr < 0xA000)
 		{
 			if(m4_prg_bank_flip)
-				return m4_prgROM[(((m4_lastM1PRGBank+(addr&0x1FFF)))&m4_prgROMand)+m4_prgROMadd];
+				return m4_prgROM[(((m4_lastM1PRGBank+(addr&0x1FFF)))&m4_prgROMand)|m4_prgROMadd];
 			else
-				return m4_prgROM[(((m4_curPRGBank0<<13)+(addr&0x1FFF))&m4_prgROMand)+m4_prgROMadd];
+				return m4_prgROM[(((m4_curPRGBank0<<13)+(addr&0x1FFF))&m4_prgROMand)|m4_prgROMadd];
 		}
 		else if(addr < 0xC000)
-			return m4_prgROM[(((m4_curPRGBank1<<13)+(addr&0x1FFF))&m4_prgROMand)+m4_prgROMadd];
+			return m4_prgROM[(((m4_curPRGBank1<<13)+(addr&0x1FFF))&m4_prgROMand)|m4_prgROMadd];
 		else if(addr < 0xE000)
 		{
 			if(m4_prg_bank_flip)
-				return m4_prgROM[(((m4_curPRGBank0<<13)+(addr&0x1FFF))&m4_prgROMand)+m4_prgROMadd];
+				return m4_prgROM[(((m4_curPRGBank0<<13)+(addr&0x1FFF))&m4_prgROMand)|m4_prgROMadd];
 			else
-				return m4_prgROM[((m4_lastM1PRGBank+(addr&0x1FFF))&m4_prgROMand)+m4_prgROMadd];
+				return m4_prgROM[((m4_lastM1PRGBank+(addr&0x1FFF))&m4_prgROMand)|m4_prgROMadd];
 		}
-		return m4_prgROM[((m4_lastPRGBank+(addr&0x1FFF))&m4_prgROMand)+m4_prgROMadd];
+		return m4_prgROM[((m4_lastPRGBank+(addr&0x1FFF))&m4_prgROMand)|m4_prgROMadd];
 	}
 	return 0;
 }
@@ -248,16 +248,16 @@ uint8_t m4chrGet8(uint16_t addr)
 	if(m4_chr_bank_flip)
 		addr ^= 0x1000;
 	if(addr < 0x800)
-		return m4_chrROM[(((m4_CHRBank[0]<<10)+(addr&0x7FF))&m4_chrROMand)+m4_chrROMadd];
+		return m4_chrROM[(((m4_CHRBank[0]<<10)+(addr&0x7FF))&m4_chrROMand)|m4_chrROMadd];
 	else if(addr < 0x1000)
-		return m4_chrROM[(((m4_CHRBank[1]<<10)+(addr&0x7FF))&m4_chrROMand)+m4_chrROMadd];
+		return m4_chrROM[(((m4_CHRBank[1]<<10)+(addr&0x7FF))&m4_chrROMand)|m4_chrROMadd];
 	else if(addr < 0x1400)
-		return m4_chrROM[(((m4_CHRBank[2]<<10)+(addr&0x3FF))&m4_chrROMand)+m4_chrROMadd];
+		return m4_chrROM[(((m4_CHRBank[2]<<10)+(addr&0x3FF))&m4_chrROMand)|m4_chrROMadd];
 	else if(addr < 0x1800)
-		return m4_chrROM[(((m4_CHRBank[3]<<10)+(addr&0x3FF))&m4_chrROMand)+m4_chrROMadd];
+		return m4_chrROM[(((m4_CHRBank[3]<<10)+(addr&0x3FF))&m4_chrROMand)|m4_chrROMadd];
 	else if(addr < 0x1C00)
-		return m4_chrROM[(((m4_CHRBank[4]<<10)+(addr&0x3FF))&m4_chrROMand)+m4_chrROMadd];
-	return m4_chrROM[(((m4_CHRBank[5]<<10)+(addr&0x3FF))&m4_chrROMand)+m4_chrROMadd];
+		return m4_chrROM[(((m4_CHRBank[4]<<10)+(addr&0x3FF))&m4_chrROMand)|m4_chrROMadd];
+	return m4_chrROM[(((m4_CHRBank[5]<<10)+(addr&0x3FF))&m4_chrROMand)|m4_chrROMadd];
 }
 
 void m4chrSet8(uint16_t addr, uint8_t val)

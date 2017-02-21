@@ -29,7 +29,7 @@
 #define DEBUG_KEY 0
 #define DEBUG_LOAD_INFO 1
 
-static const char *VERSION_STRING = "fixNES Alpha v0.6.1";
+static const char *VERSION_STRING = "fixNES Alpha v0.6.2";
 
 static void nesEmuDisplayFrame(void);
 static void nesEmuMainLoop(void);
