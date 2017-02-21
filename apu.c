@@ -699,7 +699,7 @@ void apuSet8(uint8_t reg, uint8_t val)
 		if(mode5)
 			modeCurCtr = 1;
 		else
-			modeCurCtr = nesPAL ? 7459 : 8315;
+			modeCurCtr = nesPAL ? 8315 : 7459;
 	}
 }
 
