@@ -29,7 +29,7 @@
 #define DEBUG_KEY 0
 #define DEBUG_LOAD_INFO 1
 
-static const char *VERSION_STRING = "fixNES Alpha v0.6.2";
+static const char *VERSION_STRING = "fixNES Alpha v0.6.3";
 
 static void nesEmuDisplayFrame(void);
 static void nesEmuMainLoop(void);
@@ -381,6 +381,7 @@ static void nesEmuDeinit(void)
 
 //used externally
 bool emuSkipVsync = false;
+bool emuSkipFrame = false;
 
 //static int mCycles = 0;
 static bool emuApuDoCycle = false;
@@ -789,6 +790,11 @@ static void nesEmuDisplayFrame()
 {
 	if(emuRenderFrame)
 	{
+		if(emuSkipFrame)
+		{
+			emuRenderFrame = false;
+			return;
+		}
 		if(textureImage != NULL)
 			glTexImage2D(GL_TEXTURE_2D, 0, 4, VISIBLE_DOTS, VISIBLE_LINES, 0, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV, textureImage);
 		emuRenderFrame = false;

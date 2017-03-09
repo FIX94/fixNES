@@ -8,7 +8,7 @@
 #ifndef _apu_h_
 #define _apu_h_
 
-#define NUM_BUFFERS 8
+#define NUM_BUFFERS 10
 
 void apuInitBufs();
 void apuDeinitBufs();

@@ -14,6 +14,7 @@ static uint8_t *p16c8_prgROM;
 static uint8_t *p16c8_chrROM;
 static uint32_t p16c8_prgROMsize;
 static uint32_t p16c8_chrROMsize;
+static uint32_t p16c8_firstPRGBank;
 static uint32_t p16c8_curPRGBank;
 static uint32_t p16c8_curCHRBank;
 static uint32_t p16c8_lastPRGBank;
@@ -28,7 +29,8 @@ void p16c8init(uint8_t *prgROMin, uint32_t prgROMsizeIn,
 	p16c8_prgROMsize = prgROMsizeIn;
 	(void)prgRAMin;
 	(void)prgRAMsizeIn;
-	p16c8_curPRGBank = 0;
+	p16c8_firstPRGBank = 0;
+	p16c8_curPRGBank = p16c8_firstPRGBank;
 	p16c8_lastPRGBank = prgROMsizeIn - 0x4000;
 	if(chrROMsizeIn > 0)
 	{
@@ -54,12 +56,30 @@ uint8_t p16c8get8(uint16_t addr)
 	return p16c8_prgROM[((p16c8_lastPRGBank&~0x3FFF)+(addr&0x3FFF))&(p16c8_prgROMsize-1)];
 }
 
+uint8_t m97_get8(uint16_t addr)
+{
+	if(addr < 0x8000)
+		return 0;
+	if(addr < 0xC000)
+		return p16c8_prgROM[((p16c8_lastPRGBank&~0x3FFF)+(addr&0x3FFF))&(p16c8_prgROMsize-1)];
+	return p16c8_prgROM[((p16c8_curPRGBank&~0x3FFF)+(addr&0x3FFF))&(p16c8_prgROMsize-1)];
+}
+
+uint8_t m180_get8(uint16_t addr)
+{
+	if(addr < 0x8000)
+		return 0;
+	if(addr < 0xC000)
+		return p16c8_prgROM[((p16c8_firstPRGBank&~0x3FFF)+(addr&0x3FFF))&(p16c8_prgROMsize-1)];
+	return p16c8_prgROM[((p16c8_curPRGBank&~0x3FFF)+(addr&0x3FFF))&(p16c8_prgROMsize-1)];
+}
+
 void m2_set8(uint16_t addr, uint8_t val)
 {
 	//printf("p16c8set8 %04x %02x\n", addr, val);
 	if(addr < 0x8000)
 		return;
-	p16c8_curPRGBank = ((val & 15)<<14)&(p16c8_prgROMsize-1);
+	p16c8_curPRGBank = ((val & 0xF)<<14)&(p16c8_prgROMsize-1);
 }
 
 void m70_set8(uint16_t addr, uint8_t val)
@@ -76,20 +96,7 @@ void m71_set8(uint16_t addr, uint8_t val)
 	//printf("p16c8set8 %04x %02x\n", addr, val);
 	if(addr < 0xC000)
 		return;
-	p16c8_curPRGBank = ((val & 15)<<14)&(p16c8_prgROMsize-1);
-}
-
-void m152_set8(uint16_t addr, uint8_t val)
-{
-	//printf("p16c8set8 %04x %02x\n", addr, val);
-	if(addr < 0x8000)
-		return;
-	p16c8_curPRGBank = (((val >> 4)&7)<<14)&(p16c8_prgROMsize-1);
-	p16c8_curCHRBank = ((val & 0xF)<<13)&(p16c8_chrROMsize-1);
-	if((val&0x80) == 0)
-		ppuSetNameTblSingleLower();
-	else
-		ppuSetNameTblSingleUpper();
+	p16c8_curPRGBank = ((val & 0xF)<<14)&(p16c8_prgROMsize-1);
 }
 
 void m78a_set8(uint16_t addr, uint8_t val)
@@ -116,6 +123,58 @@ void m78b_set8(uint16_t addr, uint8_t val)
 		ppuSetNameTblSingleLower();
 	else
 		ppuSetNameTblSingleUpper();
+}
+
+void m94_set8(uint16_t addr, uint8_t val)
+{
+	//printf("p16c8set8 %04x %02x\n", addr, val);
+	if(addr < 0x8000)
+		return;
+	p16c8_curPRGBank = (((val>>2) & 0xF)<<14)&(p16c8_prgROMsize-1);
+}
+
+void m97_set8(uint16_t addr, uint8_t val)
+{
+	//printf("p16c8set8 %04x %02x\n", addr, val);
+	if(addr < 0x8000)
+		return;
+	p16c8_curPRGBank = ((val & 0xF)<<14)&(p16c8_prgROMsize-1);
+	switch(val>>6)
+	{
+		case 0:
+			ppuSetNameTblSingleLower();
+			break;
+		case 1:
+			ppuSetNameTblHorizontal();
+			break;
+		case 2:
+			ppuSetNameTblVertical();
+			break;
+		default: //case 3
+			ppuSetNameTblSingleUpper();
+			break;
+	}
+}
+
+void m152_set8(uint16_t addr, uint8_t val)
+{
+	//printf("p16c8set8 %04x %02x\n", addr, val);
+	if(addr < 0x8000)
+		return;
+	p16c8_curPRGBank = (((val >> 4)&7)<<14)&(p16c8_prgROMsize-1);
+	p16c8_curCHRBank = ((val & 0xF)<<13)&(p16c8_chrROMsize-1);
+	if((val&0x80) == 0)
+		ppuSetNameTblSingleLower();
+	else
+		ppuSetNameTblSingleUpper();
+}
+
+void m180_set8(uint16_t addr, uint8_t val)
+{
+	//printf("p16c8set8 %04x %02x\n", addr, val);
+	if(addr < 0x8000)
+		return;
+	p16c8_curPRGBank = ((val & 0xF)<<14)&(p16c8_prgROMsize-1);
 }
 
 uint8_t p16c8chrGet8(uint16_t addr)

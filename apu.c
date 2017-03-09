@@ -312,7 +312,7 @@ void apuClockTimers()
 static float lastHPOut = 0, lastLPOut = 0;
 static uint8_t lastP1Out = 0, lastP2Out = 0, lastTriOut = 0, lastNoiseOut = 0;
 
-extern bool emuSkipVsync;
+extern bool emuSkipVsync, emuSkipFrame;
 
 int apuCycle()
 {
@@ -321,13 +321,23 @@ int apuCycle()
 		int updateRes = audioUpdate();
 		if(updateRes == 0)
 		{
+			emuSkipFrame = false;
 			emuSkipVsync = false;
 			return 0;
 		}
-		if(updateRes > 4)
+		if(updateRes > 6)
+		{
 			emuSkipVsync = true;
+			emuSkipFrame = true;
+		}
 		else
-			emuSkipVsync = false;
+		{
+			emuSkipFrame = false;
+			if(updateRes > 2)
+				emuSkipVsync = true;
+			else
+				emuSkipVsync = false;
+		}
 		curBufPos = 0;
 	}
 	uint8_t p1Out = lastP1Out, p2Out = lastP2Out, 
