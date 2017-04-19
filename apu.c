@@ -13,6 +13,7 @@
 #include "audio_fds.h"
 #include "audio_mmc5.h"
 #include "audio_vrc6.h"
+#include "audio_vrc7.h"
 #include "audio.h"
 #include "mem.h"
 #include "cpu.h"
@@ -393,7 +394,10 @@ int apuCycle()
 	float curLPout = lastLPOut+(lpVal*(curIn-lastLPOut));
 	float curHPOut = hpVal*(lastHPOut+curLPout-curIn);
 	//set output
-	apuOutBuf[curBufPos] = -curHPOut;
+	if(vrc7enabled)
+		apuOutBuf[curBufPos] = ((((float)vrc7Out)*0.0000019)+(-curHPOut))*0.5f;
+	else
+		apuOutBuf[curBufPos] = -curHPOut;
 	lastLPOut = curLPout;
 	lastHPOut = curHPOut;
 	curBufPos++;

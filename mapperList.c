@@ -23,6 +23,7 @@
 #include "mapper_h/p32c8.h"
 #include "mapper_h/vrc.h"
 #include "mapper_h/vrc6.h"
+#include "mapper_h/vrc7.h"
 #include "mapper.h"
 #include "mapperList.h"
 
@@ -112,7 +113,7 @@ mapperList_t mapperList[256] = {
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
-	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
+	{ vrc7init,		vrc7get8,		vrc7set8,		vrc7chrGet8,	vrc7chrSet8,	vrc7cycle },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
 	{ p8c8init,		p8c8get8,		m87_set8,		p8c8chrGet8,	p8c8chrSet8,	NULL },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },

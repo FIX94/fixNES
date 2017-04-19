@@ -26,6 +26,7 @@ static uint8_t p,a,x,y,s;
 static uint32_t waitCycles;
 static bool reset;
 static bool interrupt;
+static bool cpu_branch_delay;
 //used externally
 bool dmc_interrupt;
 bool mmc5_dmc_interrupt;
@@ -102,6 +103,8 @@ static void cpuRelativeBranch()
 	waitCycles++;
 	if((oldPc&0xFF00) != (pc&0xFF00))
 		waitCycles++;
+	else
+		cpu_branch_delay = true;
 }
 
 static void cpuDummyRead(uint16_t addr, uint8_t val, bool alwaysAddCycle)
@@ -1911,9 +1914,13 @@ bool cpuCycle()
 			return false;
 	}
 	//update interrupt values
-	ppu_nmi_handler_req = ppuNMI();
-	cpu_interrupt_req = (interrupt || ((mapper_interrupt || dmc_interrupt || apu_interrupt || 
-			fds_interrupt || fds_transfer_interrupt || mmc5_dmc_interrupt) && !(p & P_FLAG_IRQ_DISABLE)));
+	if(!cpu_branch_delay)
+	{
+		ppu_nmi_handler_req = ppuNMI();
+		cpu_interrupt_req = (interrupt || ((mapper_interrupt || dmc_interrupt || apu_interrupt || 
+				fds_interrupt || fds_transfer_interrupt || mmc5_dmc_interrupt) && !(p & P_FLAG_IRQ_DISABLE)));
+	}
+	cpu_branch_delay = false;
 	//if(instrPtr > 0xa980 && instrPtr < 0xa9C0) printf("%d %d %d %04x %04x\n",a,x,y,instrPtr,memGet8(instrPtr)|(memGet8(instrPtr+1)<<8));
 	return true;
 }

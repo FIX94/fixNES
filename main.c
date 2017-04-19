@@ -23,13 +23,14 @@
 #include "apu.h"
 #include "audio.h"
 #include "audio_fds.h"
+#include "audio_vrc7.h"
 
 #define DEBUG_HZ 0
 #define DEBUG_MAIN_CALLS 0
 #define DEBUG_KEY 0
 #define DEBUG_LOAD_INFO 1
 
-static const char *VERSION_STRING = "fixNES Alpha v0.6.3";
+static const char *VERSION_STRING = "fixNES Alpha v0.7";
 
 static void nesEmuDisplayFrame(void);
 static void nesEmuMainLoop(void);
@@ -388,6 +389,7 @@ static bool emuApuDoCycle = false;
 
 static int mainClock = 1;
 static int ppuClock = 1;
+static int vrc7Clock = 1;
 
 static void nesEmuMainLoop(void)
 {
@@ -461,6 +463,16 @@ static void nesEmuMainLoop(void)
 			ppuClock++;
 		if(fdsEnabled)
 			fdsAudioMasterUpdate();
+		if(vrc7enabled)
+		{
+			if(vrc7Clock == 432)
+			{
+				vrc7AudioCycle();
+				vrc7Clock = 1;
+			}
+			else
+				vrc7Clock++;
+		}
 	}
 	while(mainLoopPos--);
 	mainLoopPos = mainLoopRuns;

@@ -10,6 +10,7 @@
 #include <inttypes.h>
 #include "../ppu.h"
 #include "../audio_vrc6.h"
+#include "../vrc_irq.h"
 
 static uint8_t *vrc6_prgROM;
 static uint8_t *vrc6_prgRAM;
@@ -24,16 +25,6 @@ static uint32_t vrc6_CHRBank[8];
 static uint8_t vrc6_CHRMode;
 static uint32_t vrc6_prgROMand;
 static uint32_t vrc6_chrROMand;
-static uint8_t vrc6_irqCtr;
-static uint8_t vrc6_irqCurCtr;
-static uint8_t vrc6_irqCurCycleCtr;
-static uint8_t vrc6_scanTblPos;
-static bool vrc6_irq_enabled;
-static bool vrc6_irq_enable_after_ack;
-static bool vrc6_irq_cyclemode;
-extern bool mapper_interrupt;
-
-static uint8_t vrc6_scanTbl[3] = { 113, 113, 112 };
 
 void vrc6init(uint8_t *prgROMin, uint32_t prgROMsizeIn, 
 			uint8_t *prgRAMin, uint32_t prgRAMsizeIn,
@@ -52,13 +43,7 @@ void vrc6init(uint8_t *prgROMin, uint32_t prgROMsizeIn,
 	vrc6_chrROMand = chrROMsizeIn-1;
 	memset(vrc6_CHRBank, 0, 8*sizeof(uint32_t));
 	vrc6_CHRMode = 0;
-	vrc6_irqCtr = 0;
-	vrc6_irqCurCtr = 0;
-	vrc6_irqCurCycleCtr = 0;
-	vrc6_irq_enabled = false;
-	vrc6_irq_enable_after_ack = false;
-	vrc6_irq_cyclemode = false;
-	vrc6_scanTblPos = 0;
+	vrc_irq_init();
 	vrc6AudioInit();
 	printf("VRC6 Mapper inited\n");
 }
@@ -123,32 +108,11 @@ void vrc6set8(uint16_t addr, uint8_t val)
 	else if(addr == 0xE003)
 		vrc6_CHRBank[7] = val;
 	else if(addr == 0xF000)
-		vrc6_irqCtr = val;
+		vrc_irq_setlatch(val);
 	else if(addr == 0xF001)
-	{
-		mapper_interrupt = false;
-		vrc6_irq_enable_after_ack = ((val&1) != 0);
-		vrc6_irq_cyclemode = ((val&4) != 0);
-		if((val&2) != 0)
-		{
-			vrc6_irq_enabled = true;
-			vrc6_irqCurCtr = vrc6_irqCtr;
-			vrc6_irqCurCycleCtr = 0;
-			vrc6_scanTblPos = 0;
-			//printf("vrc6 IRQ Reload with in %02x ctr %i\n", val, vrc6_irqCtr);
-		}
-	}
+		vrc_irq_control(val);
 	else if(addr == 0xF002)
-	{
-		mapper_interrupt = false;
-		if(vrc6_irq_enable_after_ack)
-		{
-			vrc6_irq_enabled = true;
-			//printf("vrc6 ACK IRQ Reload\n");
-		}
-		//else
-		//	printf("vrc6 ACK No Reload\n");
-	}
+		vrc_irq_ack();
 	else
 		vrc6AudioSet8(addr, val);
 }
@@ -237,38 +201,8 @@ void vrc6chrSet8(uint16_t addr, uint8_t val)
 	(void)val;
 }
 
-void vrc6ctrcycle()
-{
-	if(vrc6_irqCurCtr == 0xFF)
-	{
-		if(vrc6_irq_enabled)
-		{
-			//printf("vrc6 Cycle Interrupt\n");
-			mapper_interrupt = true;
-			vrc6_irq_enabled = false;
-		}
-		vrc6_irqCurCtr = vrc6_irqCtr;
-	}
-	else
-		vrc6_irqCurCtr++;
-}
-
 void vrc6cycle()
 {
 	vrc6AudioClockTimers();
-	if(vrc6_irq_cyclemode)
-		vrc6ctrcycle();
-	else
-	{
-		if(vrc6_irqCurCycleCtr >= vrc6_scanTbl[vrc6_scanTblPos])
-		{
-			vrc6ctrcycle();
-			vrc6_scanTblPos++;
-			if(vrc6_scanTblPos >= 3)
-				vrc6_scanTblPos = 0;
-			vrc6_irqCurCycleCtr = 0;
-		}
-		else
-			vrc6_irqCurCycleCtr++;
-	}
+	vrc_irq_cycle();
 }

@@ -9,6 +9,7 @@
 #include <stdbool.h>
 #include <inttypes.h>
 #include "../ppu.h"
+#include "../vrc_irq.h"
 
 static uint8_t *vrc_prgROM;
 static uint8_t *vrc_prgRAM;
@@ -23,17 +24,7 @@ static uint32_t vrc_lastPRGBank;
 static uint32_t vrc_CHRBank[8];
 static uint32_t vrc_prgROMand;
 static uint32_t vrc_chrROMand;
-static uint8_t vrc_irqCtr;
-static uint8_t vrc_irqCurCtr;
-static uint8_t vrc_irqCurCycleCtr;
-static uint8_t vrc_scanTblPos;
-static bool vrc_irq_enabled;
-static bool vrc_irq_enable_after_ack;
-static bool vrc_irq_cyclemode;
 static bool vrc_prg_bank_flip;
-extern bool mapper_interrupt;
-
-static uint8_t vrc_scanTbl[3] = { 113, 113, 112 };
 
 void vrcinit(uint8_t *prgROMin, uint32_t prgROMsizeIn, 
 			uint8_t *prgRAMin, uint32_t prgRAMsizeIn,
@@ -53,13 +44,7 @@ void vrcinit(uint8_t *prgROMin, uint32_t prgROMsizeIn,
 	vrc_chrROMand = chrROMsizeIn-1;
 	memset(vrc_CHRBank, 0, 8*sizeof(uint32_t));
 	vrc_prg_bank_flip = false;
-	vrc_irqCtr = 0;
-	vrc_irqCurCtr = 0;
-	vrc_irqCurCycleCtr = 0;
-	vrc_irq_enabled = false;
-	vrc_irq_enable_after_ack = false;
-	vrc_irq_cyclemode = false;
-	vrc_scanTblPos = 0;
+	vrc_irq_init();
 	printf("VRC Mapper inited\n");
 }
 
@@ -155,34 +140,13 @@ void vrcset8(uint16_t addr, uint8_t val)
 	else if(addr == 0xE003)
 		vrc_CHRBank[7] = (vrc_CHRBank[7]&0xF) | ((val&0x1F)<<4);
 	else if(addr == 0xF000)
-		vrc_irqCtr = (vrc_irqCtr&~0xF) | (val&0xF);
+		vrc_irq_setlatchLo(val);
 	else if(addr == 0xF001)
-		vrc_irqCtr = (vrc_irqCtr&0xF) | ((val&0xF)<<4);
+		vrc_irq_setlatchHi(val);
 	else if(addr == 0xF002)
-	{
-		mapper_interrupt = false;
-		vrc_irq_enable_after_ack = ((val&1) != 0);
-		vrc_irq_cyclemode = ((val&4) != 0);
-		if((val&2) != 0)
-		{
-			vrc_irq_enabled = true;
-			vrc_irqCurCtr = vrc_irqCtr;
-			vrc_irqCurCycleCtr = 0;
-			vrc_scanTblPos = 0;
-			//printf("VRC IRQ Reload with in %02x ctr %i\n", val, vrc_irqCtr);
-		}
-	}
+		vrc_irq_control(val);
 	else if(addr == 0xF003)
-	{
-		mapper_interrupt = false;
-		if(vrc_irq_enable_after_ack)
-		{
-			vrc_irq_enabled = true;
-			//printf("VRC ACK IRQ Reload\n");
-		}
-		//else
-		//	printf("VRC ACK No Reload\n");
-	}
+		vrc_irq_ack();
 }
 
 void m21_set8(uint16_t addr, uint8_t val)
@@ -298,37 +262,7 @@ void vrcchrSet8(uint16_t addr, uint8_t val)
 	(void)val;
 }
 
-void vrcctrcycle()
-{
-	if(vrc_irqCurCtr == 0xFF)
-	{
-		if(vrc_irq_enabled)
-		{
-			//printf("VRC Cycle Interrupt\n");
-			mapper_interrupt = true;
-			vrc_irq_enabled = false;
-		}
-		vrc_irqCurCtr = vrc_irqCtr;
-	}
-	else
-		vrc_irqCurCtr++;
-}
-
 void vrccycle()
 {
-	if(vrc_irq_cyclemode)
-		vrcctrcycle();
-	else
-	{
-		if(vrc_irqCurCycleCtr >= vrc_scanTbl[vrc_scanTblPos])
-		{
-			vrcctrcycle();
-			vrc_scanTblPos++;
-			if(vrc_scanTblPos >= 3)
-				vrc_scanTblPos = 0;
-			vrc_irqCurCycleCtr = 0;
-		}
-		else
-			vrc_irqCurCycleCtr++;
-	}
+	vrc_irq_cycle();
 }

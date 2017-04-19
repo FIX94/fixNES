@@ -16,6 +16,7 @@
 #include "../audio_fds.h"
 #include "../audio_mmc5.h"
 #include "../audio_vrc6.h"
+#include "../audio_vrc7.h"
 
 static uint8_t *nsf_prgROM;
 static uint8_t *nsf_prgRAM;
@@ -33,6 +34,7 @@ static uint8_t nsf_curTrack;
 static bool nsf_bankEnable;
 static bool nsf_playing;
 static bool nsf_init;
+static uint8_t nsf_vrc7_audioReg;
 static uint8_t nsf_init_timeout;
 static uint8_t nsf_chrRAM[0x2000];
 extern bool nesPAL;
@@ -42,6 +44,7 @@ static void nsfInitPlayback()
 {
 	nsf_playing = false;
 	nsf_init = true;
+	nsf_vrc7_audioReg = 0;
 	nsf_init_timeout = 10; //give it a couple frames
 	memset(nsf_prgRAM, 0, nsf_prgRAMsize);
 	memset(nsf_FillRAM, 0, 0x8000);
@@ -70,6 +73,8 @@ void nsfinit(uint8_t *nsfBIN, uint32_t nsfBINsize, uint8_t *prgRAMin, uint32_t p
 	apuInitBufs();
 	if((nsfBIN[0x7B]&1) != 0)
 		vrc6AudioInit();
+	if((nsfBIN[0x7B]&2) != 0)
+		vrc7AudioInit();
 	if((nsfBIN[0x7B]&4) != 0)
 		fdsAudioInit();
 	if((nsfBIN[0x7B]&8) != 0)
@@ -88,8 +93,8 @@ void nsfinit(uint8_t *nsfBIN, uint32_t nsfBINsize, uint8_t *prgRAMin, uint32_t p
 	nsf_curTrack = 1;
 	nsf_trackTotal = nsfBIN[6];
 	memset(nsf_prevValReads, 0, 8);
-	printf("NSF Player inited in %s Mode (VRC6 %s, FDS %s, MMC5 %s) %s banking\n", nesPAL ? "PAL" : "NTSC", 
-		onOff(vrc6enabled), onOff(fdsEnabled), onOff(mmc5enabled), nsf_bankEnable ? "with" : "without");
+	printf("NSF Player inited in %s Mode (VRC6 %s, VRC7 %s, FDS %s, MMC5 %s) %s banking\n", nesPAL ? "PAL" : "NTSC", 
+		onOff(vrc6enabled), onOff(vrc7enabled), onOff(fdsEnabled), onOff(mmc5enabled), nsf_bankEnable ? "with" : "without");
 	if(nsfBIN[0xE] != 0) printf("Playing back %.32s\n", nsfBIN+0xE);
 	printf("Track %i/%i         ", nsf_curTrack, nsf_trackTotal);
 	inputInit();
@@ -272,6 +277,13 @@ void nsfset8(uint16_t addr, uint8_t val)
 								(addr >= 0xA000 && addr <= 0xA002) ||
 								(addr >= 0xB000 && addr <= 0xB002)))
 			vrc6AudioSet8(addr, val);
+		else if(vrc7enabled)
+		{
+			if(addr == 0x9010)
+				nsf_vrc7_audioReg = (val&0x3F);
+			else if(addr == 0x9030)
+				vrc7AudioSet8(nsf_vrc7_audioReg, val);
+		}
 	}
 }
 
