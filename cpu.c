@@ -343,7 +343,7 @@ static void intrBackup()
 
 /* Main CPU Interpreter */
 //static int intrPrintUpdate = 0;
-static int p_irq_req = 0;
+static uint8_t p_irq_req = 0;
 static bool cpu_interrupt_req = false;
 static bool ppu_nmi_handler_req = false;
 //set externally

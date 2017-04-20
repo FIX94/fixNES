@@ -13,6 +13,6 @@ void vrc7AudioCycle();
 void vrc7AudioSet8(uint8_t addr, uint8_t val);
 
 extern bool vrc7enabled;
-extern int vrc7Out;
+extern int32_t vrc7Out;
 
 #endif

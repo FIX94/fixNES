@@ -13,7 +13,7 @@
 void apuInitBufs();
 void apuDeinitBufs();
 void apuInit();
-int apuCycle();
+bool apuCycle();
 void apuClockTimers();
 uint8_t *apuGetBuf();
 uint32_t apuGetBufSize();

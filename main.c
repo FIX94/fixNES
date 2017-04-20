@@ -81,14 +81,14 @@ static DWORD emuMainTotalElapsed = 0;
 #define VISIBLE_DOTS 256
 #define VISIBLE_LINES 240
 
-static const int visibleImg = VISIBLE_DOTS*VISIBLE_LINES*4;
-static int scaleFactor = 2;
+static const uint32_t visibleImg = VISIBLE_DOTS*VISIBLE_LINES*4;
+static uint8_t scaleFactor = 2;
 static bool emuSaveEnabled = false;
 static bool emuFdsHasSideB = false;
-static int mainLoopRuns;
-static int mainLoopPos;
-static int ppuCycleTimer;
-static int cpuCycleTimer;
+static uint16_t mainLoopRuns;
+static uint16_t mainLoopPos;
+static uint16_t ppuCycleTimer;
+static uint16_t cpuCycleTimer;
 //from input.c
 extern uint8_t inValReads[8];
 
@@ -296,7 +296,7 @@ int main(int argc, char** argv)
 	textureImage = malloc(visibleImg);
 	memset(textureImage,0,visibleImg);
 	//make sure image is visible
-	int i;
+	uint32_t i;
 	for(i = 0; i < visibleImg; i+=4)
 		textureImage[i+3] = 0xFF;
 	cpuCycleTimer = nesPAL ? 16 : 12;
@@ -384,12 +384,12 @@ static void nesEmuDeinit(void)
 bool emuSkipVsync = false;
 bool emuSkipFrame = false;
 
-//static int mCycles = 0;
+//static uint32_t mCycles = 0;
 static bool emuApuDoCycle = false;
 
-static int mainClock = 1;
-static int ppuClock = 1;
-static int vrc7Clock = 1;
+static uint16_t mainClock = 1;
+static uint16_t ppuClock = 1;
+static uint16_t vrc7Clock = 1;
 
 static void nesEmuMainLoop(void)
 {

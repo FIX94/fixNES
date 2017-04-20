@@ -19,6 +19,9 @@
 bool fdsEnabled;
 uint8_t fdsOut;
 
+//65536(clock base)*12(ntsc cpu cycle timer)=786432
+static const uint32_t fdsClockDiv = 65536*12;
+
 static uint8_t fds_wave[0x40];
 static uint8_t fds_modulation[0x40];
 static uint8_t fdsCurWavePos, fdsCurModPos;
@@ -42,11 +45,11 @@ static bool fdsWavWrite;
 static void fdsUpdateClockRates()
 {
 	if(fdsFreq && (fdsFreq + fdsModChange))
-		fdsMasterClock = 786432 / (fdsFreq + fdsModChange);
+		fdsMasterClock = fdsClockDiv / (fdsFreq + fdsModChange);
 	else
 		fdsMasterClock = 0;
 	if(fdsModFreq)
-		fdsModClock = 786432 / fdsModFreq;
+		fdsModClock = fdsClockDiv / fdsModFreq;
 	else
 		fdsModClock = 0;
 	fdsVolEnvClock = 8 * fdsEnvSpeed * (fdsVolEnvSpeed + 1);
@@ -81,10 +84,10 @@ void fdsAudioInit()
 	fdsWavWrite = false;
 }
 
-int fdsAudioCycle()
+void fdsAudioCycle()
 {
 	if(fdsWavWrite)
-		return 1;
+		return;
 	if(fdsCurVol > 0x20)
 		fdsCurVol = 0x20;
 	uint16_t tmp = (((fdsCurWave&0x3F)*(fdsCurVol)));
@@ -95,7 +98,6 @@ int fdsAudioCycle()
 	else if(fdsMasterVol == 3)
 		tmp = tmp*12/30;
 	fdsOut = (tmp>>5)&0x3F;
-	return 1;
 }
 
 void fdsAudioClockTimers()
@@ -170,22 +172,22 @@ void fdsAudioMasterUpdate()
 				fdsSweepBias++;
 				break;
 			case 2:
-				fdsSweepBias+=2;
+				fdsSweepBias += 2;
 				break;
 			case 3:
-				fdsSweepBias+=4;
+				fdsSweepBias += 4;
 				break;
 			case 4:
 				fdsSweepBias = 0;
 				break;
 			case 5:
-				fdsSweepBias-=4;
+				fdsSweepBias -= 4;
 				break;
 			case 6:
-				fdsSweepBias-=2;
+				fdsSweepBias -= 2;
 				break;
 			case 7:
-				fdsSweepBias-=1;
+				fdsSweepBias -= 1;
 				break;
 			default:
 				break;
@@ -193,27 +195,35 @@ void fdsAudioMasterUpdate()
 		fdsCurModPos++;
 		if(fdsCurModPos >= 0x40)
 			fdsCurModPos = 0;
-		if(fdsSweepBias&0x40) //7-bit signed
+		if(fdsSweepBias & 0x40) //7-bit signed
 			fdsSweepBias |= 0x80;
 		else
 			fdsSweepBias &= ~0x80;
+		// from https://forums.nesdev.com/viewtopic.php?f=3&t=10233
+		// 1. multiply bias by gain, lose lowest 4 bits of result but "round" in a strange way
 		int16_t temp = fdsSweepBias * fdsSweepGain;
-		if(temp & 0x0F)
+		uint8_t remainder = temp & 0xF;
+		temp >>= 4;
+		if((remainder > 0) && ((temp & 0x80) == 0))
 		{
-			temp /= 16;
-			if(fdsSweepBias < 0)
+			if (fdsSweepBias < 0)
 				temp -= 1;
 			else
 				temp += 2;
 		}
-		else
-			temp /= 16;
-
-		if(temp > 193)
-			temp -= 258;  // not a typo... for some reason the wraps
-		if(temp < -64)
-			temp += 256;  // are inconsistent
-		fdsModChange = fdsFreq * temp / 64;
+		// 2. wrap if a certain range is exceeded
+		if(temp >= 192)
+			temp -= 256;
+		else if(temp < -64)
+			temp += 256;
+		// 3. multiply result by pitch, then round to nearest while dropping 6 bits
+		temp = fdsFreq * temp;
+		remainder = temp & 0x3F;
+		temp >>= 6;
+		if(remainder >= 32)
+			temp += 1;
+		// final mod result is in temp
+		fdsModChange = temp;
 		fdsUpdateClockRates();
 	}
 }

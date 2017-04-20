@@ -9,7 +9,7 @@
 #define _AUDIO_FDS_H_
 
 void fdsAudioInit();
-int fdsAudioCycle();
+void fdsAudioCycle();
 void fdsAudioClockTimers();
 void fdsAudioMasterUpdate();
 void fdsAudioSet8(uint8_t reg, uint8_t val);

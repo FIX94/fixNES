@@ -165,7 +165,7 @@ static inline uint16_t ppuGetVramTbl(uint16_t tblStart)
 	return ppuNameTbl[(tblStart>>10)&3];
 }
 extern bool nesEmuNSFPlayback;
-static int ppuSprite0hit = 0;
+static uint8_t ppuSprite0hit = 0;
 bool ppuCycle()
 {
 	if(nesEmuNSFPlayback)
@@ -216,7 +216,7 @@ bool ppuCycle()
 			}
 			if(curDot == 328)
 			{
-				int i;
+				uint8_t i;
 				for(i = 0; i < 8; i++)
 				{
 					ppuBGAttribRegA <<= 1;

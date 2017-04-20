@@ -159,7 +159,7 @@ void mmc5AudioClockTimers()
 
 static uint8_t mmc5_lastP1Out = 0, mmc5_lastP2Out = 0;
 
-int mmc5AudioCycle()
+void mmc5AudioCycle()
 {
 	uint8_t p1Out = mmc5_lastP1Out, p2Out = mmc5_lastP2Out;
 	if(mmc5_p1LengthCtr && (MMC5_IO_Reg[0x15] & P1_ENABLE))
@@ -177,8 +177,6 @@ int mmc5AudioCycle()
 			p2Out = 0;
 	}
 	mmc5Out = p1Out + p2Out;
-
-	return 1;
 }
 
 void mmc5AudioLenCycle()

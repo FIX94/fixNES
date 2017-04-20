@@ -80,7 +80,7 @@ void nsfinit(uint8_t *nsfBIN, uint32_t nsfBINsize, uint8_t *prgRAMin, uint32_t p
 	if((nsfBIN[0x7B]&8) != 0)
 		mmc5AudioInit();
 	nsf_bankEnable = false;
-	int i;
+	uint8_t i;
 	for(i = 0; i < 8; i++)
 	{
 		nsf_PRGBank[i] = (nsfBIN[0x70+i]<<12);

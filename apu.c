@@ -167,7 +167,7 @@ void apuInitBufs()
 	apuOutBuf = (float*)malloc(apuBufSizeBytes);
 
 	/* https://wiki.nesdev.com/w/index.php/APU_Mixer#Lookup_Table */
-	int i;
+	uint8_t i;
 	for(i = 0; i < 32; i++)
 		pulseLookupTbl[i] = 95.52 / ((8128.0 / i) + 100);
 	for(i = 0; i < 204; i++)
@@ -315,7 +315,7 @@ static uint8_t lastP1Out = 0, lastP2Out = 0, lastTriOut = 0, lastNoiseOut = 0;
 
 extern bool emuSkipVsync, emuSkipFrame;
 
-int apuCycle()
+bool apuCycle()
 {
 	if(curBufPos == apuBufSize)
 	{
@@ -324,7 +324,7 @@ int apuCycle()
 		{
 			emuSkipFrame = false;
 			emuSkipVsync = false;
-			return 0;
+			return false;
 		}
 		if(updateRes > 6)
 		{
@@ -395,14 +395,14 @@ int apuCycle()
 	float curHPOut = hpVal*(lastHPOut+curLPout-curIn);
 	//set output
 	if(vrc7enabled)
-		apuOutBuf[curBufPos] = ((((float)vrc7Out)*0.0000019)+(-curHPOut))*0.5f;
+		apuOutBuf[curBufPos] = ((((float)vrc7Out)*0.0000019f)+(-curHPOut))*0.5f;
 	else
 		apuOutBuf[curBufPos] = -curHPOut;
 	lastLPOut = curLPout;
 	lastHPOut = curHPOut;
 	curBufPos++;
 
-	return 1;
+	return true;
 }
 
 void doEnvelopeLogic(envelope_t *env)
