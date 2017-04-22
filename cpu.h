@@ -11,7 +11,8 @@
 void cpuInit();
 void cpuSetupActionArr();
 void cpuInitNSF(uint16_t addr, uint8_t newA, uint8_t newX);
-uint16_t cpuPlayNSF(uint16_t addr);
+void cpuStartPlayNSF();
+void cpuEndPlayNSF();
 bool cpuCycle();
 void cpuIncWaitCycles(uint32_t inc);
 uint16_t cpuGetPc();

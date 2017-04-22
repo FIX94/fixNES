@@ -28,7 +28,6 @@ static uint32_t nsf_RAMBank[2];
 static uint16_t nsf_loadAddr;
 static uint16_t nsf_initAddr;
 static uint16_t nsf_playAddr;
-static uint16_t nsf_retAddr;
 static uint8_t nsf_trackTotal;
 static uint8_t nsf_curTrack;
 static bool nsf_bankEnable;
@@ -40,9 +39,15 @@ static uint8_t nsf_chrRAM[0x2000];
 extern bool nesPAL;
 static uint8_t nsf_prevValReads[8];
 
+//used externally
+bool nsf_startPlayback;
+bool nsf_endPlayback;
+
 static void nsfInitPlayback()
 {
 	nsf_playing = false;
+	nsf_startPlayback = false;
+	nsf_endPlayback = false;
 	nsf_init = true;
 	nsf_vrc7_audioReg = 0;
 	nsf_init_timeout = 10; //give it a couple frames
@@ -68,7 +73,6 @@ void nsfinit(uint8_t *nsfBIN, uint32_t nsfBINsize, uint8_t *prgRAMin, uint32_t p
 	nsf_loadAddr = (*(uint16_t*)(nsfBIN+0x8))&0x7FFF;
 	nsf_initAddr = *(uint16_t*)(nsfBIN+0xA);
 	nsf_playAddr = *(uint16_t*)(nsfBIN+0xC);
-	nsf_retAddr = 0x456A;
 	nesPAL = ((nsfBIN[0x7A]&1) != 0);
 	apuInitBufs();
 	if((nsfBIN[0x7B]&1) != 0)
@@ -187,13 +191,15 @@ uint8_t nsfget8(uint16_t addr, uint8_t val)
 		if(addr == 0x456A)
 			return 0x4C; //JMP Absolute
 		else if(addr == 0x456B)
-			return (nsf_retAddr&0xFF); //low addr
+			return 0x6A; //low addr, 0x6A
 		else if(addr == 0x456C)
 		{
 			//if(nsf_playing)
 			//	printf("Play return\n");
+			//will end on next CPU_GET_INSTRUCTION state
+			nsf_endPlayback = true;
 			nsf_playing = false;
-			return (nsf_retAddr>>8); //high addr
+			return 0x45; //high addr, 0x456A
 		}
 		return val;
 	}
@@ -343,13 +349,13 @@ void nsfcycle()
 			nsf_init_timeout--;
 			return;
 		}
-		//init finished/timeout or next playback frame
-		uint16_t lastAddr = cpuPlayNSF(nsf_playAddr);
-		//still in init, make sure to jump back to it after play
-		if(nsf_init) //ret used after play RTS
-			nsf_retAddr = lastAddr;
-		else //regular play jump loop
-			nsf_retAddr = 0x456A;
+		//will get started on next CPU_GET_INSTRUCTION state
+		nsf_startPlayback = true;
 		nsf_playing = true;
 	}
+}
+
+uint16_t nsfGetPlayAddr()
+{
+	return nsf_playAddr;
 }

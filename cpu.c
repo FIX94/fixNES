@@ -12,6 +12,7 @@
 #include "ppu.h"
 #include "apu.h"
 #include "cpu.h"
+#include "mapper_h/nsf.h"
 
 #define P_FLAG_CARRY (1<<0)
 #define P_FLAG_ZERO (1<<1)
@@ -710,12 +711,107 @@ void cpuSetupActionArr()
 	cpu_actions_arr[0xFC] = NULL; cpu_actions_arr[0xFD] = cpuSBC; cpu_actions_arr[0xFE] = cpuINCt; cpu_actions_arr[0xFF] = cpuISC;
 }
 
-/* Main CPU Interpreter */
+/* Do all IRQ related updates */
 //static int intrPrintUpdate = 0;
 static bool cpu_interrupt_req = false;
 static bool ppu_nmi_handler_req = false;
 //set externally
 bool mapper_interrupt = false;
+static bool cpuHandleIrqUpdates()
+{
+	//handle incoming IRQs
+	if(reset)
+	{
+		cpu_action_arr = cpu_reset_arr;
+		cpu_arr_pos = 0;
+		cpu_action_func = NULL;
+		reset = false;
+		return true;
+	}
+	else if(ppu_nmi_handler_req)
+	{
+		cpu_action_arr = cpu_nmi_arr;
+		cpu_arr_pos = 0;
+		cpu_action_func = NULL;
+		#if DEBUG_INTR
+		printf("NMI from p %02x pc %04x\n",p,pc);
+		#endif
+		ppu_nmi_handler_req = false;
+		return true;
+	}
+	else if(cpu_interrupt_req)
+	{
+		cpu_action_arr = cpu_irq_arr;
+		cpu_arr_pos = 0;
+		cpu_action_func = NULL;
+		#if DEBUG_INTR
+		printf("INTR %d %d %d from p %02x pc %04x\n",interrupt,dmc_interrupt,apu_interrupt,p,pc);
+		#endif
+		if(interrupt)
+			interrupt = false;
+		if(fds_transfer_interrupt)
+			fds_transfer_interrupt = false;
+		return true;
+	}
+	//update irq flag if requested
+	if(p_irq_req)
+	{
+		if(p_irq_req == 1)
+		{
+			#if DEBUG_INTR
+			printf("Setting irq disable %02x %02x %d %d %d %d\n", p, P_FLAG_IRQ_DISABLE, cpu_interrupt_req, apu_interrupt, 
+				!(p & P_FLAG_IRQ_DISABLE), (p & P_FLAG_IRQ_DISABLE) == 0);
+			#endif
+			p |= P_FLAG_IRQ_DISABLE;
+		}
+		else
+		{
+			#if DEBUG_INTR
+			printf("Clearing irq disable %02x %02x %d %d %d %d\n", p, P_FLAG_IRQ_DISABLE, cpu_interrupt_req, apu_interrupt, 
+				!(p & P_FLAG_IRQ_DISABLE), (p & P_FLAG_IRQ_DISABLE) == 0);
+			#endif
+			p &= ~P_FLAG_IRQ_DISABLE;
+		}
+		p_irq_req = 0;
+	}
+	//acts similar to an irq
+	if(nsf_startPlayback)
+	{
+		cpuStartPlayNSF();
+		nsf_startPlayback = false;
+	}
+	else if(nsf_endPlayback)
+	{
+		cpuEndPlayNSF();
+		nsf_endPlayback = false;
+	}
+	return false;
+}
+
+static void cpuSetAddrIndFix()
+{
+	//first read will be at wrong pos
+	//so let cpu know it needs fixup
+	if((absAddr&0xFF00) != (indVal&0xFF00))
+	{
+		//printf("%04x %04x\n", absAddr, indVal);
+		needsIndFix = true;
+	}
+}
+
+static bool cpuDoAddrIndFix()
+{
+	if(needsIndFix)
+	{
+		absAddr = indVal;
+		needsIndFix = false;
+		return true;
+	}
+	else
+		return false;
+}
+
+/* Main CPU Interpreter */
 //int testCounter = 0;
 bool cpuCycle()
 {
@@ -733,68 +829,16 @@ bool cpuCycle()
 		cpu_oam_dma--;
 		return true;
 	}
-	uint8_t instr;
-	int cpu_action;
+	uint8_t instr, cpu_action;
 doaction:
 	cpu_action = cpu_action_arr[cpu_arr_pos];
 	cpu_arr_pos++;
 	switch(cpu_action)
 	{
 		case CPU_GET_INSTRUCTION:
-			if(reset)
-			{
-				cpu_action_arr = cpu_reset_arr;
-				cpu_arr_pos = 0;
-				cpu_action_func = NULL;
-				reset = false;
+			//if IRQ occurs end this cycle early
+			if(cpuHandleIrqUpdates())
 				break;
-			}
-			//update irq flag if requested
-			if(p_irq_req)
-			{
-				if(p_irq_req == 1)
-				{
-					#if DEBUG_INTR
-					printf("Setting irq disable %02x %02x %d %d %d %d\n", p, P_FLAG_IRQ_DISABLE, cpu_interrupt_req, apu_interrupt, 
-						!(p & P_FLAG_IRQ_DISABLE), (p & P_FLAG_IRQ_DISABLE) == 0);
-					#endif
-					p |= P_FLAG_IRQ_DISABLE;
-				}
-				else
-				{
-					#if DEBUG_INTR
-					printf("Clearing irq disable %02x %02x %d %d %d %d\n", p, P_FLAG_IRQ_DISABLE, cpu_interrupt_req, apu_interrupt, 
-						!(p & P_FLAG_IRQ_DISABLE), (p & P_FLAG_IRQ_DISABLE) == 0);
-					#endif
-					p &= ~P_FLAG_IRQ_DISABLE;
-				}
-				p_irq_req = 0;
-			}
-			if(ppu_nmi_handler_req)
-			{
-				cpu_action_arr = cpu_nmi_arr;
-				cpu_arr_pos = 0;
-				cpu_action_func = NULL;
-				#if DEBUG_INTR
-				printf("NMI from p %02x pc %04x\n",p,pc);
-				#endif
-				ppu_nmi_handler_req = false;
-				break;
-			}
-			else if(cpu_interrupt_req)
-			{
-				cpu_action_arr = cpu_irq_arr;
-				cpu_arr_pos = 0;
-				cpu_action_func = NULL;
-				#if DEBUG_INTR
-				printf("INTR %d %d %d from p %02x pc %04x\n",interrupt,dmc_interrupt,apu_interrupt,p,pc);
-				#endif
-				if(interrupt)
-					interrupt = false;
-				if(fds_transfer_interrupt)
-					fds_transfer_interrupt = false;
-				break;
-			}
 		case CPU_GET_INSTRUCTION_IRQSKIP:
 			instr = memGet8(pc);
 			cpu_action_arr = cpu_instr_arr[instr];
@@ -848,13 +892,7 @@ doaction:
 			break;
 		case CPU_ADDRH_READ8_PC_INC_ADDX:
 			indVal = absAddr + x;
-			//first read will be at wrong pos
-			//so let cpu know it needs fixup
-			if((absAddr&0xFF00) != (indVal&0xFF00))
-			{
-				//printf("%04x %04x\n", absAddr, indVal);
-				needsIndFix = true;
-			}
+			cpuSetAddrIndFix();
 			absAddr += x;
 			absAddr &= 0xFF;
 			absAddr |= (memGet8(pc++)<<8);
@@ -862,13 +900,7 @@ doaction:
 			break;
 		case CPU_ADDRH_READ8_PC_INC_ADDY:
 			indVal = absAddr + y;
-			//first read will be at wrong pos
-			//so let cpu know it needs fixup
-			if((absAddr&0xFF00) != (indVal&0xFF00))
-			{
-				//printf("%04x %04x\n", absAddr, indVal);
-				needsIndFix = true;
-			}
+			cpuSetAddrIndFix();
 			absAddr += y;
 			absAddr &= 0xFF;
 			absAddr |= (memGet8(pc++)<<8);
@@ -897,13 +929,7 @@ doaction:
 			break;
 		case CPU_ADDRH_READ8_TMP_ADDY:
 			indVal = absAddr + y;
-			//first read will be at wrong pos
-			//so let cpu know it needs fixup
-			if((absAddr&0xFF00) != (indVal&0xFF00))
-			{
-				//printf("%04x %04x\n", absAddr, indVal);
-				needsIndFix = true;
-			}
+			cpuSetAddrIndFix();
 			absAddr += y;
 			absAddr &= 0xFF;
 			absAddr |= (memGet8(cpuTmp)<<8);
@@ -919,19 +945,13 @@ doaction:
 			break;
 		case CPU_ADDR_READ8_ACTION_CHK:
 			cpuTmp = memGet8(absAddr);
-			if(!needsIndFix)
+			if(!cpuDoAddrIndFix())
 			{
 				if(cpu_action_func)
 					cpu_action_func();
 				//only execute extra cycle
 				//if fixup is needed
 				cpu_arr_pos++;
-			}
-			else
-			{
-				//printf("CPU_ADDR_READ8_ACTION_CHK %04x to %04x\n", absAddr, indVal);
-				absAddr = indVal;
-				needsIndFix = false;
 			}
 			break;
 		case CPU_INC_PAGE_ADDR_READ8_SET_PC:
@@ -945,12 +965,7 @@ doaction:
 			break;
 		case CPU_ADDR_READ8_CHK:
 			cpuTmp = memGet8(absAddr);
-			if(needsIndFix)
-			{
-				//printf("CPU_ADDR_READ8_CHK %04x to %04x\n", absAddr, indVal);
-				absAddr = indVal;
-				needsIndFix = false;
-			}
+			cpuDoAddrIndFix();
 			break;
 		case CPU_NULL_READ8_S:
 			memGet8(s);
@@ -1173,7 +1188,11 @@ uint16_t cpuGetPc()
 	return pc;
 }
 
-uint16_t cpuPlayNSF(uint16_t addr)
+/* .nsf Playback Handlers */
+static uint16_t pc_nsf_bak;
+static uint8_t p_nsf_bak;
+
+void cpuStartPlayNSF()
 {
 	//used in NSF mapper to detect play return
 	uint16_t absAddr = 0x456A-1;
@@ -1181,12 +1200,23 @@ uint16_t cpuPlayNSF(uint16_t addr)
 	s--;
 	memSet8(0x100+s,absAddr&0xFF);
 	s--;
-	uint16_t lastAddr = pc;
-	pc = addr; //jump to play
+	//back up old PC and P
+	pc_nsf_bak = pc;
+	p_nsf_bak = p;
+	pc = nsfGetPlayAddr(); //jump to play
 	cpu_action_arr = cpu_start_arr;
 	cpu_arr_pos = 0;
-	//printf("Playback at %04x\n", addr);
-	return lastAddr;
+	//printf("Playback Start at %04x\n", pc);
+}
+
+void cpuEndPlayNSF()
+{
+	//restore old PC and P
+	pc = pc_nsf_bak;
+	p = p_nsf_bak;
+	cpu_action_arr = cpu_start_arr;
+	cpu_arr_pos = 0;
+	//printf("Playback End at %04x\n", pc);
 }
 
 void cpuInitNSF(uint16_t addr, uint8_t newA, uint8_t newX)
@@ -1220,5 +1250,7 @@ void cpuInitNSF(uint16_t addr, uint8_t newA, uint8_t newX)
 	pc = addr;
 	cpu_action_arr = cpu_start_arr;
 	cpu_arr_pos = 0;
+	nsf_startPlayback = false;
+	nsf_endPlayback = false;
 	//printf("Init at %04x\n", addr);
 }
