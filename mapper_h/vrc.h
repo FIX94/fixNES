@@ -11,7 +11,7 @@
 void vrcinit(uint8_t *prgROM, uint32_t prgROMsize, 
 			uint8_t *prgRAM, uint32_t prgRAMsize,
 			uint8_t *chrROM, uint32_t chrROMsize);
-uint8_t vrcget8(uint16_t addr);
+uint8_t vrcget8(uint16_t addr, uint8_t val);
 void m21_set8(uint16_t addr, uint8_t val);
 void m22_set8(uint16_t addr, uint8_t val);
 void m23_set8(uint16_t addr, uint8_t val);

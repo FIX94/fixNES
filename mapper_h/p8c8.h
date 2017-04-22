@@ -11,7 +11,7 @@
 void p8c8init(uint8_t *prgROM, uint32_t prgROMsize, 
 			uint8_t *prgRAM, uint32_t prgRAMsize, 
 			uint8_t *chrROM, uint32_t chrROMsize);
-uint8_t p8c8get8(uint16_t addr);
+uint8_t p8c8get8(uint16_t addr, uint8_t val);
 void m3_set8(uint16_t addr, uint8_t val);
 void m87_set8(uint16_t addr, uint8_t val);
 void m99_set8(uint16_t addr, uint8_t val);

@@ -10,7 +10,7 @@
 
 void nsfinit(uint8_t *nsfBIN, uint32_t nsfBINsize,
 			uint8_t *prgRAM, uint32_t prgRAMsize);
-uint8_t nsfget8(uint16_t addr);
+uint8_t nsfget8(uint16_t addr, uint8_t val);
 void nsfset8(uint16_t addr, uint8_t val);
 uint8_t nsfchrGet8(uint16_t addr);
 void nsfchrSet8(uint16_t addr, uint8_t val);

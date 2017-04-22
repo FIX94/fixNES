@@ -77,7 +77,7 @@ void m48init(uint8_t *prgROMin, uint32_t prgROMsizeIn,
 	printf("Mapper 33/48 inited\n");
 }
 
-uint8_t m48get8(uint16_t addr)
+uint8_t m48get8(uint16_t addr, uint8_t val)
 {
 	if(addr >= 0x6000 && addr < 0x8000)
 		return m48_prgRAM[addr&0x1FFF];
@@ -91,7 +91,7 @@ uint8_t m48get8(uint16_t addr)
 			return m48_prgROM[((m48_lastM1PRGBank+(addr&0x1FFF))&m48_prgROMand)+m48_prgROMadd];
 		return m48_prgROM[((m48_lastPRGBank+(addr&0x1FFF))&m48_prgROMand)+m48_prgROMadd];
 	}
-	return 0;
+	return val;
 }
 
 void m33set8(uint16_t addr, uint8_t val)

@@ -47,28 +47,28 @@ void p16c8init(uint8_t *prgROMin, uint32_t prgROMsizeIn,
 	printf("16k PRG 8k CHR Mapper inited\n");
 }
 
-uint8_t p16c8get8(uint16_t addr)
+uint8_t p16c8get8(uint16_t addr, uint8_t val)
 {
 	if(addr < 0x8000)
-		return 0;
+		return val;
 	if(addr < 0xC000)
 		return p16c8_prgROM[((p16c8_curPRGBank&~0x3FFF)+(addr&0x3FFF))&(p16c8_prgROMsize-1)];
 	return p16c8_prgROM[((p16c8_lastPRGBank&~0x3FFF)+(addr&0x3FFF))&(p16c8_prgROMsize-1)];
 }
 
-uint8_t m97_get8(uint16_t addr)
+uint8_t m97_get8(uint16_t addr, uint8_t val)
 {
 	if(addr < 0x8000)
-		return 0;
+		return val;
 	if(addr < 0xC000)
 		return p16c8_prgROM[((p16c8_lastPRGBank&~0x3FFF)+(addr&0x3FFF))&(p16c8_prgROMsize-1)];
 	return p16c8_prgROM[((p16c8_curPRGBank&~0x3FFF)+(addr&0x3FFF))&(p16c8_prgROMsize-1)];
 }
 
-uint8_t m180_get8(uint16_t addr)
+uint8_t m180_get8(uint16_t addr, uint8_t val)
 {
 	if(addr < 0x8000)
-		return 0;
+		return val;
 	if(addr < 0xC000)
 		return p16c8_prgROM[((p16c8_firstPRGBank&~0x3FFF)+(addr&0x3FFF))&(p16c8_prgROMsize-1)];
 	return p16c8_prgROM[((p16c8_curPRGBank&~0x3FFF)+(addr&0x3FFF))&(p16c8_prgROMsize-1)];

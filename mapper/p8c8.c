@@ -36,13 +36,17 @@ void p8c8init(uint8_t *prgROMin, uint32_t prgROMsizeIn,
 	printf("8k PRG 8k CHR Mapper inited\n");
 }
 
-uint8_t p8c8get8(uint16_t addr)
+uint8_t p8c8get8(uint16_t addr, uint8_t val)
 {
-	if(addr < 0x8000)
+	if(addr >= 0x6000 && addr < 0x8000)
 		return p8c8_prgRAM[addr&0x1FFF];
-	if(addr < 0xA000)
-		return p8c8_prgROM[(p8c8_curPRGBank+(addr&0x1FFF))&(p8c8_prgROMsize-1)];
-	return p8c8_prgROM[addr&(p8c8_prgROMsize-1)];
+	else if(addr >= 0x8000)
+	{
+		if(addr < 0xA000)
+			return p8c8_prgROM[(p8c8_curPRGBank+(addr&0x1FFF))&(p8c8_prgROMsize-1)];
+		return p8c8_prgROM[addr&(p8c8_prgROMsize-1)];
+	}
+	return val;
 }
 
 void m3_set8(uint16_t addr, uint8_t val)

@@ -436,18 +436,24 @@ void doEnvelopeLogic(envelope_t *env)
 void sweepUpdateFreq(sweep_t *sw, uint16_t *freq)
 {
 	uint16_t inFreq = *freq;
-	if(sw->negative)
+	if(sw->shift > 0)
 	{
-		inFreq -= (inFreq >> sw->shift);
-		if(sw->chan1 == true) inFreq--;
+		if(sw->negative)
+		{
+			inFreq -= (inFreq >> sw->shift);
+			if(sw->chan1 == true) inFreq--;
+		}
+		else
+			inFreq += (inFreq >> sw->shift);
 	}
-	else
-		inFreq += (inFreq >> sw->shift);
-	//if(inFreq > 8 && (inFreq < 0x7FF))
+	if(inFreq > 8 && (inFreq < 0x7FF))
 	{
+		sw->mute = false;
 		if(sw->enabled && sw->shift)
 			*freq = inFreq;
 	}
+	else
+		sw->mute = true;
 }
 
 void doSweepLogic(sweep_t *sw, uint16_t *freq)
@@ -591,7 +597,7 @@ void apuSet8(uint8_t reg, uint8_t val)
 		if(APU_IO_Reg[0x15] & P1_ENABLE)
 			p1LengthCtr = lengthLookupTbl[val>>3];
 		freq1 = (freq1&0xFF) | ((val&7)<<8);
-		//printf("P1 new freq %04x\n", freq2);
+		//printf("P1 new freq %04x\n", freq1);
 		p1Env.start = true;
 	}
 	else if(reg == 4)
@@ -723,9 +729,10 @@ uint8_t apuGet8(uint8_t reg)
 	if(reg == 0x15)
 	{
 		uint8_t intrflags = ((apu_interrupt<<6) | (dmc_interrupt<<7));
-		//printf("Get 0x15 %02x\n",intrflags);
+		uint8_t apuretval = ((p1LengthCtr > 0) | ((p2LengthCtr > 0)<<1) | ((triLengthCtr > 0)<<2) | ((noiseLengthCtr > 0)<<3) | ((dmcCurLen > 0)<<4) | intrflags);
+		//printf("Get 0x15 %02x\n",apuretval);
 		apu_interrupt = false;
-		return ((p1LengthCtr > 0) | ((p2LengthCtr > 0)<<1) | ((triLengthCtr > 0)<<2) | ((noiseLengthCtr > 0)<<3) | ((dmcCurLen > 0)<<4) | intrflags);
+		return apuretval;
 	}
 	return APU_IO_Reg[reg];
 }

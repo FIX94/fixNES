@@ -38,10 +38,10 @@ void m7init(uint8_t *prgROMin, uint32_t prgROMsizeIn,
 	printf("Mapper 7 inited\n");
 }
 
-uint8_t m7get8(uint16_t addr)
+uint8_t m7get8(uint16_t addr, uint8_t val)
 {
 	if(addr < 0x8000)
-		return 0;
+		return val;
 	return m7_prgROM[(m7_curPRGBank&~0x7FFF)+(addr&0x7FFF)];
 }
 

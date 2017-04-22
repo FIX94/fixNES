@@ -453,7 +453,7 @@ ppuIncreasePos:
 		ppuSprite0hit--;
 	/* VBlank start at first dot after post-render line */
 	/* Though results are better when starting it a bit later */
-	if(curDot == 8 && curLine == 241)
+	if(curDot == 5 && curLine == 241)
 	{
 		ppuNMITriggered = false;
 		if(!ppuReadReg2)

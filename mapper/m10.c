@@ -46,10 +46,10 @@ void m10init(uint8_t *prgROMin, uint32_t prgROMsizeIn,
 	printf("Mapper 10 inited, last bank=%04x\n", m10_lastPRGBank);
 }
 
-uint8_t m10get8(uint16_t addr)
+uint8_t m10get8(uint16_t addr, uint8_t val)
 {
 	if(addr < 0x6000)
-		return 0;
+		return val;
 	else if(addr < 0x8000)
 		return m10_prgRAM[addr&0x1FFF];
 	else

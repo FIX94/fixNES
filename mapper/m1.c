@@ -60,7 +60,7 @@ void m1init(uint8_t *prgROMin, uint32_t prgROMsizeIn,
 	printf("Mapper 1 inited, last bank=%04x sr=%02x\n", m1_lastPRGBank, m1_sr);
 }
 
-uint8_t m1get8(uint16_t addr)
+uint8_t m1get8(uint16_t addr, uint8_t val)
 {
 	if(addr >= 0x6000 && addr < 0x8000)
 		return m1_prgRAM[addr&0x1FFF];
@@ -83,7 +83,7 @@ uint8_t m1get8(uint16_t addr)
 			return m1_prgROM[(m1_curPRGBank&~0x3FFF)+(addr&0x3FFF)+m1_256KPRGBank];
 		}
 	}
-	return 0;
+	return val;
 }
 
 extern bool cpuWriteTMP;

@@ -90,7 +90,7 @@ void fdsinit(uint8_t *fdsBIOS, uint32_t fdsBIOSsize, uint8_t *fdsFile, bool fdsS
 	printf("FDS Inited\n");
 }
 
-uint8_t fdsget8(uint16_t addr)
+uint8_t fdsget8(uint16_t addr, uint8_t val)
 {
 	//printf("fdsget8 %04x\n", addr);
 	if(addr < 0x6000)
@@ -119,7 +119,7 @@ uint8_t fdsget8(uint16_t addr)
 			return fdsAudioGetWave(addr&0x3F);
 		else if(addr == 0x4090 || addr == 0x4092)
 			return fdsAudioGet8(addr&3);
-		return 0;
+		return val;
 	}
 	else //if addr >= 0x6000
 	{

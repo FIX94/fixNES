@@ -48,16 +48,16 @@ void p32c8init(uint8_t *prgROMin, uint32_t prgROMsizeIn,
 	printf("32k PRG 8k CHR Mapper inited\n");
 }
 
-uint8_t p32c8get8(uint16_t addr)
+uint8_t p32c8get8(uint16_t addr, uint8_t val)
 {
 	if(addr >= 0x6000 && addr < 0x8000 && p32c8_prgRAMsize)
 		return p32c8_prgRAM[addr&0x1FFF];
 	else if(addr >= 0x8000)
 		return p32c8_prgROM[((p32c8_curPRGBank&~0x7FFF)+(addr&0x7FFF))&(p32c8_prgROMsize-1)];
-	return 0;
+	return val;
 }
 
-uint8_t m36_p32c8get8(uint16_t addr)
+uint8_t m36_p32c8get8(uint16_t addr, uint8_t val)
 {
 	uint16_t maskedAddr = (addr & 0xE103);
 	if(maskedAddr >= 0x4100 && maskedAddr < 0x4104)
@@ -66,7 +66,7 @@ uint8_t m36_p32c8get8(uint16_t addr)
 		return p32c8_prgRAM[addr&0x1FFF];
 	else if(addr >= 0x8000)
 		return p32c8_prgROM[((p32c8_curPRGBank&~0x7FFF)+(addr&0x7FFF))&(p32c8_prgROMsize-1)];
-	return 0;
+	return val;
 }
 
 void m0_set8(uint16_t addr, uint8_t val)

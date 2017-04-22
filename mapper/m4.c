@@ -81,7 +81,7 @@ void m4init(uint8_t *prgROMin, uint32_t prgROMsizeIn,
 	printf("Mapper 4 inited\n");
 }
 
-uint8_t m4get8(uint16_t addr)
+uint8_t m4get8(uint16_t addr, uint8_t val)
 {
 	if(addr >= 0x6000 && addr < 0x8000)
 		return m4_prgRAM[addr&0x1FFF];
@@ -105,7 +105,7 @@ uint8_t m4get8(uint16_t addr)
 		}
 		return m4_prgROM[((m4_lastPRGBank+(addr&0x1FFF))&m4_prgROMand)|m4_prgROMadd];
 	}
-	return 0;
+	return val;
 }
 
 extern bool cpuWriteTMP;

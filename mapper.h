@@ -9,7 +9,7 @@
 #define _mapper_h_
 
 typedef void (*initFuncT)(uint8_t*, uint32_t, uint8_t*, uint32_t, uint8_t*, uint32_t);
-typedef uint8_t (*get8FuncT)(uint16_t);
+typedef uint8_t (*get8FuncT)(uint16_t, uint8_t);
 typedef void (*set8FuncT)(uint16_t, uint8_t);
 typedef uint8_t (*chrGet8FuncT)(uint16_t);
 typedef void (*chrSet8FuncT)(uint16_t, uint8_t);

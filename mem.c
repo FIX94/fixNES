@@ -29,7 +29,7 @@ uint8_t memGet8(uint16_t addr)
 	uint8_t val = memLastVal;
 	//printf("memGet8 %04x\n", addr);
 	if(addr >= 0x4020)
-		val = mapperGet8(addr);
+		val = mapperGet8(addr, memLastVal);
 	else if(addr >= 0x4000)
 	{
 		if(addr == 0x4015)
@@ -51,6 +51,7 @@ uint8_t memGet8(uint16_t addr)
 	return val;
 }
 extern uint32_t cpu_oam_dma;
+extern bool cpu_odd_cycle;
 void memSet8(uint16_t addr, uint8_t val)
 {
 	//printf("memSet8 %04x %02x\n", addr, val);
@@ -65,7 +66,7 @@ void memSet8(uint16_t addr, uint8_t val)
 			uint16_t dmaAddr = (val<<8);
 			//printf("ppuLoadOAM %04x\n", dmaAddr);
 			if(!fm2playRunning() || (fm2playRunning() && fm2playWaitDMAcycles()))
-				cpu_oam_dma = 514;
+				cpu_oam_dma = (cpu_odd_cycle ? 514 : 513);
 			uint16_t i;
 			if(dmaAddr < 0x2000)
 			{
@@ -75,7 +76,7 @@ void memSet8(uint16_t addr, uint8_t val)
 			else if(dmaAddr >= 0x6000)
 			{
 				for(i = 0; i < 0x100; i++)
-					ppuLoadOAM(mapperGet8(dmaAddr+i));
+					ppuLoadOAM(mapperGet8(dmaAddr+i, memLastVal));
 			}
 			else
 				printf("WARNING: Invalid ppuLoadOAM at %04x!\n", dmaAddr);

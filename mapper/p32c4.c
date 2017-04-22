@@ -46,13 +46,13 @@ void p32c4init(uint8_t *prgROMin, uint32_t prgROMsizeIn,
 	printf("32k PRG 4k CHR Mapper inited\n");
 }
 
-uint8_t p32c4get8(uint16_t addr)
+uint8_t p32c4get8(uint16_t addr, uint8_t val)
 {
 	if(addr >= 0x6000 && addr < 0x8000 && p32c4_prgRAMsize)
 		return p32c4_prgRAM[addr&0x1FFF];
 	else if(addr >= 0x8000)
 		return p32c4_prgROM[((p32c4_curPRGBank&~0x7FFF)+(addr&0x7FFF))&(p32c4_prgROMsize-1)];
-	return 0;
+	return val;
 }
 
 void p32c4set8(uint16_t addr, uint8_t val)

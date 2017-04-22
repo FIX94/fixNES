@@ -60,7 +60,7 @@ void vrc7init(uint8_t *prgROMin, uint32_t prgROMsizeIn,
 	printf("vrc7 Mapper inited\n");
 }
 
-uint8_t vrc7get8(uint16_t addr)
+uint8_t vrc7get8(uint16_t addr, uint8_t val)
 {
 	if(addr >= 0x6000 && addr < 0x8000)
 		return vrc7_prgRAM[addr&0x1FFF];
@@ -74,7 +74,7 @@ uint8_t vrc7get8(uint16_t addr)
 			return vrc7_prgROM[(((vrc7_curPRGBank2<<13)+(addr&0x1FFF))&vrc7_prgROMand)];
 		return vrc7_prgROM[((vrc7_lastPRGBank+(addr&0x1FFF))&vrc7_prgROMand)];
 	}
-	return 0;
+	return val;
 }
 
 void vrc7set8(uint16_t addr, uint8_t val)

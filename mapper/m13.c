@@ -29,10 +29,10 @@ void m13init(uint8_t *prgROMin, uint32_t prgROMsizeIn,
 	printf("Mapper 13 inited\n");
 }
 
-uint8_t m13get8(uint16_t addr)
+uint8_t m13get8(uint16_t addr, uint8_t val)
 {
 	if(addr < 0x8000)
-		return 0;
+		return val;
 	if(m13_prgROMsize == 0x8000)
 		return m13_prgROM[addr&0x7FFF];
 	return m13_prgROM[addr&0x3FFF];

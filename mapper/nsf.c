@@ -148,7 +148,7 @@ static uint32_t nsfgetromAddr(uint16_t addr)
 static uint8_t nsf_mmc5_mul1 = 0, nsf_mmc5_mul2 = 0;
 static uint16_t nsf_mmc5_mulRes = 0;
 
-uint8_t nsfget8(uint16_t addr)
+uint8_t nsfget8(uint16_t addr, uint8_t val)
 {
 	//printf("nsfget8 %04x\n", addr);
 	if(addr < 0x6000)
@@ -195,7 +195,7 @@ uint8_t nsfget8(uint16_t addr)
 			nsf_playing = false;
 			return (nsf_retAddr>>8); //high addr
 		}
-		return 0;
+		return val;
 	}
 	else 
 	{

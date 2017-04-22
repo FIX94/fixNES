@@ -11,7 +11,7 @@
 void m1init(uint8_t *prgROM, uint32_t prgROMsize, 
 			uint8_t *prgRAM, uint32_t prgRAMsize, 
 			uint8_t *chrROM, uint32_t chrROMsize);
-uint8_t m1get8(uint16_t addr);
+uint8_t m1get8(uint16_t addr, uint8_t val);
 void m1set8(uint16_t addr, uint8_t val);
 uint8_t m1chrGet8(uint16_t addr);
 void m1chrSet8(uint16_t addr, uint8_t val);

@@ -48,7 +48,7 @@ void vrc6init(uint8_t *prgROMin, uint32_t prgROMsizeIn,
 	printf("VRC6 Mapper inited\n");
 }
 
-uint8_t vrc6get8(uint16_t addr)
+uint8_t vrc6get8(uint16_t addr, uint8_t val)
 {
 	if(addr >= 0x6000 && addr < 0x8000)
 		return vrc6_prgRAM[addr&0x1FFF];
@@ -60,7 +60,7 @@ uint8_t vrc6get8(uint16_t addr)
 			return vrc6_prgROM[(((vrc6_curPRGBank1<<13)+(addr&0x1FFF))&vrc6_prgROMand)];
 		return vrc6_prgROM[((vrc6_lastPRGBank+(addr&0x1FFF))&vrc6_prgROMand)];
 	}
-	return 0;
+	return val;
 }
 
 void vrc6set8(uint16_t addr, uint8_t val)

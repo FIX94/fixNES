@@ -11,6 +11,7 @@
 #include "mem.h"
 #include "ppu.h"
 #include "apu.h"
+#include "cpu.h"
 
 #define P_FLAG_CARRY (1<<0)
 #define P_FLAG_ZERO (1<<1)
@@ -21,23 +22,29 @@
 #define P_FLAG_OVERFLOW (1<<6)
 #define P_FLAG_NEGATIVE (1<<7)
 
-static uint16_t pc;
+static uint16_t pc, oldPc, indVal;
 static uint8_t p,a,x,y,s;
 static uint32_t waitCycles;
+static uint8_t p_irq_req;
 static bool reset;
 static bool interrupt;
-static bool cpu_branch_delay;
 //used externally
 bool dmc_interrupt;
 bool mmc5_dmc_interrupt;
 bool apu_interrupt;
 bool fds_interrupt;
 bool fds_transfer_interrupt;
+bool cpu_odd_cycle;
 uint32_t cpu_oam_dma;
 extern bool nesPause;
+static bool needsIndFix;
+static bool takeBranch;
+static uint8_t cpuTmp, zPage;
+static uint16_t absAddr;
 
 void cpuInit()
 {
+	cpuSetupActionArr();
 	reset = true;
 	interrupt = false;
 	dmc_interrupt = false;
@@ -45,13 +52,21 @@ void cpuInit()
 	apu_interrupt = false;
 	fds_interrupt = false;
 	fds_transfer_interrupt = false;
+	needsIndFix = false;
+	takeBranch = false;
+	cpuTmp = 0; zPage = 0;
+	absAddr = 0;
 	cpu_oam_dma = 0;
-	p = (P_FLAG_IRQ_DISABLE | P_FLAG_S1 | P_FLAG_S2);
+	pc = 0;
+	oldPc = 0;
+	indVal = 0;
+	p = 0;
 	a = 0;
 	x = 0;
 	y = 0;
-	s = 0xFD;
+	s = 0;
 	waitCycles = 0;
+	p_irq_req = 0;
 }
 
 static void setRegStats(uint8_t reg)
@@ -95,27 +110,6 @@ static void cpuSetARRRegs()
 	}
 }
 
-static void cpuRelativeBranch()
-{
-	int8_t loc = memGet8(pc++);
-	uint16_t oldPc = pc;
-	pc += loc;
-	waitCycles++;
-	if((oldPc&0xFF00) != (pc&0xFF00))
-		waitCycles++;
-	else
-		cpu_branch_delay = true;
-}
-
-static void cpuDummyRead(uint16_t addr, uint8_t val, bool alwaysAddCycle)
-{
-	if(alwaysAddCycle || (addr>>8) != ((addr+val)>>8))
-	{   //dummy read
-		memGet8((addr&0xFF00)|((addr+val)&0xFF));
-		waitCycles++;
-	}
-}
-
 /* Helper functions for updating reg sets */
 
 static inline void cpuSetA(uint8_t val)
@@ -142,76 +136,30 @@ static inline uint8_t cpuSetTMP(uint8_t val)
 	return val;
 }
 
-
-/* Various functions for different memory access instructions */
-
-static inline uint8_t getImmediate() { return memGet8(pc); };
-static inline uint8_t getZeroPage() { return memGet8(pc); }
-static inline uint8_t getZeroPagePlus(uint8_t tmp) { return (getZeroPage()+tmp)&0xFF; }
-static inline uint16_t getAbsoluteAddr() { return memGet8(pc)|(memGet8(pc+1)<<8); }
-
-static inline uint16_t getAbsolutePlusAddr(uint8_t val, bool alwaysAddCycle)
-{
-	uint16_t addr = getAbsoluteAddr();
-	cpuDummyRead(addr, val, alwaysAddCycle);
-	return addr+val;
-}
-
-static inline uint16_t getIndirectPlusXaddr() { uint8_t p = getZeroPagePlus(x); return (memGet8(p))|(memGet8((p+1)&0xFF)<<8); }
-static inline uint16_t getIndirectPlusYaddr(bool alwaysAddCycle) 
-{
-	uint8_t p = getZeroPage();
-	uint16_t addr = (memGet8(p)|memGet8((p+1)&0xFF)<<8);
-	cpuDummyRead(addr, y, alwaysAddCycle);
-	return addr+y;
-}
-
-static inline void cpuImmediateEnd() { pc++; }
-static inline void cpuZeroPageEnd() { pc++; waitCycles++; }
-static inline void cpuZeroPagePlusEnd() { pc++; waitCycles+=2; }
-static inline void cpuAbsoluteEnd() { pc+=2; waitCycles+=2; }
-static inline void cpuIndirectPlusXEnd() { pc++; waitCycles+=4; }
-static inline void cpuIndirectPlusYEnd() { pc++; waitCycles+=3; }
-
 //used externally
 bool cpuWriteTMP = false;
 
-static inline void cpuSaveTMPStart(uint16_t addr, uint8_t val)
-{
-	memSet8(addr, val);
-	waitCycles++;
-	cpuWriteTMP = true;
-}
-
-static inline void cpuSaveTMPEnd(uint16_t addr, uint8_t val)
-{
-	memSet8(addr, val);
-	waitCycles++;
-	cpuWriteTMP = false;
-}
-
-
 /* Various Instructions used multiple times */
 
-static inline void cpuAND(uint8_t val)
+static inline void cpuAND()
 {
-	a &= val;
+	a &= cpuTmp;
 	setRegStats(a);
 }
 
-static inline void cpuORA(uint8_t val)
+static inline void cpuORA()
 {
-	a |= val;
+	a |= cpuTmp;
 	setRegStats(a);
 }
 
-static inline void cpuEOR(uint8_t val)
+static inline void cpuEOR()
 {
-	a ^= val;
+	a ^= cpuTmp;
 	setRegStats(a);
 }
 
-static inline uint8_t cpuASL(uint8_t val)
+static uint8_t cpuASL(uint8_t val)
 {
 	if(val & (1<<7))
 		p |= P_FLAG_CARRY;
@@ -222,7 +170,10 @@ static inline uint8_t cpuASL(uint8_t val)
 	return val;
 }
 
-static inline uint8_t cpuLSR(uint8_t val)
+static void cpuASLa() { cpuSetA(cpuASL(a)); };
+static void cpuASLt() { cpuTmp = cpuASL(cpuTmp); };
+
+static uint8_t cpuLSR(uint8_t val)
 {
 	if(val & (1<<0))
 		p |= P_FLAG_CARRY;
@@ -233,7 +184,10 @@ static inline uint8_t cpuLSR(uint8_t val)
 	return val;
 }
 
-static inline uint8_t cpuROL(uint8_t val)
+static void cpuLSRa() { cpuSetA(cpuLSR(a)); };
+static void cpuLSRt() { cpuTmp = cpuLSR(cpuTmp); };
+
+static uint8_t cpuROL(uint8_t val)
 {
 	uint8_t oldP = p;
 	if(val & (1<<7))
@@ -247,7 +201,10 @@ static inline uint8_t cpuROL(uint8_t val)
 	return val;
 }
 
-static inline uint8_t cpuROR(uint8_t val)
+static void cpuROLa() { cpuSetA(cpuROL(a)); };
+static void cpuROLt() { cpuTmp = cpuROL(cpuTmp); };
+
+static uint8_t cpuROR(uint8_t val)
 {
 	uint8_t oldP = p;
 	if(val & (1<<0))
@@ -261,16 +218,19 @@ static inline uint8_t cpuROR(uint8_t val)
 	return val;
 }
 
+static void cpuRORa() { cpuSetA(cpuROR(a)); };
+static void cpuRORt() { cpuTmp = cpuROR(cpuTmp); };
+
 static void cpuKIL()
 {
 	printf("Processor Requested Lock-Up at %04x\n", pc-1);
 	nesPause = true;
 }
 
-static void cpuADC(uint8_t tmp)
+static void cpuADCv(uint8_t in)
 {
 	//use uint16_t here to easly detect carry
-	uint16_t res = a + tmp;
+	uint16_t res = a + in;
 
 	if(p & P_FLAG_CARRY)
 		res++;
@@ -280,9 +240,9 @@ static void cpuADC(uint8_t tmp)
 	else
 		p &= ~P_FLAG_CARRY;
 
-	if(!(a & (1<<7)) && !(tmp & (1<<7)) && (res & (1<<7)))
+	if(!(a & (1<<7)) && !(in & (1<<7)) && (res & (1<<7)))
 		p |= P_FLAG_OVERFLOW;
-	else if((a & (1<<7)) && (tmp & (1<<7)) && !(res & (1<<7)))
+	else if((a & (1<<7)) && (in & (1<<7)) && !(res & (1<<7)))
 		p |= P_FLAG_OVERFLOW;
 	else
 		p &= ~P_FLAG_OVERFLOW;
@@ -290,66 +250,478 @@ static void cpuADC(uint8_t tmp)
 	cpuSetA(res);
 }
 
-static inline void cpuSBC(uint8_t tmp) { cpuADC(~tmp); }
+static void cpuADC() { cpuADCv(cpuTmp); }
 
-static uint8_t cpuCMP(uint8_t v1, uint8_t v2)
+static void cpuSBC() { cpuADCv(~cpuTmp); }
+
+static void cpuISC() { cpuTmp = cpuSetTMP(cpuTmp+1); cpuSBC(); }
+
+
+static uint8_t cpuCMP(uint8_t reg)
 {
-	if(v1 >= v2)
+	if(reg >= cpuTmp)
 		p |= P_FLAG_CARRY;
 	else
 		p &= ~P_FLAG_CARRY;
 
-	uint8_t cmpVal = (v1 - v2);
+	uint8_t cmpVal = (reg - cpuTmp);
 	setRegStats(cmpVal);
 	return cmpVal;
 }
 
-static void cpuBIT(uint8_t tmp)
+static void cpuCMPa() { cpuCMP(a); }
+static void cpuCMPx() { cpuCMP(x); }
+static void cpuCMPy() { cpuCMP(y); }
+static void cpuCMPax() { x = cpuCMP(a&x); }
+static void cpuDCP() { cpuTmp = cpuSetTMP(cpuTmp-1); cpuCMPa(); }
+
+static void cpuBIT()
 {
-	if((a & tmp) == 0)
+	if((a & cpuTmp) == 0)
 		p |= P_FLAG_ZERO;
 	else
 		p &= ~P_FLAG_ZERO;
 
-	if(tmp & P_FLAG_OVERFLOW)
+	if(cpuTmp & P_FLAG_OVERFLOW)
 		p |= P_FLAG_OVERFLOW;
 	else
 		p &= ~P_FLAG_OVERFLOW;
 
-	if(tmp & P_FLAG_NEGATIVE)
+	if(cpuTmp & P_FLAG_NEGATIVE)
 		p |= P_FLAG_NEGATIVE;
 	else
 		p &= ~P_FLAG_NEGATIVE;
 }
+
+void cpuSLO() {	cpuASLt(); cpuORA(); }
+void cpuRLA() {	cpuROLt(); cpuAND(); }
+void cpuSRE() { cpuLSRt(); cpuEOR(); }
+void cpuRRA() { cpuRORt(); cpuADC(); }
+void cpuASR() {	cpuAND(); cpuLSRa(); }
+
+void cpuARR()
+{
+	cpuAND();
+	cpuRORa();
+	cpuSetARRRegs();
+}
+
+void cpuAAC()
+{
+	cpuAND();
+	if(p & P_FLAG_NEGATIVE)
+		p |= P_FLAG_CARRY;
+	else
+		p &= ~P_FLAG_CARRY;
+}
+
+void cpuCLC() { p &= ~P_FLAG_CARRY; }
+void cpuSEC() { p |= P_FLAG_CARRY; }
+
+void cpuCLI() { p_irq_req = 2; }
+void cpuSEI() { p_irq_req = 1; }
+
+void cpuCLV() { p &= ~P_FLAG_OVERFLOW; }
+
+void cpuCLD() { p &= ~P_FLAG_DECIMAL; }
+void cpuSED() { p |= P_FLAG_DECIMAL; }
+
+void cpuINC() { cpuSetA(a+1); }
+void cpuINX() { cpuSetX(x+1); }
+void cpuINY() { cpuSetY(y+1); }
+void cpuINCt() { cpuTmp = cpuSetTMP(cpuTmp+1); }
+
+void cpuDEC() { cpuSetA(a-1); }
+void cpuDEX() { cpuSetX(x-1); }
+void cpuDEY() { cpuSetY(y-1); }
+void cpuDECt() { cpuTmp = cpuSetTMP(cpuTmp-1); }
+
+void cpuTXA() { cpuSetA(x); }
+void cpuTYA() { cpuSetA(y); }
+void cpuTSX() { cpuSetX(s); }
+void cpuTXS() { s = x; }
+
+void cpuTAY() { cpuSetY(a); }
+void cpuTAX() { cpuSetX(a); }
+
+void cpuLDA() { cpuSetA(cpuTmp); }
+void cpuLDX() { cpuSetX(cpuTmp); }
+void cpuLDY() { cpuSetY(cpuTmp); }
+void cpuXAA() { cpuSetA(x&cpuTmp); }
+void cpuAXT() { cpuSetA(cpuTmp); cpuSetX(a); }
+void cpuLAX() { cpuSetA(cpuTmp); cpuSetX(cpuTmp); }
+void cpuLAR() { cpuSetA(cpuTmp); cpuAND(s); cpuSetX(a); s = a; }
 
 /* For Interrupt Handling */
 
 #define DEBUG_INTR 0
 #define DEBUG_JSR 0
 
-static void intrBackup()
+/* Set up all CPU State Definitions */
+typedef void (*cpu_action_t)(void);
+
+static cpu_action_t cpu_action_func;
+
+enum {
+	CPU_GET_INSTRUCTION = 0,
+	CPU_GET_INSTRUCTION_IRQSKIP,
+	CPU_ACTION,
+	CPU_INC_PC,
+	CPU_NULL_READ8_PC,
+	CPU_NULL_READ8_PC_INC,
+	CPU_NULL_READ8_PC_CHK,
+	CPU_NULL_READ8_PC_ACTION,
+	CPU_TMP_READ8_PC_INC,
+	CPU_TMP_READ8_PC_INC_ACTION,
+	CPU_ADDR_READ8_PC_INC,
+	CPU_ADDRL_READ8_PC_INC,
+	CPU_ADDRH_READ8_PC_INC,
+	CPU_ADDRH_READ8_PC_INC_ADDX,
+	CPU_ADDRH_READ8_PC_INC_ADDY,
+	CPU_NULL_READ8_ADDR_ADDX_ZP,
+	CPU_NULL_READ8_ADDR_ADDY_ZP,
+	CPU_PCL_FROM_TMP_PCH_READ8_PC,
+	CPU_NULL_READ8_TMP_ADDX,
+	CPU_ADDRL_READ8_TMP_INC,
+	CPU_ADDRH_READ8_TMP,
+	CPU_ADDRH_READ8_TMP_ADDY,
+	CPU_ADDR_READ8,
+	CPU_ADDR_READ8_CHK,
+	CPU_ADDR_READ8_ACTION,
+	CPU_ADDR_READ8_ACTION_CHK,
+	CPU_INC_PAGE_ADDR_READ8_SET_PC,
+	CPU_NULL_READ8_S,
+	CPU_ADDR_WRITE8,
+	CPU_ADDR_WRITE8_A,
+	CPU_ADDR_WRITE8_X,
+	CPU_ADDR_WRITE8_Y,
+	CPU_ADDR_WRITE8_AX,
+	CPU_ADDR_WRITE8_AXA,
+	CPU_ADDR_WRITE8_XAS,
+	CPU_ADDR_WRITE8_SYA,
+	CPU_ADDR_WRITE8_SXA,
+	CPU_ADDR_WRITE8_ACTION,
+	CPU_CHECK_BCC,
+	CPU_CHECK_BCS,
+	CPU_CHECK_BNE,
+	CPU_CHECK_BEQ,
+	CPU_CHECK_BPL,
+	CPU_CHECK_BMI,
+	CPU_CHECK_BVC,
+	CPU_CHECK_BVS,
+	CPU_SET_S1_S2_I,
+	CPU_STACK_INC,
+	CPU_STACK_GET_A,
+	CPU_STACK_GET_P,
+	CPU_STACK_GET_P_INC,
+	CPU_STACK_GET_PCL_INC,
+	CPU_STACK_GET_PCH,
+	CPU_STACK_DEC,
+	CPU_STACK_STORE_A_DEC,
+	CPU_STACK_STORE_P_DEC,
+	CPU_STACK_STORE_PCH_DEC,
+	CPU_STACK_STORE_PCL_DEC,
+	CPU_STACK_STORE_P_DEC_SET_I,
+	CPU_STACK_SET_S1_S2_STORE_P_DEC_SET_I,
+	CPU_STACK_CLEAR_S1_SET_S2_STORE_P_DEC_SET_I,
+	CPU_READ_NMIVEC_PCL,
+	CPU_READ_NMIVEC_PCH,
+	CPU_READ_RESETVEC_PCL,
+	CPU_READ_RESETVEC_PCH,
+	CPU_READ_IRQVEC_PCL,
+	CPU_READ_IRQVEC_PCH,
+};
+
+static uint8_t cpu_start_arr[1] = { CPU_GET_INSTRUCTION };
+static uint8_t *cpu_action_arr = cpu_start_arr;
+static uint8_t cpu_arr_pos = 0;
+
+/* arrays for non-callable instructions */
+static uint8_t cpu_reset_arr[6] = { CPU_STACK_DEC, CPU_STACK_DEC, CPU_SET_S1_S2_I, CPU_READ_RESETVEC_PCL, CPU_READ_RESETVEC_PCH, CPU_GET_INSTRUCTION };
+static uint8_t cpu_nmi_arr[7] = { CPU_NULL_READ8_PC, CPU_STACK_STORE_PCH_DEC, CPU_STACK_STORE_PCL_DEC, CPU_STACK_CLEAR_S1_SET_S2_STORE_P_DEC_SET_I, CPU_READ_NMIVEC_PCL, CPU_READ_NMIVEC_PCH, CPU_GET_INSTRUCTION };
+static uint8_t cpu_irq_arr[7] = { CPU_NULL_READ8_PC, CPU_STACK_STORE_PCH_DEC, CPU_STACK_STORE_PCL_DEC, CPU_STACK_STORE_P_DEC_SET_I, CPU_READ_IRQVEC_PCL, CPU_READ_IRQVEC_PCH, CPU_GET_INSTRUCTION };
+static uint8_t cpu_kill_arr[2] = { CPU_ACTION, CPU_GET_INSTRUCTION };
+
+/* arrays for single special instructions */
+static uint8_t cpu_brk_arr[7] = { CPU_NULL_READ8_PC_INC, CPU_STACK_STORE_PCH_DEC, CPU_STACK_STORE_PCL_DEC, CPU_STACK_SET_S1_S2_STORE_P_DEC_SET_I, CPU_READ_IRQVEC_PCL, CPU_READ_IRQVEC_PCH, CPU_GET_INSTRUCTION };
+static uint8_t cpu_rti_arr[6] = { CPU_NULL_READ8_PC, CPU_STACK_INC, CPU_STACK_GET_P_INC, CPU_STACK_GET_PCL_INC, CPU_STACK_GET_PCH, CPU_GET_INSTRUCTION };
+static uint8_t cpu_rts_arr[6] = { CPU_NULL_READ8_PC, CPU_STACK_INC, CPU_STACK_GET_PCL_INC, CPU_STACK_GET_PCH, CPU_INC_PC, CPU_GET_INSTRUCTION };
+static uint8_t cpu_php_arr[3] = { CPU_NULL_READ8_PC, CPU_STACK_STORE_P_DEC, CPU_GET_INSTRUCTION };
+static uint8_t cpu_pha_arr[3] = { CPU_NULL_READ8_PC, CPU_STACK_STORE_A_DEC, CPU_GET_INSTRUCTION };
+static uint8_t cpu_plp_arr[4] = { CPU_NULL_READ8_PC, CPU_STACK_INC, CPU_STACK_GET_P, CPU_GET_INSTRUCTION };
+static uint8_t cpu_pla_arr[4] = { CPU_NULL_READ8_PC, CPU_STACK_INC, CPU_STACK_GET_A, CPU_GET_INSTRUCTION };
+static uint8_t cpu_jsr_arr[6] = { CPU_TMP_READ8_PC_INC, CPU_NULL_READ8_S, CPU_STACK_STORE_PCH_DEC, CPU_STACK_STORE_PCL_DEC, CPU_PCL_FROM_TMP_PCH_READ8_PC, CPU_GET_INSTRUCTION };
+static uint8_t cpu_absjmp_arr[3] = { CPU_TMP_READ8_PC_INC, CPU_PCL_FROM_TMP_PCH_READ8_PC, CPU_GET_INSTRUCTION };
+static uint8_t cpu_indjmp_arr[5] = { CPU_ADDRL_READ8_PC_INC, CPU_ADDRH_READ8_PC_INC, CPU_ADDR_READ8, CPU_INC_PAGE_ADDR_READ8_SET_PC, CPU_GET_INSTRUCTION };
+
+static uint8_t cpu_zpsta_arr[3] = { CPU_ADDR_READ8_PC_INC, CPU_ADDR_WRITE8_A, CPU_GET_INSTRUCTION };
+static uint8_t cpu_zpstx_arr[3] = { CPU_ADDR_READ8_PC_INC, CPU_ADDR_WRITE8_X, CPU_GET_INSTRUCTION };
+static uint8_t cpu_zpsty_arr[3] = { CPU_ADDR_READ8_PC_INC, CPU_ADDR_WRITE8_Y, CPU_GET_INSTRUCTION };
+static uint8_t cpu_zpaax_arr[3] = { CPU_ADDR_READ8_PC_INC, CPU_ADDR_WRITE8_AX, CPU_GET_INSTRUCTION };
+
+static uint8_t cpu_zpXsta_arr[4] = { CPU_ADDR_READ8_PC_INC, CPU_NULL_READ8_ADDR_ADDX_ZP, CPU_ADDR_WRITE8_A, CPU_GET_INSTRUCTION };
+static uint8_t cpu_zpXsty_arr[4] = { CPU_ADDR_READ8_PC_INC, CPU_NULL_READ8_ADDR_ADDX_ZP, CPU_ADDR_WRITE8_Y, CPU_GET_INSTRUCTION };
+
+static uint8_t cpu_zpYstx_arr[4] = { CPU_ADDR_READ8_PC_INC, CPU_NULL_READ8_ADDR_ADDY_ZP, CPU_ADDR_WRITE8_X, CPU_GET_INSTRUCTION };
+static uint8_t cpu_zpYaax_arr[4] = { CPU_ADDR_READ8_PC_INC, CPU_NULL_READ8_ADDR_ADDY_ZP, CPU_ADDR_WRITE8_AX, CPU_GET_INSTRUCTION };
+
+static uint8_t cpu_abssta_arr[4] = { CPU_ADDRL_READ8_PC_INC, CPU_ADDRH_READ8_PC_INC, CPU_ADDR_WRITE8_A, CPU_GET_INSTRUCTION };
+static uint8_t cpu_absstx_arr[4] = { CPU_ADDRL_READ8_PC_INC, CPU_ADDRH_READ8_PC_INC, CPU_ADDR_WRITE8_X, CPU_GET_INSTRUCTION };
+static uint8_t cpu_abssty_arr[4] = { CPU_ADDRL_READ8_PC_INC, CPU_ADDRH_READ8_PC_INC, CPU_ADDR_WRITE8_Y, CPU_GET_INSTRUCTION };
+static uint8_t cpu_absaax_arr[4] = { CPU_ADDRL_READ8_PC_INC, CPU_ADDRH_READ8_PC_INC, CPU_ADDR_WRITE8_AX, CPU_GET_INSTRUCTION };
+
+static uint8_t cpu_absXsta_arr[7] = { CPU_ADDRL_READ8_PC_INC, CPU_ADDRH_READ8_PC_INC_ADDX, CPU_ADDR_READ8_CHK, CPU_ADDR_WRITE8_A, CPU_GET_INSTRUCTION };
+static uint8_t cpu_absXsya_arr[5] = { CPU_ADDRL_READ8_PC_INC, CPU_ADDRH_READ8_PC_INC_ADDX, CPU_ADDR_READ8, CPU_ADDR_WRITE8_SYA, CPU_GET_INSTRUCTION };
+
+static uint8_t cpu_absYsta_arr[5] = { CPU_ADDRL_READ8_PC_INC, CPU_ADDRH_READ8_PC_INC_ADDY, CPU_ADDR_READ8_CHK, CPU_ADDR_WRITE8_A, CPU_GET_INSTRUCTION };
+static uint8_t cpu_absYaxa_arr[5] = { CPU_ADDRL_READ8_PC_INC, CPU_ADDRH_READ8_PC_INC_ADDY, CPU_ADDR_READ8_CHK, CPU_ADDR_WRITE8_AXA, CPU_GET_INSTRUCTION };
+static uint8_t cpu_absYxas_arr[5] = { CPU_ADDRL_READ8_PC_INC, CPU_ADDRH_READ8_PC_INC_ADDY, CPU_ADDR_READ8, CPU_ADDR_WRITE8_XAS, CPU_GET_INSTRUCTION };
+static uint8_t cpu_absYsxa_arr[5] = { CPU_ADDRL_READ8_PC_INC, CPU_ADDRH_READ8_PC_INC_ADDY, CPU_ADDR_READ8, CPU_ADDR_WRITE8_SXA, CPU_GET_INSTRUCTION };
+
+static uint8_t cpu_indXsta_arr[6] = { CPU_TMP_READ8_PC_INC, CPU_NULL_READ8_TMP_ADDX, CPU_ADDRL_READ8_TMP_INC, CPU_ADDRH_READ8_TMP, CPU_ADDR_WRITE8_A, CPU_GET_INSTRUCTION };
+static uint8_t cpu_indXaax_arr[6] = { CPU_TMP_READ8_PC_INC, CPU_NULL_READ8_TMP_ADDX, CPU_ADDRL_READ8_TMP_INC, CPU_ADDRH_READ8_TMP, CPU_ADDR_WRITE8_AX, CPU_GET_INSTRUCTION };
+
+static uint8_t cpu_indYsta_arr[6] = { CPU_TMP_READ8_PC_INC, CPU_ADDRL_READ8_TMP_INC, CPU_ADDRH_READ8_TMP_ADDY, CPU_ADDR_READ8_CHK, CPU_ADDR_WRITE8_A, CPU_GET_INSTRUCTION };
+static uint8_t cpu_indYaxa_arr[6] = { CPU_TMP_READ8_PC_INC, CPU_ADDRL_READ8_TMP_INC, CPU_ADDRH_READ8_TMP_ADDY, CPU_ADDR_READ8_CHK, CPU_ADDR_WRITE8_AXA, CPU_GET_INSTRUCTION };
+
+static uint8_t cpu_bcc_arr[4] = { CPU_TMP_READ8_PC_INC, CPU_CHECK_BCC, CPU_NULL_READ8_PC_CHK, CPU_GET_INSTRUCTION };
+static uint8_t cpu_bcs_arr[4] = { CPU_TMP_READ8_PC_INC, CPU_CHECK_BCS, CPU_NULL_READ8_PC_CHK, CPU_GET_INSTRUCTION };
+static uint8_t cpu_bne_arr[4] = { CPU_TMP_READ8_PC_INC, CPU_CHECK_BNE, CPU_NULL_READ8_PC_CHK, CPU_GET_INSTRUCTION };
+static uint8_t cpu_beq_arr[4] = { CPU_TMP_READ8_PC_INC, CPU_CHECK_BEQ, CPU_NULL_READ8_PC_CHK, CPU_GET_INSTRUCTION };
+static uint8_t cpu_bpl_arr[4] = { CPU_TMP_READ8_PC_INC, CPU_CHECK_BPL, CPU_NULL_READ8_PC_CHK, CPU_GET_INSTRUCTION };
+static uint8_t cpu_bmi_arr[4] = { CPU_TMP_READ8_PC_INC, CPU_CHECK_BMI, CPU_NULL_READ8_PC_CHK, CPU_GET_INSTRUCTION };
+static uint8_t cpu_bvc_arr[4] = { CPU_TMP_READ8_PC_INC, CPU_CHECK_BVC, CPU_NULL_READ8_PC_CHK, CPU_GET_INSTRUCTION };
+static uint8_t cpu_bvs_arr[4] = { CPU_TMP_READ8_PC_INC, CPU_CHECK_BVS, CPU_NULL_READ8_PC_CHK, CPU_GET_INSTRUCTION };
+
+/* useful for the branch checks */
+bool cpuBranchCheck()
 {
-	uint16_t tmp16 = pc;//+1;
-	//back up pc on stack
-	memSet8(0x100+s,tmp16>>8);
-	s--;
-	memSet8(0x100+s,tmp16&0xFF);
-	s--;
-	//back up p on stack
-	memSet8(0x100+s,p);
-	s--;
+	if(takeBranch)
+	{
+		indVal = pc + (int8_t)cpuTmp;
+		//only need extra cycle if it needs fixup
+		if((pc&0xFF00) != (indVal&0xFF00))
+		{
+			//printf("branch %04x %04x %02x\n", pc, indVal, cpuTmp);
+			needsIndFix = true;
+		}
+		else
+			cpu_arr_pos++;
+		pc = (pc&0xFF00)|(indVal&0x00FF);
+		return true;
+	}
+	else //no branch taken, do next instruction this cycle
+	{
+		cpu_action_arr = cpu_start_arr;
+		cpu_arr_pos = 0;
+		return false;
+	}
 }
 
+/* arrays for multiple similar instructions */
+static uint8_t cpu_direct_arr[2] = { CPU_NULL_READ8_PC_ACTION, CPU_GET_INSTRUCTION };
+static uint8_t cpu_imm_arr[2] = { CPU_TMP_READ8_PC_INC_ACTION, CPU_GET_INSTRUCTION };
+
+static uint8_t cpu_zpread_arr[3] = { CPU_ADDR_READ8_PC_INC, CPU_ADDR_READ8_ACTION, CPU_GET_INSTRUCTION };
+static uint8_t cpu_zpreadwrite_arr[5] = { CPU_ADDR_READ8_PC_INC, CPU_ADDR_READ8, CPU_ADDR_WRITE8_ACTION, CPU_ADDR_WRITE8, CPU_GET_INSTRUCTION };
+
+static uint8_t cpu_zpXread_arr[4] = { CPU_ADDR_READ8_PC_INC, CPU_NULL_READ8_ADDR_ADDX_ZP, CPU_ADDR_READ8_ACTION, CPU_GET_INSTRUCTION };
+static uint8_t cpu_zpYread_arr[4] = { CPU_ADDR_READ8_PC_INC, CPU_NULL_READ8_ADDR_ADDY_ZP, CPU_ADDR_READ8_ACTION, CPU_GET_INSTRUCTION };
+static uint8_t cpu_zpXreadwrite_arr[6] = { CPU_ADDR_READ8_PC_INC, CPU_NULL_READ8_ADDR_ADDX_ZP, CPU_ADDR_READ8, CPU_ADDR_WRITE8_ACTION, CPU_ADDR_WRITE8, CPU_GET_INSTRUCTION };
+
+static uint8_t cpu_absread_arr[4] = { CPU_ADDRL_READ8_PC_INC, CPU_ADDRH_READ8_PC_INC, CPU_ADDR_READ8_ACTION, CPU_GET_INSTRUCTION };
+static uint8_t cpu_absreadwrite_arr[6] = { CPU_ADDRL_READ8_PC_INC, CPU_ADDRH_READ8_PC_INC, CPU_ADDR_READ8, CPU_ADDR_WRITE8_ACTION, CPU_ADDR_WRITE8, CPU_GET_INSTRUCTION };
+
+static uint8_t cpu_absXread_arr[5] = { CPU_ADDRL_READ8_PC_INC, CPU_ADDRH_READ8_PC_INC_ADDX, CPU_ADDR_READ8_ACTION_CHK, CPU_ADDR_READ8_ACTION, CPU_GET_INSTRUCTION };
+static uint8_t cpu_absYread_arr[5] = { CPU_ADDRL_READ8_PC_INC, CPU_ADDRH_READ8_PC_INC_ADDY, CPU_ADDR_READ8_ACTION_CHK, CPU_ADDR_READ8_ACTION, CPU_GET_INSTRUCTION };
+static uint8_t cpu_absXreadwrite_arr[7] = { CPU_ADDRL_READ8_PC_INC, CPU_ADDRH_READ8_PC_INC_ADDX, CPU_ADDR_READ8_CHK, CPU_ADDR_READ8, CPU_ADDR_WRITE8_ACTION, CPU_ADDR_WRITE8, CPU_GET_INSTRUCTION };
+static uint8_t cpu_absYreadwrite_arr[7] = { CPU_ADDRL_READ8_PC_INC, CPU_ADDRH_READ8_PC_INC_ADDY, CPU_ADDR_READ8_CHK, CPU_ADDR_READ8, CPU_ADDR_WRITE8_ACTION, CPU_ADDR_WRITE8, CPU_GET_INSTRUCTION };
+
+static uint8_t cpu_indXread_arr[6] = { CPU_TMP_READ8_PC_INC, CPU_NULL_READ8_TMP_ADDX, CPU_ADDRL_READ8_TMP_INC, CPU_ADDRH_READ8_TMP, CPU_ADDR_READ8_ACTION, CPU_GET_INSTRUCTION };
+static uint8_t cpu_indXreadwrite_arr[8] = { CPU_TMP_READ8_PC_INC, CPU_NULL_READ8_TMP_ADDX, CPU_ADDRL_READ8_TMP_INC, CPU_ADDRH_READ8_TMP, CPU_ADDR_READ8, CPU_ADDR_WRITE8_ACTION, CPU_ADDR_WRITE8, CPU_GET_INSTRUCTION };
+static uint8_t cpu_indYread_arr[6] = { CPU_TMP_READ8_PC_INC, CPU_ADDRL_READ8_TMP_INC, CPU_ADDRH_READ8_TMP_ADDY, CPU_ADDR_READ8_ACTION_CHK, CPU_ADDR_READ8_ACTION, CPU_GET_INSTRUCTION };
+static uint8_t cpu_indYreadwrite_arr[8] = { CPU_TMP_READ8_PC_INC, CPU_ADDRL_READ8_TMP_INC, CPU_ADDRH_READ8_TMP_ADDY, CPU_ADDR_READ8_CHK, CPU_ADDR_READ8, CPU_ADDR_WRITE8_ACTION, CPU_ADDR_WRITE8, CPU_GET_INSTRUCTION };
+
+/* Set up array pointers to all instruction types */
+static uint8_t *cpu_instr_arr[256] = {
+	cpu_brk_arr, cpu_indXread_arr, cpu_kill_arr, cpu_indXreadwrite_arr,
+	cpu_zpread_arr, cpu_zpread_arr, cpu_zpreadwrite_arr, cpu_zpreadwrite_arr,
+	cpu_php_arr, cpu_imm_arr, cpu_direct_arr, cpu_imm_arr,
+	cpu_absread_arr, cpu_absread_arr, cpu_absreadwrite_arr, cpu_absreadwrite_arr,
+
+	cpu_bpl_arr, cpu_indYread_arr, cpu_kill_arr, cpu_indYreadwrite_arr,
+	cpu_zpXread_arr, cpu_zpXread_arr, cpu_zpXreadwrite_arr, cpu_zpXreadwrite_arr,
+	cpu_direct_arr, cpu_absYread_arr, cpu_direct_arr, cpu_absYreadwrite_arr,
+	cpu_absXread_arr, cpu_absXread_arr, cpu_absXreadwrite_arr, cpu_absXreadwrite_arr,
+
+	cpu_jsr_arr, cpu_indXread_arr, cpu_kill_arr, cpu_indXreadwrite_arr,
+	cpu_zpread_arr, cpu_zpread_arr, cpu_zpreadwrite_arr, cpu_zpreadwrite_arr,
+	cpu_plp_arr, cpu_imm_arr, cpu_direct_arr, cpu_imm_arr,
+	cpu_absread_arr, cpu_absread_arr, cpu_absreadwrite_arr, cpu_absreadwrite_arr,
+	
+	cpu_bmi_arr, cpu_indYread_arr, cpu_kill_arr, cpu_indYreadwrite_arr,
+	cpu_zpXread_arr, cpu_zpXread_arr, cpu_zpXreadwrite_arr, cpu_zpXreadwrite_arr,
+	cpu_direct_arr, cpu_absYread_arr, cpu_direct_arr, cpu_absYreadwrite_arr,
+	cpu_absXread_arr, cpu_absXread_arr, cpu_absXreadwrite_arr, cpu_absXreadwrite_arr,
+	
+	cpu_rti_arr, cpu_indXread_arr, cpu_kill_arr, cpu_indXreadwrite_arr,
+	cpu_zpread_arr, cpu_zpread_arr, cpu_zpreadwrite_arr, cpu_zpreadwrite_arr,
+	cpu_pha_arr, cpu_imm_arr, cpu_direct_arr, cpu_imm_arr,
+	cpu_absjmp_arr, cpu_absread_arr, cpu_absreadwrite_arr, cpu_absreadwrite_arr,
+	
+	cpu_bvc_arr, cpu_indYread_arr, cpu_kill_arr, cpu_indYreadwrite_arr,
+	cpu_zpXread_arr, cpu_zpXread_arr, cpu_zpXreadwrite_arr, cpu_zpXreadwrite_arr,
+	cpu_direct_arr, cpu_absYread_arr, cpu_direct_arr, cpu_absYreadwrite_arr,
+	cpu_absXread_arr, cpu_absXread_arr, cpu_absXreadwrite_arr, cpu_absXreadwrite_arr,
+	
+	cpu_rts_arr, cpu_indXread_arr, cpu_kill_arr, cpu_indXreadwrite_arr,
+	cpu_zpread_arr, cpu_zpread_arr, cpu_zpreadwrite_arr, cpu_zpreadwrite_arr,
+	cpu_pla_arr, cpu_imm_arr, cpu_direct_arr, cpu_imm_arr,
+	cpu_indjmp_arr, cpu_absread_arr, cpu_absreadwrite_arr, cpu_absreadwrite_arr,
+	
+	cpu_bvs_arr, cpu_indYread_arr, cpu_kill_arr, cpu_indYreadwrite_arr,
+	cpu_zpXread_arr, cpu_zpXread_arr, cpu_zpXreadwrite_arr, cpu_zpXreadwrite_arr,
+	cpu_direct_arr, cpu_absYread_arr, cpu_direct_arr, cpu_absYreadwrite_arr,
+	cpu_absXread_arr, cpu_absXread_arr, cpu_absXreadwrite_arr, cpu_absXreadwrite_arr,
+	
+	cpu_imm_arr, cpu_indXsta_arr, cpu_imm_arr, cpu_indXaax_arr,
+	cpu_zpsty_arr, cpu_zpsta_arr, cpu_zpstx_arr, cpu_zpaax_arr, 
+	cpu_direct_arr, cpu_imm_arr, cpu_direct_arr, cpu_imm_arr, 
+	cpu_abssty_arr, cpu_abssta_arr, cpu_absstx_arr, cpu_absaax_arr,
+	
+	cpu_bcc_arr, cpu_indYsta_arr, cpu_kill_arr, cpu_indYaxa_arr,
+	cpu_zpXsty_arr, cpu_zpXsta_arr, cpu_zpYstx_arr, cpu_zpYaax_arr,
+	cpu_direct_arr, cpu_absYsta_arr, cpu_direct_arr, cpu_absYxas_arr,
+	cpu_absXsya_arr, cpu_absXsta_arr, cpu_absYsxa_arr, cpu_absYaxa_arr,
+	
+	cpu_imm_arr, cpu_indXread_arr, cpu_imm_arr, cpu_indXread_arr, 
+	cpu_zpread_arr, cpu_zpread_arr, cpu_zpread_arr, cpu_zpread_arr,
+	cpu_direct_arr, cpu_imm_arr, cpu_direct_arr, cpu_imm_arr, 
+	cpu_absread_arr, cpu_absread_arr, cpu_absread_arr, cpu_absread_arr,
+	
+	cpu_bcs_arr, cpu_indYread_arr, cpu_kill_arr, cpu_indYread_arr,
+	cpu_zpXread_arr, cpu_zpXread_arr, cpu_zpYread_arr, cpu_zpYread_arr,
+	cpu_direct_arr, cpu_absYread_arr, cpu_direct_arr, cpu_absYread_arr, 
+	cpu_absXread_arr, cpu_absXread_arr, cpu_absYread_arr, cpu_absYread_arr,
+	
+	cpu_imm_arr, cpu_indXread_arr, cpu_imm_arr, cpu_indXreadwrite_arr,
+	cpu_zpread_arr, cpu_zpread_arr, cpu_zpreadwrite_arr, cpu_zpreadwrite_arr,
+	cpu_direct_arr, cpu_imm_arr, cpu_direct_arr, cpu_imm_arr, 
+	cpu_absread_arr, cpu_absread_arr, cpu_absreadwrite_arr, cpu_absreadwrite_arr,
+	
+	cpu_bne_arr, cpu_indYread_arr, cpu_kill_arr, cpu_indYreadwrite_arr,
+	cpu_zpXread_arr, cpu_zpXread_arr, cpu_zpXreadwrite_arr, cpu_zpXreadwrite_arr,
+	cpu_direct_arr, cpu_absYread_arr, cpu_direct_arr, cpu_absYreadwrite_arr, 
+	cpu_absXread_arr, cpu_absXread_arr, cpu_absXreadwrite_arr, cpu_absXreadwrite_arr,
+	
+	cpu_imm_arr, cpu_indXread_arr, cpu_imm_arr, cpu_indXreadwrite_arr,
+	cpu_zpread_arr, cpu_zpread_arr, cpu_zpreadwrite_arr, cpu_zpreadwrite_arr,
+	cpu_direct_arr, cpu_imm_arr, cpu_direct_arr, cpu_imm_arr, 
+	cpu_absread_arr, cpu_absread_arr, cpu_absreadwrite_arr, cpu_absreadwrite_arr,
+	
+	cpu_beq_arr, cpu_indYread_arr, cpu_kill_arr, cpu_indYreadwrite_arr,
+	cpu_zpXread_arr, cpu_zpXread_arr, cpu_zpXreadwrite_arr, cpu_zpXreadwrite_arr,
+	cpu_direct_arr, cpu_absYread_arr, cpu_direct_arr, cpu_absYreadwrite_arr, 
+	cpu_absXread_arr, cpu_absXread_arr, cpu_absXreadwrite_arr, cpu_absXreadwrite_arr,
+};
+
+/* Set up function pointers for all instruction actions */
+static cpu_action_t cpu_actions_arr[256];
+void cpuSetupActionArr()
+{
+	cpu_actions_arr[0x00] = NULL; cpu_actions_arr[0x01] = cpuORA; cpu_actions_arr[0x02] = cpuKIL; cpu_actions_arr[0x03] = cpuSLO;
+	cpu_actions_arr[0x04] = NULL; cpu_actions_arr[0x05] = cpuORA; cpu_actions_arr[0x06] = cpuASLt; cpu_actions_arr[0x07] = cpuSLO;
+	cpu_actions_arr[0x08] = NULL; cpu_actions_arr[0x09] = cpuORA; cpu_actions_arr[0x0A] = cpuASLa; cpu_actions_arr[0x0B] = cpuAAC; 
+	cpu_actions_arr[0x0C] = NULL; cpu_actions_arr[0x0D] = cpuORA; cpu_actions_arr[0x0E] = cpuASLt; cpu_actions_arr[0x0F] = cpuSLO;
+
+	cpu_actions_arr[0x10] = NULL; cpu_actions_arr[0x11] = cpuORA; cpu_actions_arr[0x12] = cpuKIL; cpu_actions_arr[0x13] = cpuSLO;
+	cpu_actions_arr[0x14] = NULL; cpu_actions_arr[0x15] = cpuORA; cpu_actions_arr[0x16] = cpuASLt; cpu_actions_arr[0x17] = cpuSLO;
+	cpu_actions_arr[0x18] = cpuCLC; cpu_actions_arr[0x19] = cpuORA; cpu_actions_arr[0x1A] = NULL; cpu_actions_arr[0x1B] = cpuSLO; 
+	cpu_actions_arr[0x1C] = NULL; cpu_actions_arr[0x1D] = cpuORA; cpu_actions_arr[0x1E] = cpuASLt; cpu_actions_arr[0x1F] = cpuSLO;
+
+	cpu_actions_arr[0x20] = NULL; cpu_actions_arr[0x21] = cpuAND; cpu_actions_arr[0x22] = cpuKIL; cpu_actions_arr[0x23] = cpuRLA;
+	cpu_actions_arr[0x24] = cpuBIT; cpu_actions_arr[0x25] = cpuAND; cpu_actions_arr[0x26] = cpuROLt; cpu_actions_arr[0x27] = cpuRLA;
+	cpu_actions_arr[0x28] = NULL; cpu_actions_arr[0x29] = cpuAND; cpu_actions_arr[0x2A] = cpuROLa; cpu_actions_arr[0x2B] = cpuAAC; 
+	cpu_actions_arr[0x2C] = cpuBIT; cpu_actions_arr[0x2D] = cpuAND; cpu_actions_arr[0x2E] = cpuROLt; cpu_actions_arr[0x2F] = cpuRLA;
+
+	cpu_actions_arr[0x30] = NULL; cpu_actions_arr[0x31] = cpuAND; cpu_actions_arr[0x32] = cpuKIL; cpu_actions_arr[0x33] = cpuRLA;
+	cpu_actions_arr[0x34] = NULL; cpu_actions_arr[0x35] = cpuAND; cpu_actions_arr[0x36] = cpuROLt; cpu_actions_arr[0x37] = cpuRLA;
+	cpu_actions_arr[0x38] = cpuSEC; cpu_actions_arr[0x39] = cpuAND; cpu_actions_arr[0x3A] = NULL; cpu_actions_arr[0x3B] = cpuRLA; 
+	cpu_actions_arr[0x3C] = NULL; cpu_actions_arr[0x3D] = cpuAND; cpu_actions_arr[0x3E] = cpuROLt; cpu_actions_arr[0x3F] = cpuRLA;
+
+	cpu_actions_arr[0x40] = NULL; cpu_actions_arr[0x41] = cpuEOR; cpu_actions_arr[0x42] = cpuKIL; cpu_actions_arr[0x43] = cpuSRE;
+	cpu_actions_arr[0x44] = NULL; cpu_actions_arr[0x45] = cpuEOR; cpu_actions_arr[0x46] = cpuLSRt; cpu_actions_arr[0x47] = cpuSRE;
+	cpu_actions_arr[0x48] = NULL; cpu_actions_arr[0x49] = cpuEOR; cpu_actions_arr[0x4A] = cpuLSRa; cpu_actions_arr[0x4B] = cpuASR; 
+	cpu_actions_arr[0x4C] = NULL; cpu_actions_arr[0x4D] = cpuEOR; cpu_actions_arr[0x4E] = cpuLSRt; cpu_actions_arr[0x4F] = cpuSRE;
+
+	cpu_actions_arr[0x50] = NULL; cpu_actions_arr[0x51] = cpuEOR; cpu_actions_arr[0x52] = cpuKIL; cpu_actions_arr[0x53] = cpuSRE;
+	cpu_actions_arr[0x54] = NULL; cpu_actions_arr[0x55] = cpuEOR; cpu_actions_arr[0x56] = cpuLSRt; cpu_actions_arr[0x57] = cpuSRE;
+	cpu_actions_arr[0x58] = cpuCLI; cpu_actions_arr[0x59] = cpuEOR; cpu_actions_arr[0x5A] = NULL; cpu_actions_arr[0x5B] = cpuSRE; 
+	cpu_actions_arr[0x5C] = NULL; cpu_actions_arr[0x5D] = cpuEOR; cpu_actions_arr[0x5E] = cpuLSRt; cpu_actions_arr[0x5F] = cpuSRE;
+
+	cpu_actions_arr[0x60] = NULL; cpu_actions_arr[0x61] = cpuADC; cpu_actions_arr[0x62] = cpuKIL; cpu_actions_arr[0x63] = cpuRRA;
+	cpu_actions_arr[0x64] = NULL; cpu_actions_arr[0x65] = cpuADC; cpu_actions_arr[0x66] = cpuRORt; cpu_actions_arr[0x67] = cpuRRA;
+	cpu_actions_arr[0x68] = NULL; cpu_actions_arr[0x69] = cpuADC; cpu_actions_arr[0x6A] = cpuRORa; cpu_actions_arr[0x6B] = cpuARR; 
+	cpu_actions_arr[0x6C] = NULL; cpu_actions_arr[0x6D] = cpuADC; cpu_actions_arr[0x6E] = cpuRORt; cpu_actions_arr[0x6F] = cpuRRA;
+
+	cpu_actions_arr[0x70] = NULL; cpu_actions_arr[0x71] = cpuADC; cpu_actions_arr[0x72] = cpuKIL; cpu_actions_arr[0x73] = cpuRRA;
+	cpu_actions_arr[0x74] = NULL; cpu_actions_arr[0x75] = cpuADC; cpu_actions_arr[0x76] = cpuRORt; cpu_actions_arr[0x77] = cpuRRA;
+	cpu_actions_arr[0x78] = cpuSEI; cpu_actions_arr[0x79] = cpuADC; cpu_actions_arr[0x7A] = NULL; cpu_actions_arr[0x7B] = cpuRRA; 
+	cpu_actions_arr[0x7C] = NULL; cpu_actions_arr[0x7D] = cpuADC; cpu_actions_arr[0x7E] = cpuRORt; cpu_actions_arr[0x7F] = cpuRRA;
+
+	cpu_actions_arr[0x80] = NULL; cpu_actions_arr[0x81] = NULL; cpu_actions_arr[0x82] = NULL; cpu_actions_arr[0x83] = NULL;
+	cpu_actions_arr[0x84] = NULL; cpu_actions_arr[0x85] = NULL; cpu_actions_arr[0x86] = NULL; cpu_actions_arr[0x87] = NULL;
+	cpu_actions_arr[0x88] = cpuDEY; cpu_actions_arr[0x89] = NULL; cpu_actions_arr[0x8A] = cpuTXA; cpu_actions_arr[0x8B] = cpuXAA; 
+	cpu_actions_arr[0x8C] = NULL; cpu_actions_arr[0x8D] = NULL; cpu_actions_arr[0x8E] = NULL; cpu_actions_arr[0x8F] = NULL;
+
+	cpu_actions_arr[0x90] = NULL; cpu_actions_arr[0x91] = NULL; cpu_actions_arr[0x92] = cpuKIL; cpu_actions_arr[0x93] = NULL;
+	cpu_actions_arr[0x94] = NULL; cpu_actions_arr[0x95] = NULL; cpu_actions_arr[0x96] = NULL; cpu_actions_arr[0x97] = NULL;
+	cpu_actions_arr[0x98] = cpuTYA; cpu_actions_arr[0x99] = NULL; cpu_actions_arr[0x9A] = cpuTXS; cpu_actions_arr[0x9B] = NULL; 
+	cpu_actions_arr[0x9C] = NULL; cpu_actions_arr[0x9D] = NULL; cpu_actions_arr[0x9E] = NULL; cpu_actions_arr[0x9F] = NULL;
+
+	cpu_actions_arr[0xA0] = cpuLDY; cpu_actions_arr[0xA1] = cpuLDA; cpu_actions_arr[0xA2] = cpuLDX; cpu_actions_arr[0xA3] = cpuLAX;
+	cpu_actions_arr[0xA4] = cpuLDY; cpu_actions_arr[0xA5] = cpuLDA; cpu_actions_arr[0xA6] = cpuLDX; cpu_actions_arr[0xA7] = cpuLAX;
+	cpu_actions_arr[0xA8] = cpuTAY; cpu_actions_arr[0xA9] = cpuLDA; cpu_actions_arr[0xAA] = cpuTAX; cpu_actions_arr[0xAB] = cpuAXT; 
+	cpu_actions_arr[0xAC] = cpuLDY; cpu_actions_arr[0xAD] = cpuLDA; cpu_actions_arr[0xAE] = cpuLDX; cpu_actions_arr[0xAF] = cpuLAX;
+
+	cpu_actions_arr[0xB0] = NULL; cpu_actions_arr[0xB1] = cpuLDA; cpu_actions_arr[0xB2] = cpuKIL; cpu_actions_arr[0xB3] = cpuLAX;
+	cpu_actions_arr[0xB4] = cpuLDY; cpu_actions_arr[0xB5] = cpuLDA; cpu_actions_arr[0xB6] = cpuLDX; cpu_actions_arr[0xB7] = cpuLAX;
+	cpu_actions_arr[0xB8] = cpuCLV; cpu_actions_arr[0xB9] = cpuLDA; cpu_actions_arr[0xBA] = cpuTSX; cpu_actions_arr[0xBB] = cpuLAR; 
+	cpu_actions_arr[0xBC] = cpuLDY; cpu_actions_arr[0xBD] = cpuLDA; cpu_actions_arr[0xBE] = cpuLDX; cpu_actions_arr[0xBF] = cpuLAX;
+
+	cpu_actions_arr[0xC0] = cpuCMPy; cpu_actions_arr[0xC1] = cpuCMPa; cpu_actions_arr[0xC2] = NULL; cpu_actions_arr[0xC3] = cpuDCP;
+	cpu_actions_arr[0xC4] = cpuCMPy; cpu_actions_arr[0xC5] = cpuCMPa; cpu_actions_arr[0xC6] = cpuDECt; cpu_actions_arr[0xC7] = cpuDCP;
+	cpu_actions_arr[0xC8] = cpuINY; cpu_actions_arr[0xC9] = cpuCMPa; cpu_actions_arr[0xCA] = cpuDEX; cpu_actions_arr[0xCB] = cpuCMPax; 
+	cpu_actions_arr[0xCC] = cpuCMPy; cpu_actions_arr[0xCD] = cpuCMPa; cpu_actions_arr[0xCE] = cpuDECt; cpu_actions_arr[0xCF] = cpuDCP;
+
+	cpu_actions_arr[0xD0] = NULL; cpu_actions_arr[0xD1] = cpuCMPa; cpu_actions_arr[0xD2] = cpuKIL; cpu_actions_arr[0xD3] = cpuDCP;
+	cpu_actions_arr[0xD4] = NULL; cpu_actions_arr[0xD5] = cpuCMPa; cpu_actions_arr[0xD6] = cpuDECt; cpu_actions_arr[0xD7] = cpuDCP;
+	cpu_actions_arr[0xD8] = cpuCLD; cpu_actions_arr[0xD9] = cpuCMPa; cpu_actions_arr[0xDA] = NULL; cpu_actions_arr[0xDB] = cpuDCP; 
+	cpu_actions_arr[0xDC] = NULL; cpu_actions_arr[0xDD] = cpuCMPa; cpu_actions_arr[0xDE] = cpuDECt; cpu_actions_arr[0xDF] = cpuDCP;
+
+	cpu_actions_arr[0xE0] = cpuCMPx; cpu_actions_arr[0xE1] = cpuSBC; cpu_actions_arr[0xE2] = NULL; cpu_actions_arr[0xE3] = cpuISC;
+	cpu_actions_arr[0xE4] = cpuCMPx; cpu_actions_arr[0xE5] = cpuSBC; cpu_actions_arr[0xE6] = cpuINCt; cpu_actions_arr[0xE7] = cpuISC;
+	cpu_actions_arr[0xE8] = cpuINX; cpu_actions_arr[0xE9] = cpuSBC; cpu_actions_arr[0xEA] = NULL; cpu_actions_arr[0xEB] = cpuSBC; 
+	cpu_actions_arr[0xEC] = cpuCMPx; cpu_actions_arr[0xED] = cpuSBC; cpu_actions_arr[0xEE] = cpuINCt; cpu_actions_arr[0xEF] = cpuISC;
+
+	cpu_actions_arr[0xF0] = NULL; cpu_actions_arr[0xF1] = cpuSBC; cpu_actions_arr[0xF2] = cpuKIL; cpu_actions_arr[0xF3] = cpuISC;
+	cpu_actions_arr[0xF4] = NULL; cpu_actions_arr[0xF5] = cpuSBC; cpu_actions_arr[0xF6] = cpuINCt; cpu_actions_arr[0xF7] = cpuISC;
+	cpu_actions_arr[0xF8] = cpuSED; cpu_actions_arr[0xF9] = cpuSBC; cpu_actions_arr[0xFA] = NULL; cpu_actions_arr[0xFB] = cpuISC; 
+	cpu_actions_arr[0xFC] = NULL; cpu_actions_arr[0xFD] = cpuSBC; cpu_actions_arr[0xFE] = cpuINCt; cpu_actions_arr[0xFF] = cpuISC;
+}
 
 /* Main CPU Interpreter */
 //static int intrPrintUpdate = 0;
-static uint8_t p_irq_req = 0;
 static bool cpu_interrupt_req = false;
 static bool ppu_nmi_handler_req = false;
 //set externally
 bool mapper_interrupt = false;
+//int testCounter = 0;
 bool cpuCycle()
 {
+	cpu_odd_cycle^=true;
+	//testCounter++;
+	//printf("CPU Cycle\n");
 	//make sure to wait if needed
 	if(waitCycles)
 	{
@@ -361,340 +733,333 @@ bool cpuCycle()
 		cpu_oam_dma--;
 		return true;
 	}
-	//grab reset from vector
-	if(reset)
+	uint8_t instr;
+	int cpu_action;
+doaction:
+	cpu_action = cpu_action_arr[cpu_arr_pos];
+	cpu_arr_pos++;
+	switch(cpu_action)
 	{
-		pc = memGet8(0xFFFC)|(memGet8(0xFFFD)<<8);
-		#if DEBUG_INTR
-		printf("Reset at %04x\n",pc);
-		#endif
-		reset = false;
-		return true;
-	}
-	//update irq flag if requested
-	if(p_irq_req)
-	{
-		if(p_irq_req == 1)
-		{
-			#if DEBUG_INTR
-			printf("Setting irq disable %02x %02x %d %d %d %d\n", p, P_FLAG_IRQ_DISABLE, cpu_interrupt_req, apu_interrupt, 
-				!(p & P_FLAG_IRQ_DISABLE), (p & P_FLAG_IRQ_DISABLE) == 0);
-			#endif
-			p |= P_FLAG_IRQ_DISABLE;
-		}
-		else
-		{
-			#if DEBUG_INTR
-			printf("Clearing irq disable %02x %02x %d %d %d %d\n", p, P_FLAG_IRQ_DISABLE, cpu_interrupt_req, apu_interrupt, 
-				!(p & P_FLAG_IRQ_DISABLE), (p & P_FLAG_IRQ_DISABLE) == 0);
-			#endif
-			p &= ~P_FLAG_IRQ_DISABLE;
-		}
-		p_irq_req = 0;
-	}
-	if(ppu_nmi_handler_req)
-	{
-		#if DEBUG_INTR
-		printf("NMI from p %02x pc %04x ",p,pc);
-		#endif
-		p |= P_FLAG_S2;
-		p &= ~P_FLAG_S1;
-		intrBackup();
-		p |= P_FLAG_IRQ_DISABLE;
-		//jump to NMI
-		pc = memGet8(0xFFFA)|(memGet8(0xFFFB)<<8);
-		#if DEBUG_INTR
-		printf("to pc %04x\n",pc);
-		#endif
-		waitCycles+=5;
-		ppu_nmi_handler_req = false;
-	}
-	else if(cpu_interrupt_req)
-	{
-		#if DEBUG_INTR
-		printf("INTR %d %d %d from p %02x pc %04x ",interrupt,dmc_interrupt,apu_interrupt,p,pc);
-		#endif
-		intrBackup();
-		p |= P_FLAG_IRQ_DISABLE;
-		pc = memGet8(0xFFFE)|(memGet8(0xFFFF)<<8);
-		#if DEBUG_INTR
-		printf("to pc %04x\n",pc);
-		#endif
-		if(interrupt)
-			interrupt = false;
-		if(fds_transfer_interrupt)
-			fds_transfer_interrupt = false;
-		waitCycles+=5;
-	}
-	uint16_t instrPtr = pc;
-	/*if(intrPrintUpdate == 100)
-	{
-		printf("%04x\n", instrPtr);
-		intrPrintUpdate = 0;
-	}
-	else
-		intrPrintUpdate++;*/
-	uint8_t instr = memGet8(instrPtr);
-	//printf("%04x %02x\n", instrPtr, instr);
-	uint8_t tmp, zPage;
-	uint16_t absAddr, val;
-	pc++; waitCycles++;
-	switch(instr)
-	{
-		case 0x00: //BRK
-			memGet8(pc);
-			#if DEBUG_INTR
-			printf("BRK\n");
-			#endif
-			interrupt = true;
-			p |= (P_FLAG_S1 | P_FLAG_S2);
+		case CPU_GET_INSTRUCTION:
+			if(reset)
+			{
+				cpu_action_arr = cpu_reset_arr;
+				cpu_arr_pos = 0;
+				cpu_action_func = NULL;
+				reset = false;
+				break;
+			}
+			//update irq flag if requested
+			if(p_irq_req)
+			{
+				if(p_irq_req == 1)
+				{
+					#if DEBUG_INTR
+					printf("Setting irq disable %02x %02x %d %d %d %d\n", p, P_FLAG_IRQ_DISABLE, cpu_interrupt_req, apu_interrupt, 
+						!(p & P_FLAG_IRQ_DISABLE), (p & P_FLAG_IRQ_DISABLE) == 0);
+					#endif
+					p |= P_FLAG_IRQ_DISABLE;
+				}
+				else
+				{
+					#if DEBUG_INTR
+					printf("Clearing irq disable %02x %02x %d %d %d %d\n", p, P_FLAG_IRQ_DISABLE, cpu_interrupt_req, apu_interrupt, 
+						!(p & P_FLAG_IRQ_DISABLE), (p & P_FLAG_IRQ_DISABLE) == 0);
+					#endif
+					p &= ~P_FLAG_IRQ_DISABLE;
+				}
+				p_irq_req = 0;
+			}
+			if(ppu_nmi_handler_req)
+			{
+				cpu_action_arr = cpu_nmi_arr;
+				cpu_arr_pos = 0;
+				cpu_action_func = NULL;
+				#if DEBUG_INTR
+				printf("NMI from p %02x pc %04x\n",p,pc);
+				#endif
+				ppu_nmi_handler_req = false;
+				break;
+			}
+			else if(cpu_interrupt_req)
+			{
+				cpu_action_arr = cpu_irq_arr;
+				cpu_arr_pos = 0;
+				cpu_action_func = NULL;
+				#if DEBUG_INTR
+				printf("INTR %d %d %d from p %02x pc %04x\n",interrupt,dmc_interrupt,apu_interrupt,p,pc);
+				#endif
+				if(interrupt)
+					interrupt = false;
+				if(fds_transfer_interrupt)
+					fds_transfer_interrupt = false;
+				break;
+			}
+		case CPU_GET_INSTRUCTION_IRQSKIP:
+			instr = memGet8(pc);
+			cpu_action_arr = cpu_instr_arr[instr];
+			cpu_arr_pos = 0;
+			cpu_action_func = cpu_actions_arr[instr];
+			//printf("%04x %02x %02x %02x %02x %02x\n", pc, instr, a, x, y, p);
 			pc++;
 			break;
-		case 0x01: //ORA (Indirect, X)
-			cpuORA(memGet8(getIndirectPlusXaddr()));
-			cpuIndirectPlusXEnd();
+		case CPU_INC_PC:
+			pc++;
 			break;
-		case 0x02: //KIL
-			cpuKIL();
+		case CPU_ACTION:
+			if(cpu_action_func)
+				cpu_action_func();
 			break;
-		case 0x03: //SLO (Indirect, X)
-			absAddr = getIndirectPlusXaddr();
-			tmp = memGet8(absAddr);
-			cpuSaveTMPStart(absAddr, tmp);
-			tmp = cpuASL(tmp);
-			cpuSaveTMPEnd(absAddr, tmp);
-			cpuORA(tmp);
-			cpuIndirectPlusXEnd();
-			break;
-		case 0x04: //DOP Zero Page
-			cpuZeroPageEnd();
-			break;
-		case 0x05: //ORA Zero Page
-			cpuORA(memGet8(getZeroPage()));
-			cpuZeroPageEnd();
-			break;
-		case 0x06: //ASL Zero Page
-			zPage = getZeroPage();
-			tmp = memGet8(zPage);
-			cpuSaveTMPStart(zPage, tmp);
-			tmp = cpuASL(tmp);
-			cpuSaveTMPEnd(zPage, tmp);
-			cpuZeroPageEnd();
-			break;
-		case 0x07: //SLO Zero Page
-			zPage = getZeroPage();
-			tmp = memGet8(zPage);
-			cpuSaveTMPStart(zPage, tmp);
-			tmp = cpuASL(tmp);
-			cpuSaveTMPEnd(zPage, tmp);
-			cpuORA(tmp);
-			cpuZeroPageEnd();
-			break;
-		case 0x08: //PHP
+		case CPU_NULL_READ8_PC:
 			memGet8(pc);
-			p |= (P_FLAG_S1 | P_FLAG_S2);
-			memSet8(0x100+s,p);
-			s--;
-			waitCycles++;
 			break;
-		case 0x09: //ORA Immediate
-			cpuORA(getImmediate());
-			cpuImmediateEnd();
+		case CPU_NULL_READ8_PC_INC:
+			memGet8(pc++);
 			break;
-		case 0x0A: //ASL A
+		case CPU_NULL_READ8_PC_CHK:
 			memGet8(pc);
-			cpuSetA(cpuASL(a));
+			if(needsIndFix)
+			{
+				pc = indVal;
+				needsIndFix = false;
+			}
 			break;
-		case 0x0B: //AAC Immediate
-			cpuAND(getImmediate());
-			if(p & P_FLAG_NEGATIVE)
-				p |= P_FLAG_CARRY;
+		case CPU_NULL_READ8_PC_ACTION:
+			memGet8(pc);
+			if(cpu_action_func)
+				cpu_action_func();
+			break;
+		case CPU_TMP_READ8_PC_INC:
+			cpuTmp = memGet8(pc++);
+			break;
+		case CPU_TMP_READ8_PC_INC_ACTION:
+			cpuTmp = memGet8(pc++);
+			if(cpu_action_func)
+				cpu_action_func();
+			break;
+		case CPU_ADDR_READ8_PC_INC:
+			absAddr = memGet8(pc++);
+			break;
+		case CPU_ADDRL_READ8_PC_INC:
+			absAddr = memGet8(pc++);
+			break;
+		case CPU_ADDRH_READ8_PC_INC:
+			absAddr |= (memGet8(pc++)<<8);
+			break;
+		case CPU_ADDRH_READ8_PC_INC_ADDX:
+			indVal = absAddr + x;
+			//first read will be at wrong pos
+			//so let cpu know it needs fixup
+			if((absAddr&0xFF00) != (indVal&0xFF00))
+			{
+				//printf("%04x %04x\n", absAddr, indVal);
+				needsIndFix = true;
+			}
+			absAddr += x;
+			absAddr &= 0xFF;
+			absAddr |= (memGet8(pc++)<<8);
+			indVal += (absAddr&0xFF00);
+			break;
+		case CPU_ADDRH_READ8_PC_INC_ADDY:
+			indVal = absAddr + y;
+			//first read will be at wrong pos
+			//so let cpu know it needs fixup
+			if((absAddr&0xFF00) != (indVal&0xFF00))
+			{
+				//printf("%04x %04x\n", absAddr, indVal);
+				needsIndFix = true;
+			}
+			absAddr += y;
+			absAddr &= 0xFF;
+			absAddr |= (memGet8(pc++)<<8);
+			indVal += (absAddr&0xFF00);
+			break;
+		case CPU_NULL_READ8_ADDR_ADDX_ZP:
+			absAddr += x;
+			absAddr &= 0xFF;
+			break;
+		case CPU_NULL_READ8_ADDR_ADDY_ZP:
+			absAddr += y;
+			absAddr &= 0xFF;
+			break;
+		case CPU_PCL_FROM_TMP_PCH_READ8_PC:
+			pc = (cpuTmp | (memGet8(pc)<<8));
+			break;
+		case CPU_NULL_READ8_TMP_ADDX:
+			memGet8(pc);
+			cpuTmp += x;
+			break;
+		case CPU_ADDRL_READ8_TMP_INC:
+			absAddr = memGet8(cpuTmp++);
+			break;
+		case CPU_ADDRH_READ8_TMP:
+			absAddr |= (memGet8(cpuTmp)<<8);
+			break;
+		case CPU_ADDRH_READ8_TMP_ADDY:
+			indVal = absAddr + y;
+			//first read will be at wrong pos
+			//so let cpu know it needs fixup
+			if((absAddr&0xFF00) != (indVal&0xFF00))
+			{
+				//printf("%04x %04x\n", absAddr, indVal);
+				needsIndFix = true;
+			}
+			absAddr += y;
+			absAddr &= 0xFF;
+			absAddr |= (memGet8(cpuTmp)<<8);
+			indVal += (absAddr&0xFF00);
+			break;
+		case CPU_ADDR_READ8:
+			cpuTmp = memGet8(absAddr);
+			break;
+		case CPU_ADDR_READ8_ACTION:
+			cpuTmp = memGet8(absAddr);
+			if(cpu_action_func)
+				cpu_action_func();
+			break;
+		case CPU_ADDR_READ8_ACTION_CHK:
+			cpuTmp = memGet8(absAddr);
+			if(!needsIndFix)
+			{
+				if(cpu_action_func)
+					cpu_action_func();
+				//only execute extra cycle
+				//if fixup is needed
+				cpu_arr_pos++;
+			}
 			else
-				p &= ~P_FLAG_CARRY;
-			cpuImmediateEnd();
+			{
+				//printf("CPU_ADDR_READ8_ACTION_CHK %04x to %04x\n", absAddr, indVal);
+				absAddr = indVal;
+				needsIndFix = false;
+			}
 			break;
-		case 0x0C: //TOP Absolute
-			cpuAbsoluteEnd();
+		case CPU_INC_PAGE_ADDR_READ8_SET_PC:
+			pc = cpuTmp; //low pc bytes
+			cpuTmp = (absAddr & 0xFF);
+			absAddr &= ~0xFF; //clear low address bytes
+			//emulate 6502 jmp wrap bug 
+			cpuTmp++; //possibly FF->00 without page increase!
+			absAddr |= cpuTmp; //add back low address bytes
+			pc |= (memGet8(absAddr)<<8); //high pc bytes
 			break;
-		case 0x0D: //ORA Absolute
-			cpuORA(memGet8(getAbsoluteAddr()));
-			cpuAbsoluteEnd();
+		case CPU_ADDR_READ8_CHK:
+			cpuTmp = memGet8(absAddr);
+			if(needsIndFix)
+			{
+				//printf("CPU_ADDR_READ8_CHK %04x to %04x\n", absAddr, indVal);
+				absAddr = indVal;
+				needsIndFix = false;
+			}
 			break;
-		case 0x0E: //ASL Absolute
-			absAddr = getAbsoluteAddr();
-			tmp = memGet8(absAddr);
-			cpuSaveTMPStart(absAddr, tmp);
-			tmp = cpuASL(tmp);
-			cpuSaveTMPEnd(absAddr,tmp);
-			cpuAbsoluteEnd();
+		case CPU_NULL_READ8_S:
+			memGet8(s);
 			break;
-		case 0x0F: //SLO Absolute
-			absAddr = getAbsoluteAddr();
-			tmp = memGet8(absAddr);
-			cpuSaveTMPStart(absAddr, tmp);
-			tmp = cpuASL(tmp);
-			cpuSaveTMPEnd(absAddr,tmp);
-			cpuORA(tmp);
-			cpuAbsoluteEnd();
+		case CPU_ADDR_WRITE8:
+			memSet8(absAddr, cpuTmp);
+			cpuWriteTMP = false;
 			break;
-		case 0x10: //BPL
-			if(p & P_FLAG_NEGATIVE)
-				pc++;
-			else
-				cpuRelativeBranch();
+		case CPU_ADDR_WRITE8_A:
+			memSet8(absAddr, a);
 			break;
-		case 0x11: //ORA (Indirect), Y
-			absAddr = getIndirectPlusYaddr(false);
-			cpuORA(memGet8(absAddr));
-			cpuIndirectPlusYEnd();
+		case CPU_ADDR_WRITE8_X:
+			memSet8(absAddr, x);
 			break;
-		case 0x12: //KIL
-			cpuKIL();
+		case CPU_ADDR_WRITE8_Y:
+			memSet8(absAddr, y);
 			break;
-		case 0x13: //SLO (Indirect), Y
-			absAddr = getIndirectPlusYaddr(true);
-			tmp = memGet8(absAddr);
-			cpuSaveTMPStart(absAddr, tmp);
-			tmp = cpuASL(tmp);
-			cpuSaveTMPEnd(absAddr,tmp);
-			cpuORA(tmp);
-			cpuIndirectPlusYEnd();
+		case CPU_ADDR_WRITE8_AX:
+			memSet8(absAddr, a&x);
 			break;
-		case 0x14: //DOP Zero Page, X
-			cpuZeroPagePlusEnd();
+		case CPU_ADDR_WRITE8_AXA:
+			memSet8(absAddr, a&x&(absAddr>>8));
 			break;
-		case 0x15: //ORA Zero Page, X
-			cpuORA(memGet8(getZeroPagePlus(x)));
-			cpuZeroPagePlusEnd();
+		case CPU_ADDR_WRITE8_XAS:
+			if(needsIndFix)
+			{
+				absAddr &= y << 8;
+				needsIndFix = false;
+			}
+			s = a & x;
+			memSet8(absAddr, a & x & ((absAddr >> 8) + 1));
 			break;
-		case 0x16: //ASL Zero Page, X
-			zPage = getZeroPagePlus(x);
-			tmp = memGet8(zPage);
-			cpuSaveTMPStart(zPage, tmp);
-			tmp = cpuASL(tmp);
-			cpuSaveTMPEnd(zPage,tmp);
-			cpuZeroPagePlusEnd();
+		case CPU_ADDR_WRITE8_SYA:
+			if(needsIndFix)
+			{
+				absAddr &= y << 8;
+				needsIndFix = false;
+			}
+			memSet8(absAddr, y & ((absAddr >> 8) + 1));
 			break;
-		case 0x17: //SLO Zero Page, X
-			zPage = getZeroPagePlus(x);
-			tmp = memGet8(zPage);
-			cpuSaveTMPStart(zPage, tmp);
-			tmp = cpuASL(tmp);
-			cpuSaveTMPEnd(zPage, tmp);
-			cpuORA(tmp);
-			cpuZeroPagePlusEnd();
+		case CPU_ADDR_WRITE8_SXA:
+			if(needsIndFix)
+			{
+				absAddr &= x << 8;
+				needsIndFix = false;
+			}
+			memSet8(absAddr, x & ((absAddr >> 8) + 1));
 			break;
-		case 0x18: //CLC
+		case CPU_ADDR_WRITE8_ACTION:
+			memSet8(absAddr, cpuTmp);
+			cpuWriteTMP = true;
+			if(cpu_action_func)
+				cpu_action_func();
+			break;
+		case CPU_CHECK_BCC:
+			takeBranch = !(p & P_FLAG_CARRY);
+			if(!cpuBranchCheck()) goto doaction;
+			else memGet8(pc);
+			break;
+		case CPU_CHECK_BCS:
+			takeBranch = !!(p & P_FLAG_CARRY);
+			if(!cpuBranchCheck()) goto doaction;
+			else memGet8(pc);
+			break;
+		case CPU_CHECK_BNE:
+			takeBranch = !(p & P_FLAG_ZERO);
+			if(!cpuBranchCheck()) goto doaction;
+			else memGet8(pc);
+			break;
+		case CPU_CHECK_BEQ:
+			takeBranch = !!(p & P_FLAG_ZERO);
+			if(!cpuBranchCheck()) goto doaction;
+			else memGet8(pc);
+			break;
+		case CPU_CHECK_BPL:
 			memGet8(pc);
-			p &= ~P_FLAG_CARRY;
+			takeBranch = !(p & P_FLAG_NEGATIVE);
+			if(!cpuBranchCheck()) goto doaction;
 			break;
-		case 0x19: //ORA Absolute, Y
-			absAddr = getAbsolutePlusAddr(y,false);
-			cpuORA(memGet8(absAddr));
-			cpuAbsoluteEnd();
+		case CPU_CHECK_BMI:
+			takeBranch = !!(p & P_FLAG_NEGATIVE);
+			if(!cpuBranchCheck()) goto doaction;
+			else memGet8(pc);
 			break;
-		case 0x1A: //NOP
-			memGet8(pc);
+		case CPU_CHECK_BVC:
+			takeBranch = !(p & P_FLAG_OVERFLOW);
+			if(!cpuBranchCheck()) goto doaction;
+			else memGet8(pc);
 			break;
-		case 0x1B: //SLO Absolute, Y
-			absAddr = getAbsolutePlusAddr(y,true);
-			tmp = memGet8(absAddr);
-			cpuSaveTMPStart(absAddr, tmp);
-			tmp = cpuASL(tmp);
-			cpuSaveTMPEnd(absAddr, tmp);
-			cpuORA(tmp);
-			cpuAbsoluteEnd();
+		case CPU_CHECK_BVS:
+			takeBranch = !!(p & P_FLAG_OVERFLOW);
+			if(!cpuBranchCheck()) goto doaction;
+			else memGet8(pc);
 			break;
-		case 0x1C: //TOP Absolute, X
-			absAddr = getAbsolutePlusAddr(x,false);
-			cpuAbsoluteEnd();
+		case CPU_SET_S1_S2_I:
+			p = (P_FLAG_IRQ_DISABLE | P_FLAG_S1 | P_FLAG_S2);
 			break;
-		case 0x1D: //ORA Absolute, X
-			absAddr = getAbsolutePlusAddr(x,false);
-			cpuORA(memGet8(absAddr));
-			cpuAbsoluteEnd();
-			break;
-		case 0x1E: //ASL Absolute, X
-			absAddr = getAbsolutePlusAddr(x,true);
-			tmp = memGet8(absAddr);
-			cpuSaveTMPStart(absAddr, tmp);
-			tmp = cpuASL(tmp);
-			cpuSaveTMPEnd(absAddr, tmp);
-			cpuAbsoluteEnd();
-			break;
-		case 0x1F: //SLO Absolute, X
-			absAddr = getAbsolutePlusAddr(x,true);
-			tmp = memGet8(absAddr);
-			cpuSaveTMPStart(absAddr, tmp);
-			tmp = cpuASL(tmp);
-			cpuSaveTMPEnd(absAddr, tmp);
-			cpuORA(tmp);
-			cpuAbsoluteEnd();
-			break;
-		case 0x20: //JSR Absolute
-			absAddr = (pc+1);
-			#if DEBUG_JSR
-			printf("JSR Abs from s %04x pc %04x to ",s,pc);
-			#endif
-			memSet8(0x100+s,absAddr>>8);
-			s--;
-			memSet8(0x100+s,absAddr&0xFF);
-			s--;
-			pc = memGet8(pc)|(memGet8(pc+1)<<8);
-			#if DEBUG_JSR
-			printf("%04x\n",pc);
-			#endif
-			waitCycles+=4;
-			break;
-		case 0x21: //AND (Indirect, X)
-			cpuAND(memGet8(getIndirectPlusXaddr()));
-			cpuIndirectPlusXEnd();
-			break;
-		case 0x22: //KIL
-			cpuKIL();
-			break;
-		case 0x23: //RLA (Indirect, X)
-			absAddr = getIndirectPlusXaddr();
-			tmp = memGet8(absAddr);
-			cpuSaveTMPStart(absAddr, tmp);
-			tmp = cpuROL(tmp);
-			cpuSaveTMPEnd(absAddr, tmp);
-			cpuAND(tmp);
-			cpuIndirectPlusXEnd();
-			break;
-		case 0x24: //BIT Zero Page
-			cpuBIT(memGet8(getZeroPage()));
-			cpuZeroPageEnd();
-			break;
-		case 0x25: //AND Zero Page
-			cpuAND(memGet8(getZeroPage()));
-			cpuZeroPageEnd();
-			break;
-		case 0x26: //ROL Zero Page
-			zPage = getZeroPage();
-			tmp = memGet8(zPage);
-			cpuSaveTMPStart(zPage, tmp);
-			tmp = cpuROL(tmp);
-			cpuSaveTMPEnd(zPage, tmp);
-			cpuZeroPageEnd();
-			break;
-		case 0x27: //RLA Zero Page
-			zPage = getZeroPage();
-			tmp = memGet8(zPage);
-			cpuSaveTMPStart(zPage, tmp);
-			tmp = cpuROL(tmp);
-			cpuSaveTMPEnd(zPage, tmp);
-			cpuAND(tmp);
-			cpuZeroPageEnd();
-			break;
-		case 0x28: //PLP
-			memGet8(pc);
+		case CPU_STACK_INC:
 			s++;
-			tmp = memGet8(0x100+s);
+			break;
+		case CPU_STACK_GET_A:
+			cpuSetA(memGet8(0x100+s));
+			break;
+		case CPU_STACK_GET_P:
+			cpuTmp = memGet8(0x100+s);
 			p &= P_FLAG_IRQ_DISABLE;
-			p |= (tmp & ~P_FLAG_IRQ_DISABLE);
+			p |= (cpuTmp & ~P_FLAG_IRQ_DISABLE);
 			//will do it for us after
-			if(tmp & P_FLAG_IRQ_DISABLE)
+			if(cpuTmp & P_FLAG_IRQ_DISABLE)
 			{
 				//printf("PLP IRQ Set 1\n");
 				p_irq_req = 1;
@@ -704,1224 +1069,94 @@ bool cpuCycle()
 				//printf("PLP IRQ Set 2\n");
 				p_irq_req = 2; 
 			}
-			waitCycles+=2;
 			break;
-		case 0x29: //AND Immediate
-			cpuAND(getImmediate());
-			cpuImmediateEnd();
-			break;
-		case 0x2A: //ROL A
-			memGet8(pc);
-			cpuSetA(cpuROL(a));
-			break;
-		case 0x2B: //AAC Immediate
-			cpuAND(getImmediate());
-			if(p & P_FLAG_NEGATIVE)
-				p |= P_FLAG_CARRY;
-			else
-				p &= ~P_FLAG_CARRY;
-			cpuImmediateEnd();
-			break;
-		case 0x2C: //BIT Absolute
-			cpuBIT(memGet8(getAbsoluteAddr()));
-			cpuAbsoluteEnd();
-			break;
-		case 0x2D: //AND Absolute
-			cpuAND(memGet8(getAbsoluteAddr()));
-			cpuAbsoluteEnd();
-			break;
-		case 0x2E: //ROL Absolute
-			absAddr = getAbsoluteAddr();
-			tmp = memGet8(absAddr);
-			cpuSaveTMPStart(absAddr, tmp);
-			tmp = cpuROL(tmp);
-			cpuSaveTMPEnd(absAddr, tmp);
-			cpuAbsoluteEnd();
-			break;
-		case 0x2F: //RLA Absolute
-			absAddr = getAbsoluteAddr();
-			tmp = memGet8(absAddr);
-			cpuSaveTMPStart(absAddr, tmp);
-			tmp = cpuROL(tmp);
-			cpuSaveTMPEnd(absAddr, tmp);
-			cpuAND(tmp);
-			cpuAbsoluteEnd();
-			break;
-		case 0x30: //BMI
-			if(!(p & P_FLAG_NEGATIVE))
-				pc++;
-			else
-				cpuRelativeBranch();
-			break;
-		case 0x31: //AND (Indirect), Y
-			absAddr = getIndirectPlusYaddr(false);
-			cpuAND(memGet8(absAddr));
-			cpuIndirectPlusYEnd();
-			break;
-		case 0x32: //KIL
-			cpuKIL();
-			break;
-		case 0x33: //RLA (Indirect), Y
-			absAddr = getIndirectPlusYaddr(true);
-			tmp = memGet8(absAddr);
-			cpuSaveTMPStart(absAddr, tmp);
-			tmp = cpuROL(tmp);
-			cpuSaveTMPEnd(absAddr, tmp);
-			cpuAND(tmp);
-			cpuIndirectPlusYEnd();
-			break;
-		case 0x34: //DOP Zero Page, X
-			cpuZeroPagePlusEnd();
-			break;
-		case 0x35: //AND Zero Page, X
-			cpuAND(memGet8(getZeroPagePlus(x)));
-			cpuZeroPagePlusEnd();
-			break;
-		case 0x36: //ROL Zero Page, X
-			zPage = getZeroPagePlus(x);
-			tmp = memGet8(zPage);
-			cpuSaveTMPStart(zPage, tmp);
-			tmp = cpuROL(tmp);
-			cpuSaveTMPEnd(zPage, tmp);
-			cpuZeroPagePlusEnd();
-			break;
-		case 0x37: //RLA Zero Page, X
-			zPage = getZeroPagePlus(x);
-			tmp = memGet8(zPage);
-			cpuSaveTMPStart(zPage, tmp);
-			tmp = cpuROL(tmp);
-			cpuSaveTMPEnd(zPage, tmp);
-			cpuAND(tmp);
-			cpuZeroPagePlusEnd();
-			break;
-		case 0x38: //SEC
-			memGet8(pc);
-			p |= P_FLAG_CARRY;
-			break;
-		case 0x39: //AND Absolute, Y
-			absAddr = getAbsolutePlusAddr(y,false);
-			cpuAND(memGet8(absAddr));
-			cpuAbsoluteEnd();
-			break;
-		case 0x3A: //NOP
-			memGet8(pc);
-			break;
-		case 0x3B: //RLA Absolute, Y
-			absAddr = getAbsolutePlusAddr(y,true);
-			tmp = memGet8(absAddr);
-			cpuSaveTMPStart(absAddr, tmp);
-			tmp = cpuROL(tmp);
-			cpuSaveTMPEnd(absAddr, tmp);
-			cpuAND(tmp);
-			cpuAbsoluteEnd();
-			break;
-		case 0x3C: //TOP Absolute, X
-			absAddr = getAbsolutePlusAddr(x,false);
-			cpuAbsoluteEnd();
-			break;
-		case 0x3D: //AND Absolute, X
-			absAddr = getAbsolutePlusAddr(x,false);
-			cpuAND(memGet8(absAddr));
-			cpuAbsoluteEnd();
-			break;
-		case 0x3E: //ROL Absolute, X
-			absAddr = getAbsolutePlusAddr(x,true);
-			tmp = memGet8(absAddr);
-			cpuSaveTMPStart(absAddr, tmp);
-			tmp = cpuROL(tmp);
-			cpuSaveTMPEnd(absAddr, tmp);
-			cpuAbsoluteEnd();
-			break;
-		case 0x3F: //RLA Absolute, X
-			absAddr = getAbsolutePlusAddr(x,true);
-			tmp = memGet8(absAddr);
-			cpuSaveTMPStart(absAddr, tmp);
-			tmp = cpuROL(tmp);
-			cpuSaveTMPEnd(absAddr, tmp);
-			cpuAND(tmp);
-			cpuAbsoluteEnd();
-			break;
-		case 0x40: //RTI
-			memGet8(pc);
-			#if DEBUG_INTR
-			printf("RTI from p %02x pc %04x ",p,pc);
-			#endif
-			//get back p from stack
-			s++;
+		case CPU_STACK_GET_P_INC:
 			p = memGet8(0x100+s);
-			//get back pc from stack
 			s++;
-			pc = memGet8(0x100+s);
+			break;
+		case CPU_STACK_GET_PCL_INC:
+			pc &= ~0xFF;
+			pc |= memGet8(0x100+s);
 			s++;
+			break;
+		case CPU_STACK_GET_PCH:
+			pc &= 0xFF;
 			pc |= memGet8(0x100+s)<<8;
-			//jump back
-			#if DEBUG_INTR
-			printf("to p %02x pc %04x\n",p,pc);
-			#endif
-			waitCycles+=4;
 			break;
-		case 0x41: //EOR (Indirect, X)
-			cpuEOR(memGet8(getIndirectPlusXaddr()));
-			cpuIndirectPlusXEnd();
+		case CPU_STACK_DEC:
+			s--;
 			break;
-		case 0x42: //KIL
-			cpuKIL();
-			break;
-		case 0x43: //SRE (Indirect, X)
-			absAddr = getIndirectPlusXaddr();
-			tmp = memGet8(absAddr);
-			cpuSaveTMPStart(absAddr, tmp);
-			tmp = cpuLSR(tmp);
-			cpuSaveTMPEnd(absAddr, tmp);
-			cpuEOR(tmp);
-			cpuIndirectPlusXEnd();
-			break;
-		case 0x44: //DOP Zero Page
-			cpuZeroPageEnd();
-			break;
-		case 0x45: //EOR Zero Page
-			cpuEOR(memGet8(getZeroPage()));
-			cpuZeroPageEnd();
-			break;
-		case 0x46: //LSR Zero Page
-			zPage = getZeroPage();
-			tmp = memGet8(zPage);
-			cpuSaveTMPStart(zPage, tmp);
-			tmp = cpuLSR(tmp);
-			cpuSaveTMPEnd(zPage, tmp);
-			cpuZeroPageEnd();
-			break;
-		case 0x47: //SRE Zero Page
-			zPage = getZeroPage();
-			tmp = memGet8(zPage);
-			cpuSaveTMPStart(zPage, tmp);
-			tmp = cpuLSR(tmp);
-			cpuSaveTMPEnd(zPage, tmp);
-			cpuEOR(tmp);
-			cpuZeroPageEnd();
-			break;
-		case 0x48: //PHA
-			memGet8(pc);
+		case CPU_STACK_STORE_A_DEC:
 			memSet8(0x100+s,a);
 			s--;
-			waitCycles++;
 			break;
-		case 0x49: //EOR Immediate
-			cpuEOR(getImmediate());
-			cpuImmediateEnd();
-			break;
-		case 0x4A: //LSR A
-			memGet8(pc);
-			cpuSetA(cpuLSR(a));
-			break;
-		case 0x4B: //ASR Immediate
-			cpuAND(getImmediate());
-			cpuSetA(cpuLSR(a));
-			cpuImmediateEnd();
-			break;
-		case 0x4C: //JMP Absolute
-			#if DEBUG_JSR
-			printf("JMP from %04x to ",pc);
-			#endif
-			pc = getAbsoluteAddr();
-			#if DEBUG_JSR
-			printf("%04x\n",pc);
-			#endif
-			waitCycles++;
-			break;
-		case 0x4D: //EOR Absolute
-			cpuEOR(memGet8(getAbsoluteAddr()));
-			cpuAbsoluteEnd();
-			break;
-		case 0x4E: //LSR Absolute
-			absAddr = getAbsoluteAddr();
-			tmp = memGet8(absAddr);
-			cpuSaveTMPStart(absAddr, tmp);
-			tmp = cpuLSR(tmp);
-			cpuSaveTMPEnd(absAddr, tmp);
-			cpuAbsoluteEnd();
-			break;
-		case 0x4F: //SRE Absolute
-			absAddr = getAbsoluteAddr();
-			tmp = memGet8(absAddr);
-			cpuSaveTMPStart(absAddr, tmp);
-			tmp = cpuLSR(tmp);
-			cpuSaveTMPEnd(absAddr, tmp);
-			cpuEOR(tmp);
-			cpuAbsoluteEnd();
-			break;
-		case 0x50: //BVC
-			if(p & P_FLAG_OVERFLOW)
-				pc++;
-			else
-				cpuRelativeBranch();
-			break;
-		case 0x51: //EOR (Indirect), Y
-			absAddr = getIndirectPlusYaddr(false);
-			cpuEOR(memGet8(absAddr));
-			cpuIndirectPlusYEnd();
-			break;
-		case 0x52: //KIL
-			cpuKIL();
-			break;
-		case 0x53: //SRE (Indirect), Y
-			absAddr = getIndirectPlusYaddr(true);
-			tmp = memGet8(absAddr);
-			cpuSaveTMPStart(absAddr, tmp);
-			tmp = cpuLSR(tmp);
-			cpuSaveTMPEnd(absAddr, tmp);
-			cpuEOR(tmp);
-			cpuIndirectPlusYEnd();
-			break;
-		case 0x54: //DOP Zero Page, X
-			cpuZeroPagePlusEnd();
-			break;
-		case 0x55: //EOR Zero Page, X
-			cpuEOR(memGet8(getZeroPagePlus(x)));
-			cpuZeroPagePlusEnd();
-			break;
-		case 0x56: //LSR Zero Page, X
-			zPage = getZeroPagePlus(x);
-			tmp = memGet8(zPage);
-			cpuSaveTMPStart(zPage, tmp);
-			tmp = cpuLSR(tmp);
-			cpuSaveTMPEnd(zPage, tmp);
-			cpuZeroPagePlusEnd();
-			break;
-		case 0x57: //SRE Zero Page, X
-			zPage = getZeroPagePlus(x);
-			tmp = memGet8(zPage);
-			cpuSaveTMPStart(zPage, tmp);
-			tmp = cpuLSR(tmp);
-			cpuSaveTMPEnd(zPage, tmp);
-			cpuEOR(tmp);
-			cpuZeroPagePlusEnd();
-			break;
-		case 0x58: //CLI
-			memGet8(pc);
-			#if DEBUG_INTR
-			printf("CLI\n");
-			#endif
-			p_irq_req = 2; //will do it for us later
-			break;
-		case 0x59: //EOR Absolute, Y
-			absAddr = getAbsolutePlusAddr(y,false);
-			cpuEOR(memGet8(absAddr));
-			cpuAbsoluteEnd();
-			break;
-		case 0x5A: //NOP
-			memGet8(pc);
-			break;
-		case 0x5B: //SRE Absolute, Y
-			absAddr = getAbsolutePlusAddr(y,true);
-			tmp = memGet8(absAddr);
-			cpuSaveTMPStart(absAddr, tmp);
-			tmp = cpuLSR(tmp);
-			cpuSaveTMPEnd(absAddr, tmp);
-			cpuEOR(tmp);
-			cpuAbsoluteEnd();
-			break;
-		case 0x5C: //TOP Absolute, X
-			absAddr = getAbsolutePlusAddr(x,false);
-			cpuAbsoluteEnd();
-			break;
-		case 0x5D: //EOR Absolute, X
-			absAddr = getAbsolutePlusAddr(x,false);
-			cpuEOR(memGet8(absAddr));
-			cpuAbsoluteEnd();
-			break;
-		case 0x5E: //LSR Absolute, X
-			absAddr = getAbsolutePlusAddr(x,true);
-			tmp = memGet8(absAddr);
-			cpuSaveTMPStart(absAddr, tmp);
-			tmp = cpuLSR(tmp);
-			cpuSaveTMPEnd(absAddr, tmp);
-			cpuAbsoluteEnd();
-			break;
-		case 0x5F: //SRE Absolute, X
-			absAddr = getAbsolutePlusAddr(x,true);
-			tmp = memGet8(absAddr);
-			cpuSaveTMPStart(absAddr, tmp);
-			tmp = cpuLSR(tmp);
-			cpuSaveTMPEnd(absAddr, tmp);
-			cpuEOR(tmp);
-			cpuAbsoluteEnd();
-			break;
-		case 0x60: //RTS
-			memGet8(pc);
-			#if DEBUG_JSR
-			printf("RTS from s %04x pc %04x to ",s,pc);
-			#endif
-			s++;
-			absAddr = memGet8(0x100+s);
-			s++;
-			absAddr |= (memGet8(0x100+s) << 8);
-			pc = (absAddr+1);
-			#if DEBUG_JSR
-			printf("%04x\n",pc);
-			#endif
-			waitCycles+=4;
-			break;
-		case 0x61: //ADC (Indirect, X)
-			cpuADC(memGet8(getIndirectPlusXaddr()));
-			cpuIndirectPlusXEnd();
-			break;
-		case 0x62: //KIL
-			cpuKIL();
-			break;
-		case 0x63: //RRA (Indirect, X)
-			absAddr = getIndirectPlusXaddr();
-			tmp = memGet8(absAddr);
-			cpuSaveTMPStart(absAddr, tmp);
-			tmp = cpuROR(tmp);
-			cpuSaveTMPEnd(absAddr, tmp);
-			cpuADC(tmp);
-			cpuIndirectPlusXEnd();
-			break;
-		case 0x64: //DOP Zero Page
-			cpuZeroPageEnd();
-			break;
-		case 0x65: //ADC Zero Page
-			cpuADC(memGet8(getZeroPage()));
-			cpuZeroPageEnd();
-			break;
-		case 0x66: //ROR Zero Page
-			zPage = getZeroPage();
-			tmp = memGet8(zPage);
-			cpuSaveTMPStart(zPage, tmp);
-			tmp = cpuROR(tmp);
-			cpuSaveTMPEnd(zPage, tmp);
-			cpuZeroPageEnd();
-			break;
-		case 0x67: //RRA Zero Page
-			zPage = getZeroPage();
-			tmp = memGet8(zPage);
-			cpuSaveTMPStart(zPage, tmp);
-			tmp = cpuROR(tmp);
-			cpuSaveTMPEnd(zPage, tmp);
-			cpuADC(tmp);
-			cpuZeroPageEnd();
-			break;
-		case 0x68: //PLA
-			memGet8(pc);
-			s++;
-			cpuSetA(memGet8(0x100+s));
-			waitCycles+=2;
-			break;
-		case 0x69: //ADC Immediate
-			cpuADC(getImmediate());
-			cpuImmediateEnd();
-			break;
-		case 0x6A: //ROR A
-			memGet8(pc);
-			cpuSetA(cpuROR(a));
-			break;
-		case 0x6B: //ARR Immediate
-			cpuAND(getImmediate());
-			cpuSetA(cpuROR(a));
-			cpuSetARRRegs();
-			cpuImmediateEnd();
-			break;
-		case 0x6C: //JMP Indirect
-			#if DEBUG_JSR
-			printf("JMP from %04x to ",pc);
-			#endif
-			tmp = memGet8(pc++);
-			absAddr = (memGet8(pc)<<8);
-			pc = memGet8(absAddr+tmp);
-			//emulate 6502 jmp wrap bug 
-			tmp++; //possibly FF->00 without page increase!
-			pc |= (memGet8(absAddr+tmp)<<8);
-			#if DEBUG_JSR
-			printf("%04x\n",pc);
-			#endif
-			waitCycles+=3;
-			break;
-		case 0x6D: //ADC Absolute
-			cpuADC(memGet8(getAbsoluteAddr()));
-			cpuAbsoluteEnd();
-			break;
-		case 0x6E: //ROR Absolute
-			absAddr = getAbsoluteAddr();
-			tmp = memGet8(absAddr);
-			cpuSaveTMPStart(absAddr, tmp);
-			tmp = cpuROR(tmp);
-			cpuSaveTMPEnd(absAddr, tmp);
-			cpuAbsoluteEnd();
-			break;
-		case 0x6F: //RRA Absolute
-			absAddr = getAbsoluteAddr();
-			tmp = memGet8(absAddr);
-			cpuSaveTMPStart(absAddr, tmp);
-			tmp = cpuROR(tmp);
-			cpuSaveTMPEnd(absAddr, tmp);
-			cpuADC(tmp);
-			cpuAbsoluteEnd();
-			break;
-		case 0x70: //BVS
-			if(!(p & P_FLAG_OVERFLOW))
-				pc++;
-			else
-				cpuRelativeBranch();
-			break;
-		case 0x71: //ADC (Indirect), Y
-			absAddr = getIndirectPlusYaddr(false);
-			cpuADC(memGet8(absAddr));
-			cpuIndirectPlusYEnd();
-			break;
-		case 0x72: //KIL
-			cpuKIL();
-			break;
-		case 0x73: //RRA (Indirect), Y
-			absAddr = getIndirectPlusYaddr(true);
-			tmp = memGet8(absAddr);
-			cpuSaveTMPStart(absAddr, tmp);
-			tmp = cpuROR(tmp);
-			cpuSaveTMPEnd(absAddr, tmp);
-			cpuADC(tmp);
-			cpuIndirectPlusYEnd();
-			break;
-		case 0x74: //DOP Zero Page, X
-			cpuZeroPagePlusEnd();
-			break;
-		case 0x75: //ADC Zero Page, X
-			cpuADC(memGet8(getZeroPagePlus(x)));
-			cpuZeroPagePlusEnd();
-			break;
-		case 0x76: //ROR Zero Page, X
-			zPage = getZeroPagePlus(x);
-			tmp = memGet8(zPage);
-			cpuSaveTMPStart(zPage, tmp);
-			tmp = cpuROR(tmp);
-			cpuSaveTMPEnd(zPage, tmp);
-			cpuZeroPagePlusEnd();
-			break;
-		case 0x77: //RRA Zero Page, X
-			zPage = getZeroPagePlus(x);
-			tmp = memGet8(zPage);
-			cpuSaveTMPStart(zPage, tmp);
-			tmp = cpuROR(tmp);
-			cpuSaveTMPEnd(zPage, tmp);
-			cpuADC(tmp);
-			cpuZeroPagePlusEnd();
-			break;
-		case 0x78: //SEI
-			memGet8(pc);
-			#if DEBUG_INTR
-			printf("SEI\n");
-			#endif
-			p_irq_req = 1; //will do it for us after
-			break;
-		case 0x79: //ADC Absolute, Y
-			absAddr = getAbsolutePlusAddr(y,false);
-			cpuADC(memGet8(absAddr));
-			cpuAbsoluteEnd();
-			break;
-		case 0x7A: //NOP
-			memGet8(pc);
-			break;
-		case 0x7B: //RRA Absolute, Y
-			absAddr = getAbsolutePlusAddr(y,true);
-			tmp = memGet8(absAddr);
-			cpuSaveTMPStart(absAddr, tmp);
-			tmp = cpuROR(tmp);
-			cpuSaveTMPEnd(absAddr, tmp);
-			cpuADC(tmp);
-			cpuAbsoluteEnd();
-			break;
-		case 0x7C: //TOP Absolute, X
-			absAddr = getAbsolutePlusAddr(x,false);
-			cpuAbsoluteEnd();
-			break;
-		case 0x7D: //ADC Absolute, X
-			absAddr = getAbsolutePlusAddr(x,false);
-			cpuADC(memGet8(absAddr));
-			cpuAbsoluteEnd();
-			break;
-		case 0x7E: //ROR Absolute, X
-			absAddr = getAbsolutePlusAddr(x,true);
-			tmp = memGet8(absAddr);
-			cpuSaveTMPStart(absAddr, tmp);
-			tmp = cpuROR(tmp);
-			cpuSaveTMPEnd(absAddr, tmp);
-			cpuAbsoluteEnd();
-			break;
-		case 0x7F: //RRA Absolute, X
-			absAddr = getAbsolutePlusAddr(x,true);
-			tmp = memGet8(absAddr);
-			cpuSaveTMPStart(absAddr, tmp);
-			tmp = cpuROR(tmp);
-			cpuSaveTMPEnd(absAddr, tmp);
-			cpuADC(tmp);
-			cpuAbsoluteEnd();
-			break;
-		case 0x80: //DOP Immediate
-			cpuImmediateEnd();
-			break;
-		case 0x81: //STA (Indirect, X)
-			memSet8(getIndirectPlusXaddr(), a);
-			cpuIndirectPlusXEnd();
-			break;
-		case 0x82: //DOP Immediate
-			cpuImmediateEnd();
-			break;
-		case 0x83: //AAX (Indirect, X)
-			memSet8(getIndirectPlusXaddr(), a&x);
-			cpuIndirectPlusXEnd();
-			break;
-		case 0x84: //STY Zero Page
-			memSet8(getZeroPage(), y);
-			cpuZeroPageEnd();
-			break;
-		case 0x85: //STA Zero Page
-			memSet8(getZeroPage(), a);
-			cpuZeroPageEnd();
-			break;
-		case 0x86: //STX Zero Page
-			memSet8(getZeroPage(), x);
-			cpuZeroPageEnd();
-			break;
-		case 0x87: //AAX Zero Page
-			memSet8(getZeroPage(), a&x);
-			cpuZeroPageEnd();
-			break;
-		case 0x88: //DEY
-			memGet8(pc);
-			cpuSetY(y-1);
-			break;
-		case 0x89: //DOP Immediate
-			cpuImmediateEnd();
-			break;
-		case 0x8A: //TXA
-			memGet8(pc);
-			cpuSetA(x);
-			break;
-		case 0x8B: //XAA Immediate
-			cpuSetA(x&getImmediate());
-			cpuImmediateEnd();
-			break;
-		case 0x8C: //STY Absolute
-			memSet8(getAbsoluteAddr(), y);
-			cpuAbsoluteEnd();
-			break;
-		case 0x8D: //STA Absolute
-			memSet8(getAbsoluteAddr(), a);
-			cpuAbsoluteEnd();
-			break;
-		case 0x8E: //STX Absolute
-			memSet8(getAbsoluteAddr(), x);
-			cpuAbsoluteEnd();
-			break;
-		case 0x8F: //AAX Absolute
-			memSet8(getAbsoluteAddr(), a&x);
-			cpuAbsoluteEnd();
-			break;
-		case 0x90: //BCC
-			if(p & P_FLAG_CARRY)
-				pc++;
-			else
-				cpuRelativeBranch();
-			break;
-		case 0x91: //STA (Indirect), Y
-			absAddr = getIndirectPlusYaddr(true);
-			memSet8(absAddr, a);
-			cpuIndirectPlusYEnd();
-			break;
-		case 0x92: //KIL
-			cpuKIL();
-			break;
-		case 0x93: //AXA (Indirect), Y
-			absAddr = getIndirectPlusYaddr(true);
-			memSet8(absAddr, a&x&(absAddr>>8));
-			cpuIndirectPlusYEnd();
-			break;
-		case 0x94: //STY Zero Page, X
-			memSet8(getZeroPagePlus(x), y);
-			cpuZeroPagePlusEnd();
-			break;
-		case 0x95: //STA Zero Page, X
-			memSet8(getZeroPagePlus(x), a);
-			cpuZeroPagePlusEnd();
-			break;
-		case 0x96: //STX Zero Page, Y
-			memSet8(getZeroPagePlus(y), x);
-			cpuZeroPagePlusEnd();
-			break;
-		case 0x97: //AAX Zero Page, Y
-			memSet8(getZeroPagePlus(y), a&x);
-			cpuZeroPagePlusEnd();
-			break;
-		case 0x98: //TYA
-			memGet8(pc);
-			cpuSetA(y);
-			break;
-		case 0x99: //STA Absolute, Y
-			absAddr = getAbsolutePlusAddr(y,true);
-			memSet8(absAddr, a);
-			cpuAbsoluteEnd();
-			break;
-		case 0x9A: //TXS
-			memGet8(pc);
-			s = x;
-			break;
-		case 0x9B: //XAS Absolute, Y
-			val = getAbsolutePlusAddr(y,true);
-			absAddr = (val+x)&0xFFFF;
-			val = ((val&0xFF00)|(absAddr&0x00FF));
-			if((val >> 8) != (absAddr >> 8))
-				val &= y << 8;
-			s = a & x;
-			memSet8(val, a & x & ((val >> 8) + 1));
-			cpuAbsoluteEnd();
-			break;
-		case 0x9C: //SYA Absolute, X
-			val = getAbsoluteAddr();
-			absAddr = (val+x)&0xFFFF;
-			val = ((val&0xFF00)|(absAddr&0x00FF));
-			if((val >> 8) != (absAddr >> 8))
-			  val &= y << 8;
-			memSet8(val, y & ((val >> 8) + 1));
-			waitCycles++;
-			cpuAbsoluteEnd();
-			break;
-		case 0x9D: //STA Absolute, X
-			absAddr = getAbsolutePlusAddr(x,true);
-			memSet8(absAddr, a);
-			cpuAbsoluteEnd();
-			break;
-		case 0x9E: //SXA Absolute, Y
-			val = getAbsoluteAddr();
-			absAddr = (val+y)&0xFFFF;
-			val = ((val&0xFF00)|(absAddr&0x00FF));
-			if((val >> 8) != (absAddr >> 8))
-			  val &= x << 8;
-			memSet8(val, x & ((val >> 8) + 1));
-			waitCycles++;
-			cpuAbsoluteEnd();
-			break;
-		case 0x9F: //AXA Absolute, Y
-			absAddr = getAbsolutePlusAddr(y,true);
-			memSet8(absAddr, a&x&(absAddr>>8));
-			cpuAbsoluteEnd();
-			break;
-		case 0xA0: //LDY Immediate
-			cpuSetY(getImmediate());
-			cpuImmediateEnd();
-			break;
-		case 0xA1: //LDA (Indirect, X)
-			cpuSetA(memGet8(getIndirectPlusXaddr()));
-			cpuIndirectPlusXEnd();
-			break;
-		case 0xA2: //LDX Immediate
-			cpuSetX(getImmediate());
-			cpuImmediateEnd();
-			break;
-		case 0xA3: //LAX (Indirect, X)
-			tmp = memGet8(getIndirectPlusXaddr());
-			cpuSetA(tmp); cpuSetX(tmp);
-			cpuIndirectPlusXEnd();
-			break;
-		case 0xA4: //LDY Zero Page
-			cpuSetY(memGet8(getZeroPage()));
-			cpuZeroPageEnd();
-			break;
-		case 0xA5: //LDA Zero Page
-			cpuSetA(memGet8(getZeroPage()));
-			cpuZeroPageEnd();
-			break;
-		case 0xA6: //LDX Zero Page
-			cpuSetX(memGet8(getZeroPage()));
-			cpuZeroPageEnd();
-			break;
-		case 0xA7: //LAX Zero Page
-			tmp = memGet8(getZeroPage());
-			cpuSetA(tmp); cpuSetX(tmp);
-			cpuZeroPageEnd();
-			break;
-		case 0xA8: //TAY
-			memGet8(pc);
-			cpuSetY(a);
-			break;
-		case 0xA9: //LDA Immediate
-			cpuSetA(getImmediate());
-			cpuImmediateEnd();
-			break;
-		case 0xAA: //TAX
-			memGet8(pc);
-			cpuSetX(a);
-			break;
-		case 0xAB: //AXT Immediate
-			cpuSetA(getImmediate());
-			cpuSetX(a);
-			cpuImmediateEnd();
-			break;
-		case 0xAC: //LDY Absolute
-			cpuSetY(memGet8(getAbsoluteAddr()));
-			cpuAbsoluteEnd();
-			break;
-		case 0xAD: //LDA Absolute
-			cpuSetA(memGet8(getAbsoluteAddr()));
-			cpuAbsoluteEnd();
-			break;
-		case 0xAE: //LDX Absolute
-			cpuSetX(memGet8(getAbsoluteAddr()));
-			cpuAbsoluteEnd();
-			break;
-		case 0xAF: //LAX Absolute
-			tmp = memGet8(getAbsoluteAddr());
-			cpuSetA(tmp); cpuSetX(tmp);
-			cpuAbsoluteEnd();
-			break;
-		case 0xB0: //BCS
-			if(!(p & P_FLAG_CARRY))
-				pc++;
-			else
-				cpuRelativeBranch();
-			break;
-		case 0xB1: //LDA (Indirect), Y
-			absAddr = getIndirectPlusYaddr(false);
-			cpuSetA(memGet8(absAddr));
-			cpuIndirectPlusYEnd();
-			break;
-		case 0xB2: //KIL
-			cpuKIL();
-			break;
-		case 0xB3: //LAX (Indirect), Y
-			absAddr = getIndirectPlusYaddr(false);
-			tmp = memGet8(absAddr);
-			cpuSetA(tmp); cpuSetX(tmp);
-			cpuIndirectPlusYEnd();
-			break;
-		case 0xB4: //LDY Zero Page, X
-			cpuSetY(memGet8(getZeroPagePlus(x)));
-			cpuZeroPagePlusEnd();
-			break;
-		case 0xB5: //LDA Zero Page, X
-			cpuSetA(memGet8(getZeroPagePlus(x)));
-			cpuZeroPagePlusEnd();
-			break;
-		case 0xB6: //LDX Zero Page, Y
-			cpuSetX(memGet8(getZeroPagePlus(y)));
-			cpuZeroPagePlusEnd();
-			break;
-		case 0xB7: //LAX Zero Page, Y
-			tmp = memGet8(getZeroPagePlus(y));
-			cpuSetA(tmp); cpuSetX(tmp);
-			cpuZeroPagePlusEnd();
-			break;
-		case 0xB8: //CLV
-			memGet8(pc);
-			p &= ~P_FLAG_OVERFLOW;
-			break;
-		case 0xB9: //LDA Absolute, Y
-			absAddr = getAbsolutePlusAddr(y,false);
-			cpuSetA(memGet8(absAddr));
-			cpuAbsoluteEnd();
-			break;
-		case 0xBA: //TSX
-			memGet8(pc);
-			cpuSetX(s);
-			break;
-		case 0xBB: //LAR Absolute, Y
-			absAddr = getAbsolutePlusAddr(y,false);
-			cpuSetA(memGet8(absAddr));
-			cpuAND(s); cpuSetX(a); s = a;
-			cpuAbsoluteEnd();
-			break;
-		case 0xBC: //LDY Absolute, X
-			absAddr = getAbsolutePlusAddr(x,false);
-			cpuSetY(memGet8(absAddr));
-			cpuAbsoluteEnd();
-			break;
-		case 0xBD: //LDA Absolute, X
-			absAddr = getAbsolutePlusAddr(x,false);
-			cpuSetA(memGet8(absAddr));
-			cpuAbsoluteEnd();
-			break;
-		case 0xBE: //LDX Absolute, Y
-			absAddr = getAbsolutePlusAddr(y,false);
-			cpuSetX(memGet8(absAddr));
-			cpuAbsoluteEnd();
-			break;
-		case 0xBF: //LAX Absolute, Y
-			absAddr = getAbsolutePlusAddr(y,false);
-			tmp = memGet8(absAddr);
-			cpuSetA(tmp); cpuSetX(tmp);
-			cpuAbsoluteEnd();
-			break;
-		case 0xC0: //CPY Immediate
-			cpuCMP(y,getImmediate());
-			cpuImmediateEnd();
-			break;
-		case 0xC1: //CMP (Indirect, X)
-			cpuCMP(a,memGet8(getIndirectPlusXaddr()));
-			cpuIndirectPlusXEnd();
-			break;
-		case 0xC2: //DOP Immediate
-			cpuImmediateEnd();
-			break;
-		case 0xC3: //DCP (Indirect, X)
-			absAddr = getIndirectPlusXaddr();
-			tmp = memGet8(absAddr);
-			cpuSaveTMPStart(absAddr, tmp);
-			tmp = cpuSetTMP(tmp-1);
-			cpuSaveTMPEnd(absAddr, tmp);
-			cpuCMP(a,tmp);
-			cpuIndirectPlusXEnd();
-			break;
-		case 0xC4: //CPY Zero Page
-			cpuCMP(y,memGet8(getZeroPage()));
-			cpuZeroPageEnd();
-			break;
-		case 0xC5: //CMP Zero Page
-			cpuCMP(a,memGet8(getZeroPage()));
-			cpuZeroPageEnd();
-			break;
-		case 0xC6: //DEC Zero Page
-			zPage = getZeroPage();
-			tmp = memGet8(zPage);
-			cpuSaveTMPStart(zPage, tmp);
-			tmp = cpuSetTMP(tmp-1);
-			cpuSaveTMPEnd(zPage, tmp);
-			cpuZeroPageEnd();
-			break;
-		case 0xC7: //DCP Zero Page
-			zPage = getZeroPage();
-			tmp = memGet8(zPage);
-			cpuSaveTMPStart(zPage, tmp);
-			tmp = cpuSetTMP(tmp-1);
-			cpuSaveTMPEnd(zPage, tmp);
-			cpuCMP(a,tmp);
-			cpuZeroPageEnd();
-			break;
-		case 0xC8: //INY
-			memGet8(pc);
-			cpuSetY(y+1);
-			break;
-		case 0xC9: //CMP Immediate
-			cpuCMP(a,getImmediate());
-			cpuImmediateEnd();
-			break;
-		case 0xCA: //DEX
-			memGet8(pc);
-			cpuSetX(x-1);
-			break;
-		case 0xCB: //AXS Immediate
-			x = cpuCMP(a&x,getImmediate());
-			cpuImmediateEnd();
-			break;
-		case 0xCC: //CPY Absolute
-			cpuCMP(y,memGet8(getAbsoluteAddr()));
-			cpuAbsoluteEnd();
-			break;
-		case 0xCD: //CMP Absolute
-			cpuCMP(a,memGet8(getAbsoluteAddr()));
-			cpuAbsoluteEnd();
-			break;
-		case 0xCE: //DEC Absolute
-			absAddr = getAbsoluteAddr();
-			tmp = memGet8(absAddr);
-			cpuSaveTMPStart(absAddr, tmp);
-			tmp = cpuSetTMP(tmp-1);
-			cpuSaveTMPEnd(absAddr, tmp);
-			cpuAbsoluteEnd();
-			break;
-		case 0xCF: //DCP Absolute
-			absAddr = getAbsoluteAddr();
-			tmp = memGet8(absAddr);
-			cpuSaveTMPStart(absAddr, tmp);
-			tmp = cpuSetTMP(tmp-1);
-			cpuSaveTMPEnd(absAddr, tmp);
-			cpuCMP(a,tmp);
-			cpuAbsoluteEnd();
-			break;
-		case 0xD0: //BNE
-			if(p & P_FLAG_ZERO)
-				pc++;
-			else
-				cpuRelativeBranch();
-			break;
-		case 0xD1: //CMP (Indirect), Y
-			absAddr = getIndirectPlusYaddr(false);
-			cpuCMP(a,memGet8(absAddr));
-			cpuIndirectPlusYEnd();
-			break;
-		case 0xD2: //KIL
-			cpuKIL();
-			break;
-		case 0xD3: //DCP (Indirect), Y
-			absAddr = getIndirectPlusYaddr(true);
-			tmp = memGet8(absAddr);
-			cpuSaveTMPStart(absAddr, tmp);
-			tmp = cpuSetTMP(tmp-1);
-			cpuSaveTMPEnd(absAddr, tmp);
-			cpuCMP(a,tmp);
-			cpuIndirectPlusYEnd();
-			break;
-		case 0xD4: //DOP Zero Page, X
-			cpuZeroPagePlusEnd();
-			break;
-		case 0xD5: //CMP Zero Page, X
-			cpuCMP(a,memGet8(getZeroPagePlus(x)));
-			cpuZeroPagePlusEnd();
-			break;
-		case 0xD6: //DEC Zero Page, X
-			zPage = getZeroPagePlus(x);
-			tmp = memGet8(zPage);
-			cpuSaveTMPStart(zPage, tmp);
-			tmp = cpuSetTMP(tmp-1);
-			cpuSaveTMPEnd(zPage, tmp);
-			cpuZeroPagePlusEnd();
-			break;
-		case 0xD7: //DCP Zero Page, X
-			zPage = getZeroPagePlus(x);
-			tmp = memGet8(zPage);
-			cpuSaveTMPStart(zPage, tmp);
-			tmp = cpuSetTMP(tmp-1);
-			cpuSaveTMPEnd(zPage, tmp);
-			cpuCMP(a,tmp);
-			cpuZeroPagePlusEnd();
-			break;
-		case 0xD8: //CLD
-			memGet8(pc);
-			p &= ~P_FLAG_DECIMAL;
-			break;
-		case 0xD9: //CMP Absolute, Y
-			absAddr = getAbsolutePlusAddr(y,false);
-			cpuCMP(a,memGet8(absAddr));
-			cpuAbsoluteEnd();
-			break;
-		case 0xDA: //NOP
-			memGet8(pc);
-			break;
-		case 0xDB: //DCP Absolute, Y
-			absAddr = getAbsolutePlusAddr(y,true);
-			tmp = memGet8(absAddr);
-			cpuSaveTMPStart(absAddr, tmp);
-			tmp = cpuSetTMP(tmp-1);
-			cpuSaveTMPEnd(absAddr ,tmp);
-			cpuCMP(a,tmp);
-			cpuAbsoluteEnd();
-			break;
-		case 0xDC: //TOP Absolute, X
-			absAddr = getAbsolutePlusAddr(x,false);
-			cpuAbsoluteEnd();
-			break;
-		case 0xDD: //CMP Absolute, X
-			absAddr = getAbsolutePlusAddr(x,false);
-			cpuCMP(a,memGet8(absAddr));
-			cpuAbsoluteEnd();
-			break;
-		case 0xDE: //DEC Absolute, X
-			absAddr = getAbsolutePlusAddr(x,true);
-			tmp = memGet8(absAddr);
-			cpuSaveTMPStart(absAddr, tmp);
-			tmp = cpuSetTMP(tmp-1);
-			cpuSaveTMPEnd(absAddr, tmp);
-			cpuAbsoluteEnd();
-			break;
-		case 0xDF: //DCP Absolute, X
-			absAddr = getAbsolutePlusAddr(x,true);
-			tmp = memGet8(absAddr);
-			cpuSaveTMPStart(absAddr, tmp);
-			tmp = cpuSetTMP(tmp-1);
-			cpuSaveTMPEnd(absAddr, tmp);
-			cpuCMP(a,tmp);
-			cpuAbsoluteEnd();
-			break;
-		case 0xE0: //CPX Immediate
-			cpuCMP(x,getImmediate());
-			cpuImmediateEnd();
-			break;
-		case 0xE1: //SBC (Indirect, X)
-			cpuSBC(memGet8(getIndirectPlusXaddr()));
-			cpuIndirectPlusXEnd();
-			break;
-		case 0xE2: //DOP Immediate
-			cpuImmediateEnd();
-			break;
-		case 0xE3: //ISC (Indirect, X)
-			absAddr = getIndirectPlusXaddr();
-			tmp = memGet8(absAddr);
-			cpuSaveTMPStart(absAddr, tmp);
-			tmp = cpuSetTMP(tmp+1);
-			cpuSaveTMPEnd(absAddr, tmp);
-			cpuSBC(tmp);
-			cpuIndirectPlusXEnd();
-			break;
-		case 0xE4: //CPX Zero Page
-			cpuCMP(x,memGet8(getZeroPage()));
-			cpuZeroPageEnd();
-			break;
-		case 0xE5: //SBC Zero Page
-			cpuSBC(memGet8(getZeroPage()));
-			cpuZeroPageEnd();
-			break;
-		case 0xE6: //INC Zero Page
-			zPage = getZeroPage();
-			tmp = memGet8(zPage);
-			cpuSaveTMPStart(zPage, tmp);
-			tmp = cpuSetTMP(tmp+1);
-			cpuSaveTMPEnd(zPage, tmp);
-			cpuZeroPageEnd();
-			break;
-		case 0xE7: //ISC Zero Page
-			zPage = getZeroPage();
-			tmp = memGet8(zPage);
-			cpuSaveTMPStart(zPage, tmp);
-			tmp = cpuSetTMP(tmp+1);
-			cpuSaveTMPEnd(zPage, tmp);
-			cpuSBC(tmp);
-			cpuZeroPageEnd();
-			break;
-		case 0xE8: //INX
-			memGet8(pc);
-			cpuSetX(x+1);
-			break;
-		case 0xE9: //SBC Immediate
-			cpuSBC(getImmediate());
-			cpuImmediateEnd();
-			break;
-		case 0xEA: //NOP
-			memGet8(pc);
-			break;
-		case 0xEB: //SBC Immediate
-			cpuSBC(getImmediate());
-			cpuImmediateEnd();
-			break;
-		case 0xEC: //CPX Absolute
-			cpuCMP(x,memGet8(getAbsoluteAddr()));
-			cpuAbsoluteEnd();
-			break;
-		case 0xED: //SBC Absolute
-			cpuSBC(memGet8(getAbsoluteAddr()));
-			cpuAbsoluteEnd();
-			break;
-		case 0xEE: //INC Absolute
-			absAddr = getAbsoluteAddr();
-			tmp = memGet8(absAddr);
-			cpuSaveTMPStart(absAddr, tmp);
-			tmp = cpuSetTMP(tmp+1);
-			cpuSaveTMPEnd(absAddr, tmp);
-			cpuAbsoluteEnd();
-			break;
-		case 0xEF: //ISC Absolute
-			absAddr = getAbsoluteAddr();
-			tmp = memGet8(absAddr);
-			cpuSaveTMPStart(absAddr, tmp);
-			tmp = cpuSetTMP(tmp+1);
-			cpuSaveTMPEnd(absAddr, tmp);
-			cpuSBC(tmp);
-			cpuAbsoluteEnd();
-			break;
-		case 0xF0: //BEQ
-			if(!(p & P_FLAG_ZERO))
-				pc++;
-			else
-				cpuRelativeBranch();
-			break;
-		case 0xF1: //SBC (Indirect), Y
-			absAddr = getIndirectPlusYaddr(false);
-			cpuSBC(memGet8(absAddr));
-			cpuIndirectPlusYEnd();
-			break;
-		case 0xF2: //KIL
-			cpuKIL();
-			break;
-		case 0xF3: //ISC (Indirect), Y
-			absAddr = getIndirectPlusYaddr(true);
-			tmp = memGet8(absAddr);
-			cpuSaveTMPStart(absAddr, tmp);
-			tmp = cpuSetTMP(tmp+1);
-			cpuSaveTMPEnd(absAddr, tmp);
-			cpuSBC(tmp);
-			cpuIndirectPlusYEnd();
-			break;
-		case 0xF4: //DOP Zero Page, X
-			cpuZeroPagePlusEnd();
-			break;
-		case 0xF5: //SBC Zero Page, X
-			cpuSBC(memGet8(getZeroPagePlus(x)));
-			cpuZeroPagePlusEnd();
-			break;
-		case 0xF6: //INC Zero Page, X
-			zPage = getZeroPagePlus(x);
-			tmp = memGet8(zPage);
-			cpuSaveTMPStart(zPage, tmp);
-			tmp = cpuSetTMP(tmp+1);
-			cpuSaveTMPEnd(zPage, tmp);
-			cpuZeroPagePlusEnd();
-			break;
-		case 0xF7: //ISC Zero Page, X
-			zPage = getZeroPagePlus(x);
-			tmp = memGet8(zPage);
-			cpuSaveTMPStart(zPage, tmp);
-			tmp = cpuSetTMP(tmp+1);
-			cpuSaveTMPEnd(zPage, tmp);
-			cpuSBC(tmp);
-			cpuZeroPagePlusEnd();
-			break;
-		case 0xF8: //SED
-			memGet8(pc);
-			p |= P_FLAG_DECIMAL;
-			break;
-		case 0xF9: //SBC Absolute, Y
-			absAddr = getAbsolutePlusAddr(y,false);
-			cpuSBC(memGet8(absAddr));
-			cpuAbsoluteEnd();
-			break;
-		case 0xFA: //NOP
-			memGet8(pc);
-			break;
-		case 0xFB: //ISC Absolute, Y
-			absAddr = getAbsolutePlusAddr(y,true);
-			tmp = memGet8(absAddr);
-			cpuSaveTMPStart(absAddr, tmp);
-			tmp = cpuSetTMP(tmp+1);
-			cpuSaveTMPEnd(absAddr, tmp);
-			cpuSBC(tmp);
-			cpuAbsoluteEnd();
-			break;
-		case 0xFC: //TOP Absolute, X
-			absAddr = getAbsolutePlusAddr(x,false);
-			cpuAbsoluteEnd();
-			break;
-		case 0xFD: //SBC Absolute, X
-			absAddr = getAbsolutePlusAddr(x,false);
-			cpuSBC(memGet8(absAddr));
-			cpuAbsoluteEnd();
-			break;
-		case 0xFE: //INC Absolute, X
-			absAddr = getAbsolutePlusAddr(x,true);
-			tmp = memGet8(absAddr);
-			cpuSaveTMPStart(absAddr, tmp);
-			tmp = cpuSetTMP(tmp+1);
-			cpuSaveTMPEnd(absAddr, tmp);
-			cpuAbsoluteEnd();
-			break;
-		case 0xFF: //ISC Absolute, X
-			absAddr = getAbsolutePlusAddr(x,true);
-			tmp = memGet8(absAddr);
-			cpuSaveTMPStart(absAddr, tmp);
-			tmp = cpuSetTMP(tmp+1);
-			cpuSaveTMPEnd(absAddr, tmp);
-			cpuSBC(tmp);
-			cpuAbsoluteEnd();
+		case CPU_STACK_STORE_P_DEC:
+			p |= (P_FLAG_S1 | P_FLAG_S2);
+			memSet8(0x100+s,p);
+			s--;
+			break;
+		case CPU_STACK_STORE_PCH_DEC:
+			memSet8(0x100+s,pc>>8);
+			s--;
+			break;
+		case CPU_STACK_STORE_PCL_DEC:
+			memSet8(0x100+s,pc&0xFF);
+			s--;
+			break;
+		case CPU_STACK_STORE_P_DEC_SET_I:
+			memSet8(0x100+s,p);
+			s--;
+			p |= P_FLAG_IRQ_DISABLE;
+			break;
+		case CPU_STACK_SET_S1_S2_STORE_P_DEC_SET_I:
+			p |= (P_FLAG_S1 | P_FLAG_S2);
+			memSet8(0x100+s,p);
+			s--;
+			p |= P_FLAG_IRQ_DISABLE;
+			break;
+		case CPU_STACK_CLEAR_S1_SET_S2_STORE_P_DEC_SET_I:
+			p &= ~P_FLAG_S1;
+			p |= P_FLAG_S2;
+			memSet8(0x100+s,p);
+			s--;
+			p |= P_FLAG_IRQ_DISABLE;
+			break;
+		case CPU_READ_NMIVEC_PCL:
+			pc &= ~0xFF;
+			pc |= memGet8(0xFFFA);
+			break;
+		case CPU_READ_NMIVEC_PCH:
+			pc &= 0xFF;
+			pc |= memGet8(0xFFFB)<<8;
+			break;
+		case CPU_READ_RESETVEC_PCL:
+			pc &= ~0xFF;
+			pc |= memGet8(0xFFFC);
+			break;
+		case CPU_READ_RESETVEC_PCH:
+			pc &= 0xFF;
+			pc |= memGet8(0xFFFD)<<8;
+			break;
+		case CPU_READ_IRQVEC_PCL:
+			pc &= ~0xFF;
+			pc |= memGet8(0xFFFE);
+			break;
+		case CPU_READ_IRQVEC_PCH:
+			pc &= 0xFF;
+			pc |= memGet8(0xFFFF)<<8;
 			break;
 		default: //should never happen
-			printf("Unknown instruction at %04x: %02x\n", instrPtr, instr);
+			printf("Unknown action %i\n", cpu_action);
 			memDumpMainMem();
 			return false;
 	}
-	//update interrupt values
-	if(!cpu_branch_delay)
+	//update interrupts right before next instruction get cycle
+	if(cpu_action_arr[cpu_arr_pos] == CPU_GET_INSTRUCTION)
 	{
 		ppu_nmi_handler_req = ppuNMI();
 		cpu_interrupt_req = (interrupt || ((mapper_interrupt || dmc_interrupt || apu_interrupt || 
 				fds_interrupt || fds_transfer_interrupt || mmc5_dmc_interrupt) && !(p & P_FLAG_IRQ_DISABLE)));
 	}
-	cpu_branch_delay = false;
-	//if(instrPtr > 0xa980 && instrPtr < 0xa9C0) printf("%d %d %d %04x %04x\n",a,x,y,instrPtr,memGet8(instrPtr)|(memGet8(instrPtr+1)<<8));
 	return true;
 }
 
@@ -1948,6 +1183,8 @@ uint16_t cpuPlayNSF(uint16_t addr)
 	s--;
 	uint16_t lastAddr = pc;
 	pc = addr; //jump to play
+	cpu_action_arr = cpu_start_arr;
+	cpu_arr_pos = 0;
 	//printf("Playback at %04x\n", addr);
 	return lastAddr;
 }
@@ -1981,5 +1218,7 @@ void cpuInitNSF(uint16_t addr, uint8_t newA, uint8_t newX)
 	memSet8(0x100+s,initRet&0xFF);
 	s--;
 	pc = addr;
+	cpu_action_arr = cpu_start_arr;
+	cpu_arr_pos = 0;
 	//printf("Init at %04x\n", addr);
 }

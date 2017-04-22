@@ -46,10 +46,10 @@ void m9init(uint8_t *prgROMin, uint32_t prgROMsizeIn,
 	printf("Mapper 9 inited, last bank=%04x\n", m9_lastPRGBank);
 }
 
-uint8_t m9get8(uint16_t addr)
+uint8_t m9get8(uint16_t addr, uint8_t val)
 {
 	if(addr < 0x6000)
-		return 0;
+		return val;
 	else if(addr < 0x8000)
 		return m9_prgRAM[addr&0x1FFF];
 	else

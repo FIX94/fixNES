@@ -11,8 +11,8 @@
 void p32c8init(uint8_t *prgROM, uint32_t prgROMsize, 
 			uint8_t *prgRAM, uint32_t prgRAMsize,
 			uint8_t *chrROM, uint32_t chrROMsize);
-uint8_t p32c8get8(uint16_t addr);
-uint8_t m36_p32c8get8(uint16_t addr);
+uint8_t p32c8get8(uint16_t addr, uint8_t val);
+uint8_t m36_p32c8get8(uint16_t addr, uint8_t val);
 void m0_set8(uint16_t addr, uint8_t val);
 void m11_set8(uint16_t addr, uint8_t val);
 void m36_set8(uint16_t addr, uint8_t val);

@@ -11,7 +11,7 @@
 void vrc7init(uint8_t *prgROM, uint32_t prgROMsize, 
 			uint8_t *prgRAM, uint32_t prgRAMsize,
 			uint8_t *chrROM, uint32_t chrROMsize);
-uint8_t vrc7get8(uint16_t addr);
+uint8_t vrc7get8(uint16_t addr, uint8_t val);
 void vrc7set8(uint16_t addr, uint8_t val);
 uint8_t vrc7chrGet8(uint16_t addr);
 void vrc7chrSet8(uint16_t addr, uint8_t val);
