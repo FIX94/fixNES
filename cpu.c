@@ -410,7 +410,6 @@ enum {
 	CPU_CHECK_BMI,
 	CPU_CHECK_BVC,
 	CPU_CHECK_BVS,
-	CPU_SET_S1_S2_I,
 	CPU_STACK_INC,
 	CPU_STACK_GET_A,
 	CPU_STACK_GET_P,
@@ -422,6 +421,7 @@ enum {
 	CPU_STACK_STORE_P_DEC,
 	CPU_STACK_STORE_PCH_DEC,
 	CPU_STACK_STORE_PCL_DEC,
+	CPU_STACK_DEC_SET_S1_S2_I,
 	CPU_STACK_STORE_P_DEC_SET_I,
 	CPU_STACK_SET_S1_S2_STORE_P_DEC_SET_I,
 	CPU_STACK_CLEAR_S1_SET_S2_STORE_P_DEC_SET_I,
@@ -438,7 +438,7 @@ static uint8_t *cpu_action_arr = cpu_start_arr;
 static uint8_t cpu_arr_pos = 0;
 
 /* arrays for non-callable instructions */
-static uint8_t cpu_reset_arr[6] = { CPU_STACK_DEC, CPU_STACK_DEC, CPU_SET_S1_S2_I, CPU_READ_RESETVEC_PCL, CPU_READ_RESETVEC_PCH, CPU_GET_INSTRUCTION };
+static uint8_t cpu_reset_arr[6] = { CPU_STACK_DEC, CPU_STACK_DEC, CPU_STACK_DEC_SET_S1_S2_I, CPU_READ_RESETVEC_PCL, CPU_READ_RESETVEC_PCH, CPU_GET_INSTRUCTION };
 static uint8_t cpu_nmi_arr[7] = { CPU_NULL_READ8_PC, CPU_STACK_STORE_PCH_DEC, CPU_STACK_STORE_PCL_DEC, CPU_STACK_CLEAR_S1_SET_S2_STORE_P_DEC_SET_I, CPU_READ_NMIVEC_PCL, CPU_READ_NMIVEC_PCH, CPU_GET_INSTRUCTION };
 static uint8_t cpu_irq_arr[7] = { CPU_NULL_READ8_PC, CPU_STACK_STORE_PCH_DEC, CPU_STACK_STORE_PCL_DEC, CPU_STACK_STORE_P_DEC_SET_I, CPU_READ_IRQVEC_PCL, CPU_READ_IRQVEC_PCH, CPU_GET_INSTRUCTION };
 static uint8_t cpu_kill_arr[2] = { CPU_ACTION, CPU_GET_INSTRUCTION };
@@ -1060,9 +1060,6 @@ doaction:
 			if(!cpuBranchCheck()) goto doaction;
 			else memGet8(pc);
 			break;
-		case CPU_SET_S1_S2_I:
-			p = (P_FLAG_IRQ_DISABLE | P_FLAG_S1 | P_FLAG_S2);
-			break;
 		case CPU_STACK_INC:
 			s++;
 			break;
@@ -1117,6 +1114,10 @@ doaction:
 		case CPU_STACK_STORE_PCL_DEC:
 			memSet8(0x100+s,pc&0xFF);
 			s--;
+			break;
+		case CPU_STACK_DEC_SET_S1_S2_I:
+			s--;
+			p = (P_FLAG_IRQ_DISABLE | P_FLAG_S1 | P_FLAG_S2);
 			break;
 		case CPU_STACK_STORE_P_DEC_SET_I:
 			memSet8(0x100+s,p);

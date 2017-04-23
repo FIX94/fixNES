@@ -465,7 +465,7 @@ ppuIncreasePos:
 	ppuReadReg2 = false;
 	/* VBlank ends at first dot of the pre-render line */
 	/* Though results are better when clearing it a bit later */
-	if(curDot == 1 && curLine == ppuPreRenderLine)
+	if(curDot == 5 && curLine == ppuPreRenderLine)
 	{
 		#if PPU_DEBUG_VSYNC
 		printf("PPU End VBlank\n");
