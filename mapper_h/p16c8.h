@@ -12,13 +12,17 @@ void p16c8init(uint8_t *prgROM, uint32_t prgROMsize,
 			uint8_t *prgRAM, uint32_t prgRAMsize,
 			uint8_t *chrROM, uint32_t chrROMsize);
 uint8_t p16c8get8(uint16_t addr, uint8_t val);
+uint8_t m61_get8(uint16_t addr, uint8_t val);
 uint8_t m97_get8(uint16_t addr, uint8_t val);
 uint8_t m180_get8(uint16_t addr, uint8_t val);
 void m2_set8(uint16_t addr, uint8_t val);
+void m61_set8(uint16_t addr, uint8_t val);
 void m70_set8(uint16_t addr, uint8_t val);
 void m71_set8(uint16_t addr, uint8_t val);
 void m78a_set8(uint16_t addr, uint8_t val);
 void m78b_set8(uint16_t addr, uint8_t val);
+void m89_set8(uint16_t addr, uint8_t val);
+void m93_set8(uint16_t addr, uint8_t val);
 void m94_set8(uint16_t addr, uint8_t val);
 void m97_set8(uint16_t addr, uint8_t val);
 void m152_set8(uint16_t addr, uint8_t val);

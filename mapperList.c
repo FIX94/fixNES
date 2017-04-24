@@ -16,12 +16,14 @@
 #include "mapper_h/m10.h"
 #include "mapper_h/m13.h"
 #include "mapper_h/m15.h"
-#include "mapper_h/p32c4.h"
 #include "mapper_h/m48.h"
 #include "mapper_h/p8c8.h"
+#include "mapper_h/p16c4.h"
 #include "mapper_h/p16c8.h"
+#include "mapper_h/p32c4.h"
 #include "mapper_h/p32c8.h"
-#include "mapper_h/vrc.h"
+#include "mapper_h/vrc1.h"
+#include "mapper_h/vrc2_4.h"
 #include "mapper_h/vrc6.h"
 #include "mapper_h/vrc7.h"
 #include "mapper.h"
@@ -49,11 +51,11 @@ mapperList_t mapperList[256] = {
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
-	{ vrcinit,		vrcget8,		m21_set8,		vrcchrGet8,		vrcchrSet8,		vrccycle },
-	{ vrcinit,		vrcget8,		m22_set8,		m22_chrGet8,	vrcchrSet8,		vrccycle },
-	{ vrcinit,		vrcget8,		m23_set8,		vrcchrGet8,		vrcchrSet8,		vrccycle },
+	{ vrc2_4_init,	vrc2_4_get8,	m21_set8,		vrc2_4_chrGet8,	vrc2_4_chrSet8,	vrc2_4_cycle },
+	{ vrc2_4_init,	vrc2_4_get8,	m22_set8,		m22_chrGet8,	vrc2_4_chrSet8,	vrc2_4_cycle },
+	{ vrc2_4_init,	vrc2_4_get8,	m23_set8,		vrc2_4_chrGet8,	vrc2_4_chrSet8,	vrc2_4_cycle },
 	{ vrc6init,		vrc6get8,		m24_set8,		vrc6chrGet8,	vrc6chrSet8,	vrc6cycle },
-	{ vrcinit,		vrcget8,		m25_set8,		vrcchrGet8,		vrcchrSet8,		vrccycle },
+	{ vrc2_4_init,	vrc2_4_get8,	m25_set8,		vrc2_4_chrGet8,	vrc2_4_chrSet8,	vrc2_4_cycle },
 	{ vrc6init,		vrc6get8,		m26_set8,		vrc6chrGet8,	vrc6chrSet8,	vrc6cycle },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
@@ -89,7 +91,7 @@ mapperList_t mapperList[256] = {
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
-	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
+	{ p16c8init,	m61_get8,		m61_set8,		p16c8chrGet8,	p16c8chrSet8,	NULL },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
@@ -103,7 +105,7 @@ mapperList_t mapperList[256] = {
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
-	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
+	{ vrc1init,		vrc1get8,		vrc1set8,		vrc1chrGet8,	vrc1chrSet8,	NULL },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
 	{ p16c8init,	p16c8get8,		m78a_set8,		p16c8chrGet8,	p16c8chrSet8,	NULL },
@@ -117,11 +119,11 @@ mapperList_t mapperList[256] = {
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
 	{ p8c8init,		p8c8get8,		m87_set8,		p8c8chrGet8,	p8c8chrSet8,	NULL },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
+	{ p16c8init,	p16c8get8,		m89_set8,		p16c8chrGet8,	p16c8chrSet8,	NULL },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
-	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
-	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
+	{ p16c8init,	p16c8get8,		m93_set8,		p16c8chrGet8,	p16c8chrSet8,	NULL },
 	{ p16c8init,	p16c8get8,		m94_set8,		p16c8chrGet8,	p16c8chrSet8,	NULL },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
@@ -212,7 +214,7 @@ mapperList_t mapperList[256] = {
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
-	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
+	{ p16c4init,	p16c4get8,		m184_set8,		p16c4chrGet8,	p16c4chrSet8,	NULL },
 	{ p8c8init,		p8c8get8,		m185_set8,		m185_chrGet8,	p8c8chrSet8,	NULL },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL },

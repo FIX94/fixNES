@@ -18,6 +18,7 @@ static uint32_t p16c8_firstPRGBank;
 static uint32_t p16c8_curPRGBank;
 static uint32_t p16c8_curCHRBank;
 static uint32_t p16c8_lastPRGBank;
+static bool m61_p16;
 
 static uint8_t p16c8_chrRAM[0x2000];
 
@@ -44,6 +45,7 @@ void p16c8init(uint8_t *prgROMin, uint32_t prgROMsizeIn,
 		memset(p16c8_chrRAM,0,0x2000);
 	}
 	p16c8_curCHRBank = 0;
+	m61_p16 = false;
 	printf("16k PRG 8k CHR Mapper inited\n");
 }
 
@@ -54,6 +56,13 @@ uint8_t p16c8get8(uint16_t addr, uint8_t val)
 	if(addr < 0xC000)
 		return p16c8_prgROM[((p16c8_curPRGBank&~0x3FFF)+(addr&0x3FFF))&(p16c8_prgROMsize-1)];
 	return p16c8_prgROM[((p16c8_lastPRGBank&~0x3FFF)+(addr&0x3FFF))&(p16c8_prgROMsize-1)];
+}
+
+uint8_t m61_get8(uint16_t addr, uint8_t val)
+{
+	if(addr < 0x8000)
+		return val;
+	return p16c8_prgROM[((p16c8_curPRGBank&~0x3FFF)+(addr&(m61_p16?0x3FFF:0x7FFF)))&(p16c8_prgROMsize-1)];
 }
 
 uint8_t m97_get8(uint16_t addr, uint8_t val)
@@ -80,6 +89,19 @@ void m2_set8(uint16_t addr, uint8_t val)
 	if(addr < 0x8000)
 		return;
 	p16c8_curPRGBank = ((val & 0xF)<<14)&(p16c8_prgROMsize-1);
+}
+
+void m61_set8(uint16_t addr, uint8_t val)
+{
+	(void)val;
+	if(addr < 0x8000)
+		return;
+	p16c8_curPRGBank = ((((addr & 0xF)<<1)|((addr&0x20)>>5))<<14)&(p16c8_prgROMsize-1);;
+	m61_p16 = ((addr&0x10) != 0);
+	if((addr&0x80) != 0)
+		ppuSetNameTblHorizontal();
+	else
+		ppuSetNameTblVertical();
 }
 
 void m70_set8(uint16_t addr, uint8_t val)
@@ -123,6 +145,27 @@ void m78b_set8(uint16_t addr, uint8_t val)
 		ppuSetNameTblSingleLower();
 	else
 		ppuSetNameTblSingleUpper();
+}
+
+void m89_set8(uint16_t addr, uint8_t val)
+{
+	//printf("p16c8set8 %04x %02x\n", addr, val);
+	if(addr < 0x8000)
+		return;
+	p16c8_curPRGBank = (((val>>4) & 7)<<14)&(p16c8_prgROMsize-1);
+	p16c8_curCHRBank = ((((val&0x80)>>4)|(val & 7))<<13)&(p16c8_chrROMsize-1);
+	if((val&0x8) == 0)
+		ppuSetNameTblSingleLower();
+	else
+		ppuSetNameTblSingleUpper();
+}
+
+void m93_set8(uint16_t addr, uint8_t val)
+{
+	//printf("p16c8set8 %04x %02x\n", addr, val);
+	if(addr < 0x8000)
+		return;
+	p16c8_curPRGBank = (((val>>4) & 7)<<14)&(p16c8_prgROMsize-1);
 }
 
 void m94_set8(uint16_t addr, uint8_t val)

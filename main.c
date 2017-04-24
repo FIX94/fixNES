@@ -30,7 +30,7 @@
 #define DEBUG_KEY 0
 #define DEBUG_LOAD_INFO 1
 
-static const char *VERSION_STRING = "fixNES Alpha v0.8.1";
+static const char *VERSION_STRING = "fixNES Alpha v0.8.2";
 
 static void nesEmuDisplayFrame(void);
 static void nesEmuMainLoop(void);
@@ -132,6 +132,11 @@ int main(int argc, char** argv)
 		memInit();
 		apuInit();
 		inputInit();
+		#if DEBUG_LOAD_INFO
+		printf("Read in %s\n", argv[1]);
+		printf("Used Mapper: %i\n", mapper);
+		printf("PRG: 0x%x bytes PRG RAM: 0x%x bytes CHR: 0x%x bytes\n", prgROMsize, emuPrgRAMsize, chrROMsize);
+		#endif
 		if(!mapperInit(mapper, prgROM, prgROMsize, emuPrgRAM, emuPrgRAMsize, chrROM, chrROMsize))
 		{
 			printf("Mapper init failed!\n");
@@ -146,9 +151,6 @@ int main(int argc, char** argv)
 		else
 			ppuSetNameTblHorizontal();
 		#if DEBUG_LOAD_INFO
-		printf("Read in %s\n", argv[1]);
-		printf("Used Mapper: %i\n", mapper);
-		printf("PRG: 0x%x bytes PRG RAM: 0x%x bytes CHR: 0x%x bytes\n", prgROMsize, emuPrgRAMsize, chrROMsize);
 		printf("Trainer: %i Saving: %i VRAM Mode: %s\n", trainer, emuSaveEnabled, (emuNesROM[6] & 1) ? "Vertical" : 
 			((!(emuNesROM[6] & 1)) ? "Horizontal" : "4-Screen"));
 		#endif

@@ -28,6 +28,8 @@ static bool m4_chr_bank_flip;
 static bool m4_prg_bank_flip;
 static uint8_t m4_irqCtr;
 static bool m4_irqEnable;
+static bool m4_altirq;
+static bool m4_clear;
 static uint8_t m4_irqReloadVal;
 static uint8_t m4_irqCooldown;
 static uint8_t m4_irqStart;
@@ -71,6 +73,9 @@ void m4init(uint8_t *prgROMin, uint32_t prgROMsizeIn,
 	m4_irqStart = 0;
 	m4_writeAddr = 0;
 	m4_irqEnable = false;
+	//can enable MMC3A IRQ behaviour
+	m4_altirq = false;
+	m4_clear = false;
 	m4_irqReloadVal = 0xFF;
 	m4_irqCooldown = 0;
 	m4_chr_bank_flip = false;
@@ -187,6 +192,8 @@ void m4set8(uint16_t addr, uint8_t val)
 			{
 				//printf("Reload value set to %i\n", val);
 				m4_irqReloadVal = val;
+				if(m4_altirq)
+					m4_clear = true;
 			}
 			else
 			{
@@ -220,19 +227,18 @@ void m4clock(uint16_t addr)
 		if(m4_irqCooldown == 0)
 		{
 			//printf("MMC3 Beep at %i %i\n", curLine, curDot);
-			if(m4_irqCtr == 0)
+			uint8_t oldCtr = m4_irqCtr;
+			if(m4_irqCtr == 0 || m4_clear)
 				m4_irqCtr = m4_irqReloadVal;
 			else
 				m4_irqCtr--;
-			if(m4_irqCtr == 0)
+			if((!m4_altirq || oldCtr != 0 || m4_clear) && m4_irqCtr == 0 && m4_irqEnable)
 			{
-				if(m4_irqEnable)
-				{
-					//printf("MMC3 Tick at %i %i\n", curLine, curDot);
-					m4_irqStart = 5; //takes a bit before trigger
-					m4_irqEnable = false;
-				}
+				//printf("MMC3 Tick at %i %i\n", curLine, curDot);
+				m4_irqStart = 5; //takes a bit before trigger
+				m4_irqEnable = false;
 			}
+			m4_clear = false;
 		}
 		//make sure to pass all other sprites
 		//before counting up again

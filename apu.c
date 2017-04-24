@@ -575,6 +575,8 @@ void apuSet8(uint8_t reg, uint8_t val)
 		p1seq = pulseSeqs[val>>6];
 		p1Env.constant = ((val&PULSE_CONST_V) != 0);
 		p1Env.loop = p1haltloop = ((val&PULSE_HALT_LOOP) != 0);
+		if(freq1 > 8 && (freq1 < 0x7FF))
+			p1Sweep.mute = false; //to be safe
 	}
 	else if(reg == 1)
 	{
@@ -584,12 +586,16 @@ void apuSet8(uint8_t reg, uint8_t val)
 		p1Sweep.period = (val>>4)&7;
 		p1Sweep.negative = ((val&0x8) != 0);
 		p1Sweep.start = true;
+		if(freq1 > 8 && (freq1 < 0x7FF))
+			p1Sweep.mute = false; //to be safe
 		doSweepLogic(&p1Sweep, &freq1);
 	}
 	else if(reg == 2)
 	{
 		//printf("P1 time low %02x\n", val);
 		freq1 = ((freq1&~0xFF) | val);
+		if(freq1 > 8 && (freq1 < 0x7FF))
+			p1Sweep.mute = false; //to be safe
 	}
 	else if(reg == 3)
 	{
@@ -597,6 +603,8 @@ void apuSet8(uint8_t reg, uint8_t val)
 		if(APU_IO_Reg[0x15] & P1_ENABLE)
 			p1LengthCtr = lengthLookupTbl[val>>3];
 		freq1 = (freq1&0xFF) | ((val&7)<<8);
+		if(freq1 > 8 && (freq1 < 0x7FF))
+			p1Sweep.mute = false; //to be safe
 		//printf("P1 new freq %04x\n", freq1);
 		p1Env.start = true;
 	}
@@ -606,6 +614,8 @@ void apuSet8(uint8_t reg, uint8_t val)
 		p2seq = pulseSeqs[val>>6];
 		p2Env.constant = ((val&PULSE_CONST_V) != 0);
 		p2Env.loop = p2haltloop = ((val&PULSE_HALT_LOOP) != 0);
+		if(freq2 > 8 && (freq2 < 0x7FF))
+			p2Sweep.mute = false; //to be safe
 	}
 	else if(reg == 5)
 	{
@@ -615,12 +625,16 @@ void apuSet8(uint8_t reg, uint8_t val)
 		p2Sweep.period = (val>>4)&7;
 		p2Sweep.negative = ((val&0x8) != 0);
 		p2Sweep.start = true;
+		if(freq2 > 8 && (freq2 < 0x7FF))
+			p2Sweep.mute = false; //to be safe
 		doSweepLogic(&p2Sweep, &freq2);
 	}
 	else if(reg == 6)
 	{
 		//printf("P2 time low %02x\n", val);
 		freq2 = ((freq2&~0xFF) | val);
+		if(freq2 > 8 && (freq2 < 0x7FF))
+			p2Sweep.mute = false; //to be safe
 	}
 	else if(reg == 7)
 	{
@@ -628,6 +642,8 @@ void apuSet8(uint8_t reg, uint8_t val)
 		if(APU_IO_Reg[0x15] & P2_ENABLE)
 			p2LengthCtr = lengthLookupTbl[val>>3];
 		freq2 = (freq2&0xFF) | ((val&7)<<8);
+		if(freq2 > 8 && (freq2 < 0x7FF))
+			p2Sweep.mute = false; //to be safe
 		//printf("P2 new freq %04x\n", freq2);
 		p2Env.start = true;
 	}
