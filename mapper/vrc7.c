@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <inttypes.h>
+#include <string.h>
 #include "../ppu.h"
 #include "../audio_vrc7.h"
 #include "../vrc_irq.h"

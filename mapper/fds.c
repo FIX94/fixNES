@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <inttypes.h>
+#include <string.h>
 #include "../ppu.h"
 #include "../cpu.h"
 #include "../input.h"

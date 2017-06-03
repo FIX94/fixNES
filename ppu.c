@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <inttypes.h>
+#include <string.h>
 #include "mapper.h"
 #include "ppu.h"
 
@@ -51,7 +52,7 @@
 bool ppu4Screen = false;
 
 //from main.c
-extern uint8_t *textureImage;
+extern uint32_t textureImage[0xF000];
 extern bool nesPause;
 extern bool ppuDebugPauseFrame;
 extern bool doOverscan;
@@ -79,6 +80,7 @@ static uint8_t PPU_OAM[0x100];
 static uint8_t PPU_OAM2[0x20];
 
 static uint8_t PPU_PALRAM[0x20];
+static uint32_t PPU_BGRLUT[0x200];
 //internally processed, ready to draw
 static uint8_t PPU_Sprites[0x20];
 
@@ -158,6 +160,36 @@ void ppuInit()
 	ppuCurNMIStat = false;
 	ppuOddFrame = false;
 	ppuReadReg2 = false;
+	//generate full BGR LUT
+	uint8_t rtint = nesPAL ? (1<<6) : (1<<5);
+	uint8_t gtint = nesPAL ? (1<<5) : (1<<6);
+	uint8_t btint = (1<<7);
+	int32_t i;
+	for(i = 0; i < 0x200; i++)
+	{
+		uint8_t palpos = (i&0x3F)*3;
+		uint8_t r = PPU_Pal[palpos];
+		uint8_t g = PPU_Pal[palpos+1];
+		uint8_t b = PPU_Pal[palpos+2];
+		if((i & 0xF) <= 0xD)
+		{
+			//reduce red
+			if((i>>1) & btint) r = (uint8_t)(((float)r)*0.75f);
+			if((i>>1) & gtint) r = (uint8_t)(((float)r)*0.75f);
+			//reduce green
+			if((i>>1) & rtint) g = (uint8_t)(((float)g)*0.75f);
+			if((i>>1) & btint) g = (uint8_t)(((float)g)*0.75f);
+			//reduce blue
+			if((i>>1) & rtint) b = (uint8_t)(((float)b)*0.75f);
+			if((i>>1) & gtint) b = (uint8_t)(((float)b)*0.75f);
+		}
+		//save new color into LUT
+		PPU_BGRLUT[i] = 
+			(b) //Blue
+			| (g<<8) //Green
+			| (r<<16) //Red
+			| (0xFF<<24); //Alpha
+	}
 }
 
 static inline uint16_t ppuGetVramTbl(uint16_t tblStart)
@@ -318,20 +350,20 @@ bool ppuCycle()
 		if((!(PPU_Reg[1] & PPU_BG_8PX) || !(PPU_Reg[1] & PPU_SPRITE_8PX)) && (curDot < 8 || curDot > 248))
 			curCol = 0xFF;
 		/* Draw current dot on screen */
-		size_t drawPos = (curDot<<2)+(curLine<<10);
+		size_t drawPos = (curDot)+(curLine<<8);
 		if(curCol != 0xFF)
 		{
-			uint8_t cPalIdx = (PPU_PALRAM[curCol]&((PPU_Reg[1]&PPU_GRAY)?0x30:0x3F))*3;
-			textureImage[drawPos] = PPU_Pal[cPalIdx+2];
-			textureImage[drawPos+1] = PPU_Pal[cPalIdx+1];
-			textureImage[drawPos+2] = PPU_Pal[cPalIdx];
+			uint16_t cPalIdx;
+			if(pictureOutput) //use color from bg or sprite input
+				cPalIdx = (PPU_PALRAM[curCol&0x1F]&((PPU_Reg[1]&PPU_GRAY)?0x30:0x3F))|((PPU_Reg[1]&0xE0)<<1);
+			else if(ppuVramAddr >= 0x3F00 && ppuVramAddr < 0x4000) //bg and sprite disabled but address within PALRAM
+				cPalIdx = (PPU_PALRAM[ppuVramAddr&0x1F]&((PPU_Reg[1]&PPU_GRAY)?0x30:0x3F))|((PPU_Reg[1]&0xE0)<<1);
+			else //bg and sprite disabled and address not within PALRAM
+				cPalIdx = PPU_PALRAM[0];
+			textureImage[drawPos] = PPU_BGRLUT[cPalIdx];
 		}
 		else /* Draw clipped area as black */
-		{
-			textureImage[drawPos] = 0;
-			textureImage[drawPos+1] = 0;
-			textureImage[drawPos+2] = 0;
-		}
+			textureImage[drawPos] = 0xFF000000;
 	}
 
 	/* set to 0 during not visible dots up to post-render line */

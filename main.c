@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <string.h>
 #include <malloc.h>
 #include <inttypes.h>
 #include <GL/glut.h>
@@ -30,7 +31,7 @@
 #define DEBUG_KEY 0
 #define DEBUG_LOAD_INFO 1
 
-static const char *VERSION_STRING = "fixNES Alpha v0.8.2";
+static const char *VERSION_STRING = "fixNES Alpha v0.8.3";
 
 static void nesEmuDisplayFrame(void);
 static void nesEmuMainLoop(void);
@@ -47,7 +48,7 @@ static char *emuSaveName = NULL;
 static uint8_t *emuPrgRAM = NULL;
 static uint32_t emuPrgRAMsize = 0;
 //used externally
-uint8_t *textureImage = NULL;
+uint32_t textureImage[0xF000];
 bool nesPause = false;
 bool ppuDebugPauseFrame = false;
 bool doOverscan = true;
@@ -295,12 +296,7 @@ int main(int argc, char** argv)
 	emuMainFrameStart = GetTickCount();
 	#endif
 	#endif
-	textureImage = malloc(visibleImg);
 	memset(textureImage,0,visibleImg);
-	//make sure image is visible
-	uint32_t i;
-	for(i = 0; i < visibleImg; i+=4)
-		textureImage[i+3] = 0xFF;
 	cpuCycleTimer = nesPAL ? 16 : 12;
 	//do one scanline per idle loop
 	ppuCycleTimer = nesPAL ? 5 : 4;
@@ -376,9 +372,6 @@ static void nesEmuDeinit(void)
 		free(emuPrgRAM);
 	}
 	emuPrgRAM = NULL;
-	if(textureImage != NULL)
-		free(textureImage);
-	textureImage = NULL;
 	//printf("Bye!\n");
 }
 
@@ -809,8 +802,7 @@ static void nesEmuDisplayFrame()
 			emuRenderFrame = false;
 			return;
 		}
-		if(textureImage != NULL)
-			glTexImage2D(GL_TEXTURE_2D, 0, 4, VISIBLE_DOTS, VISIBLE_LINES, 0, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV, textureImage);
+		glTexImage2D(GL_TEXTURE_2D, 0, 4, VISIBLE_DOTS, VISIBLE_LINES, 0, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV, textureImage);
 		emuRenderFrame = false;
 	}
 

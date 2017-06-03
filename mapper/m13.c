@@ -7,6 +7,7 @@
 
 #include <stdio.h>
 #include <inttypes.h>
+#include <string.h>
 
 static uint8_t *m13_prgROM;
 static uint32_t m13_prgROMsize;

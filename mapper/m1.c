@@ -7,6 +7,7 @@
 
 #include <stdio.h>
 #include <inttypes.h>
+#include <string.h>
 #include <stdbool.h>
 #include "../ppu.h"
 

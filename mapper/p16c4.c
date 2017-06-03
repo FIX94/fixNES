@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <inttypes.h>
+#include <string.h>
 #include "../ppu.h"
 
 static uint8_t *p16c4_prgROM;

@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <inttypes.h>
+#include <string.h>
 #include <malloc.h>
 #include "apu.h"
 #include "audio_fds.h"
@@ -152,7 +153,9 @@ void apuInitBufs()
 	mode4Ctr = nesPAL ? mode4CtrPal : mode4CtrNtsc;
 	mode5Ctr = nesPAL ? mode5CtrPal : mode5CtrNtsc;
 	//effective frequencies for 50.000Hz and 60.000Hz Video out
-	apuFrequency = nesPAL ? 831187 : 893415;
+	//apuFrequency = nesPAL ? 831187 : 893415;
+	//effective frequencies for Original PPU Video out
+	apuFrequency = nesPAL ? 831303 : 894886;
 	double dt = 1.0/((double)apuFrequency);
 	//LP at 22kHz
 	double rc = 1.0/(M_2_PI * 22000.0);

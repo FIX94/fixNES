@@ -1,6 +1,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdbool.h>
+#include <string.h>
 #include <malloc.h>
 #include <math.h>
 #include "AL/al.h"

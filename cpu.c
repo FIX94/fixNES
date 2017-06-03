@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <inttypes.h>
+#include <string.h>
 #include "mem.h"
 #include "ppu.h"
 #include "apu.h"
@@ -269,6 +270,8 @@ static uint8_t cpuCMP(uint8_t reg)
 	setRegStats(cmpVal);
 	return cmpVal;
 }
+
+static void cpuNoAction() { ; };
 
 static void cpuCMPa() { cpuCMP(a); }
 static void cpuCMPx() { cpuCMP(x); }
@@ -630,85 +633,87 @@ static uint8_t *cpu_instr_arr[256] = {
 static cpu_action_t cpu_actions_arr[256];
 void cpuSetupActionArr()
 {
-	cpu_actions_arr[0x00] = NULL; cpu_actions_arr[0x01] = cpuORA; cpu_actions_arr[0x02] = cpuKIL; cpu_actions_arr[0x03] = cpuSLO;
-	cpu_actions_arr[0x04] = NULL; cpu_actions_arr[0x05] = cpuORA; cpu_actions_arr[0x06] = cpuASLt; cpu_actions_arr[0x07] = cpuSLO;
-	cpu_actions_arr[0x08] = NULL; cpu_actions_arr[0x09] = cpuORA; cpu_actions_arr[0x0A] = cpuASLa; cpu_actions_arr[0x0B] = cpuAAC; 
-	cpu_actions_arr[0x0C] = NULL; cpu_actions_arr[0x0D] = cpuORA; cpu_actions_arr[0x0E] = cpuASLt; cpu_actions_arr[0x0F] = cpuSLO;
+	cpu_actions_arr[0x00] = cpuNoAction; cpu_actions_arr[0x01] = cpuORA; cpu_actions_arr[0x02] = cpuKIL; cpu_actions_arr[0x03] = cpuSLO;
+	cpu_actions_arr[0x04] = cpuNoAction; cpu_actions_arr[0x05] = cpuORA; cpu_actions_arr[0x06] = cpuASLt; cpu_actions_arr[0x07] = cpuSLO;
+	cpu_actions_arr[0x08] = cpuNoAction; cpu_actions_arr[0x09] = cpuORA; cpu_actions_arr[0x0A] = cpuASLa; cpu_actions_arr[0x0B] = cpuAAC; 
+	cpu_actions_arr[0x0C] = cpuNoAction; cpu_actions_arr[0x0D] = cpuORA; cpu_actions_arr[0x0E] = cpuASLt; cpu_actions_arr[0x0F] = cpuSLO;
 
-	cpu_actions_arr[0x10] = NULL; cpu_actions_arr[0x11] = cpuORA; cpu_actions_arr[0x12] = cpuKIL; cpu_actions_arr[0x13] = cpuSLO;
-	cpu_actions_arr[0x14] = NULL; cpu_actions_arr[0x15] = cpuORA; cpu_actions_arr[0x16] = cpuASLt; cpu_actions_arr[0x17] = cpuSLO;
-	cpu_actions_arr[0x18] = cpuCLC; cpu_actions_arr[0x19] = cpuORA; cpu_actions_arr[0x1A] = NULL; cpu_actions_arr[0x1B] = cpuSLO; 
-	cpu_actions_arr[0x1C] = NULL; cpu_actions_arr[0x1D] = cpuORA; cpu_actions_arr[0x1E] = cpuASLt; cpu_actions_arr[0x1F] = cpuSLO;
+	cpu_actions_arr[0x10] = cpuNoAction; cpu_actions_arr[0x11] = cpuORA; cpu_actions_arr[0x12] = cpuKIL; cpu_actions_arr[0x13] = cpuSLO;
+	cpu_actions_arr[0x14] = cpuNoAction; cpu_actions_arr[0x15] = cpuORA; cpu_actions_arr[0x16] = cpuASLt; cpu_actions_arr[0x17] = cpuSLO;
+	cpu_actions_arr[0x18] = cpuCLC; cpu_actions_arr[0x19] = cpuORA; cpu_actions_arr[0x1A] = cpuNoAction; cpu_actions_arr[0x1B] = cpuSLO; 
+	cpu_actions_arr[0x1C] = cpuNoAction; cpu_actions_arr[0x1D] = cpuORA; cpu_actions_arr[0x1E] = cpuASLt; cpu_actions_arr[0x1F] = cpuSLO;
 
-	cpu_actions_arr[0x20] = NULL; cpu_actions_arr[0x21] = cpuAND; cpu_actions_arr[0x22] = cpuKIL; cpu_actions_arr[0x23] = cpuRLA;
+	cpu_actions_arr[0x20] = cpuNoAction; cpu_actions_arr[0x21] = cpuAND; cpu_actions_arr[0x22] = cpuKIL; cpu_actions_arr[0x23] = cpuRLA;
 	cpu_actions_arr[0x24] = cpuBIT; cpu_actions_arr[0x25] = cpuAND; cpu_actions_arr[0x26] = cpuROLt; cpu_actions_arr[0x27] = cpuRLA;
-	cpu_actions_arr[0x28] = NULL; cpu_actions_arr[0x29] = cpuAND; cpu_actions_arr[0x2A] = cpuROLa; cpu_actions_arr[0x2B] = cpuAAC; 
+	cpu_actions_arr[0x28] = cpuNoAction; cpu_actions_arr[0x29] = cpuAND; cpu_actions_arr[0x2A] = cpuROLa; cpu_actions_arr[0x2B] = cpuAAC; 
 	cpu_actions_arr[0x2C] = cpuBIT; cpu_actions_arr[0x2D] = cpuAND; cpu_actions_arr[0x2E] = cpuROLt; cpu_actions_arr[0x2F] = cpuRLA;
 
-	cpu_actions_arr[0x30] = NULL; cpu_actions_arr[0x31] = cpuAND; cpu_actions_arr[0x32] = cpuKIL; cpu_actions_arr[0x33] = cpuRLA;
-	cpu_actions_arr[0x34] = NULL; cpu_actions_arr[0x35] = cpuAND; cpu_actions_arr[0x36] = cpuROLt; cpu_actions_arr[0x37] = cpuRLA;
-	cpu_actions_arr[0x38] = cpuSEC; cpu_actions_arr[0x39] = cpuAND; cpu_actions_arr[0x3A] = NULL; cpu_actions_arr[0x3B] = cpuRLA; 
-	cpu_actions_arr[0x3C] = NULL; cpu_actions_arr[0x3D] = cpuAND; cpu_actions_arr[0x3E] = cpuROLt; cpu_actions_arr[0x3F] = cpuRLA;
+	cpu_actions_arr[0x30] = cpuNoAction; cpu_actions_arr[0x31] = cpuAND; cpu_actions_arr[0x32] = cpuKIL; cpu_actions_arr[0x33] = cpuRLA;
+	cpu_actions_arr[0x34] = cpuNoAction; cpu_actions_arr[0x35] = cpuAND; cpu_actions_arr[0x36] = cpuROLt; cpu_actions_arr[0x37] = cpuRLA;
+	cpu_actions_arr[0x38] = cpuSEC; cpu_actions_arr[0x39] = cpuAND; cpu_actions_arr[0x3A] = cpuNoAction; cpu_actions_arr[0x3B] = cpuRLA; 
+	cpu_actions_arr[0x3C] = cpuNoAction; cpu_actions_arr[0x3D] = cpuAND; cpu_actions_arr[0x3E] = cpuROLt; cpu_actions_arr[0x3F] = cpuRLA;
 
-	cpu_actions_arr[0x40] = NULL; cpu_actions_arr[0x41] = cpuEOR; cpu_actions_arr[0x42] = cpuKIL; cpu_actions_arr[0x43] = cpuSRE;
-	cpu_actions_arr[0x44] = NULL; cpu_actions_arr[0x45] = cpuEOR; cpu_actions_arr[0x46] = cpuLSRt; cpu_actions_arr[0x47] = cpuSRE;
-	cpu_actions_arr[0x48] = NULL; cpu_actions_arr[0x49] = cpuEOR; cpu_actions_arr[0x4A] = cpuLSRa; cpu_actions_arr[0x4B] = cpuASR; 
-	cpu_actions_arr[0x4C] = NULL; cpu_actions_arr[0x4D] = cpuEOR; cpu_actions_arr[0x4E] = cpuLSRt; cpu_actions_arr[0x4F] = cpuSRE;
+	cpu_actions_arr[0x40] = cpuNoAction; cpu_actions_arr[0x41] = cpuEOR; cpu_actions_arr[0x42] = cpuKIL; cpu_actions_arr[0x43] = cpuSRE;
+	cpu_actions_arr[0x44] = cpuNoAction; cpu_actions_arr[0x45] = cpuEOR; cpu_actions_arr[0x46] = cpuLSRt; cpu_actions_arr[0x47] = cpuSRE;
+	cpu_actions_arr[0x48] = cpuNoAction; cpu_actions_arr[0x49] = cpuEOR; cpu_actions_arr[0x4A] = cpuLSRa; cpu_actions_arr[0x4B] = cpuASR; 
+	cpu_actions_arr[0x4C] = cpuNoAction; cpu_actions_arr[0x4D] = cpuEOR; cpu_actions_arr[0x4E] = cpuLSRt; cpu_actions_arr[0x4F] = cpuSRE;
 
-	cpu_actions_arr[0x50] = NULL; cpu_actions_arr[0x51] = cpuEOR; cpu_actions_arr[0x52] = cpuKIL; cpu_actions_arr[0x53] = cpuSRE;
-	cpu_actions_arr[0x54] = NULL; cpu_actions_arr[0x55] = cpuEOR; cpu_actions_arr[0x56] = cpuLSRt; cpu_actions_arr[0x57] = cpuSRE;
-	cpu_actions_arr[0x58] = cpuCLI; cpu_actions_arr[0x59] = cpuEOR; cpu_actions_arr[0x5A] = NULL; cpu_actions_arr[0x5B] = cpuSRE; 
-	cpu_actions_arr[0x5C] = NULL; cpu_actions_arr[0x5D] = cpuEOR; cpu_actions_arr[0x5E] = cpuLSRt; cpu_actions_arr[0x5F] = cpuSRE;
+	cpu_actions_arr[0x50] = cpuNoAction; cpu_actions_arr[0x51] = cpuEOR; cpu_actions_arr[0x52] = cpuKIL; cpu_actions_arr[0x53] = cpuSRE;
+	cpu_actions_arr[0x54] = cpuNoAction; cpu_actions_arr[0x55] = cpuEOR; cpu_actions_arr[0x56] = cpuLSRt; cpu_actions_arr[0x57] = cpuSRE;
+	cpu_actions_arr[0x58] = cpuCLI; cpu_actions_arr[0x59] = cpuEOR; cpu_actions_arr[0x5A] = cpuNoAction; cpu_actions_arr[0x5B] = cpuSRE; 
+	cpu_actions_arr[0x5C] = cpuNoAction; cpu_actions_arr[0x5D] = cpuEOR; cpu_actions_arr[0x5E] = cpuLSRt; cpu_actions_arr[0x5F] = cpuSRE;
 
-	cpu_actions_arr[0x60] = NULL; cpu_actions_arr[0x61] = cpuADC; cpu_actions_arr[0x62] = cpuKIL; cpu_actions_arr[0x63] = cpuRRA;
-	cpu_actions_arr[0x64] = NULL; cpu_actions_arr[0x65] = cpuADC; cpu_actions_arr[0x66] = cpuRORt; cpu_actions_arr[0x67] = cpuRRA;
-	cpu_actions_arr[0x68] = NULL; cpu_actions_arr[0x69] = cpuADC; cpu_actions_arr[0x6A] = cpuRORa; cpu_actions_arr[0x6B] = cpuARR; 
-	cpu_actions_arr[0x6C] = NULL; cpu_actions_arr[0x6D] = cpuADC; cpu_actions_arr[0x6E] = cpuRORt; cpu_actions_arr[0x6F] = cpuRRA;
+	cpu_actions_arr[0x60] = cpuNoAction; cpu_actions_arr[0x61] = cpuADC; cpu_actions_arr[0x62] = cpuKIL; cpu_actions_arr[0x63] = cpuRRA;
+	cpu_actions_arr[0x64] = cpuNoAction; cpu_actions_arr[0x65] = cpuADC; cpu_actions_arr[0x66] = cpuRORt; cpu_actions_arr[0x67] = cpuRRA;
+	cpu_actions_arr[0x68] = cpuNoAction; cpu_actions_arr[0x69] = cpuADC; cpu_actions_arr[0x6A] = cpuRORa; cpu_actions_arr[0x6B] = cpuARR; 
+	cpu_actions_arr[0x6C] = cpuNoAction; cpu_actions_arr[0x6D] = cpuADC; cpu_actions_arr[0x6E] = cpuRORt; cpu_actions_arr[0x6F] = cpuRRA;
 
-	cpu_actions_arr[0x70] = NULL; cpu_actions_arr[0x71] = cpuADC; cpu_actions_arr[0x72] = cpuKIL; cpu_actions_arr[0x73] = cpuRRA;
-	cpu_actions_arr[0x74] = NULL; cpu_actions_arr[0x75] = cpuADC; cpu_actions_arr[0x76] = cpuRORt; cpu_actions_arr[0x77] = cpuRRA;
-	cpu_actions_arr[0x78] = cpuSEI; cpu_actions_arr[0x79] = cpuADC; cpu_actions_arr[0x7A] = NULL; cpu_actions_arr[0x7B] = cpuRRA; 
-	cpu_actions_arr[0x7C] = NULL; cpu_actions_arr[0x7D] = cpuADC; cpu_actions_arr[0x7E] = cpuRORt; cpu_actions_arr[0x7F] = cpuRRA;
+	cpu_actions_arr[0x70] = cpuNoAction; cpu_actions_arr[0x71] = cpuADC; cpu_actions_arr[0x72] = cpuKIL; cpu_actions_arr[0x73] = cpuRRA;
+	cpu_actions_arr[0x74] = cpuNoAction; cpu_actions_arr[0x75] = cpuADC; cpu_actions_arr[0x76] = cpuRORt; cpu_actions_arr[0x77] = cpuRRA;
+	cpu_actions_arr[0x78] = cpuSEI; cpu_actions_arr[0x79] = cpuADC; cpu_actions_arr[0x7A] = cpuNoAction; cpu_actions_arr[0x7B] = cpuRRA; 
+	cpu_actions_arr[0x7C] = cpuNoAction; cpu_actions_arr[0x7D] = cpuADC; cpu_actions_arr[0x7E] = cpuRORt; cpu_actions_arr[0x7F] = cpuRRA;
 
-	cpu_actions_arr[0x80] = NULL; cpu_actions_arr[0x81] = NULL; cpu_actions_arr[0x82] = NULL; cpu_actions_arr[0x83] = NULL;
-	cpu_actions_arr[0x84] = NULL; cpu_actions_arr[0x85] = NULL; cpu_actions_arr[0x86] = NULL; cpu_actions_arr[0x87] = NULL;
-	cpu_actions_arr[0x88] = cpuDEY; cpu_actions_arr[0x89] = NULL; cpu_actions_arr[0x8A] = cpuTXA; cpu_actions_arr[0x8B] = cpuXAA; 
-	cpu_actions_arr[0x8C] = NULL; cpu_actions_arr[0x8D] = NULL; cpu_actions_arr[0x8E] = NULL; cpu_actions_arr[0x8F] = NULL;
+	cpu_actions_arr[0x80] = cpuNoAction; cpu_actions_arr[0x81] = cpuNoAction; cpu_actions_arr[0x82] = cpuNoAction; cpu_actions_arr[0x83] = cpuNoAction;
+	cpu_actions_arr[0x84] = cpuNoAction; cpu_actions_arr[0x85] = cpuNoAction; cpu_actions_arr[0x86] = cpuNoAction; cpu_actions_arr[0x87] = cpuNoAction;
+	cpu_actions_arr[0x88] = cpuDEY; cpu_actions_arr[0x89] = cpuNoAction; cpu_actions_arr[0x8A] = cpuTXA; cpu_actions_arr[0x8B] = cpuXAA; 
+	cpu_actions_arr[0x8C] = cpuNoAction; cpu_actions_arr[0x8D] = cpuNoAction; cpu_actions_arr[0x8E] = cpuNoAction; cpu_actions_arr[0x8F] = cpuNoAction;
 
-	cpu_actions_arr[0x90] = NULL; cpu_actions_arr[0x91] = NULL; cpu_actions_arr[0x92] = cpuKIL; cpu_actions_arr[0x93] = NULL;
-	cpu_actions_arr[0x94] = NULL; cpu_actions_arr[0x95] = NULL; cpu_actions_arr[0x96] = NULL; cpu_actions_arr[0x97] = NULL;
-	cpu_actions_arr[0x98] = cpuTYA; cpu_actions_arr[0x99] = NULL; cpu_actions_arr[0x9A] = cpuTXS; cpu_actions_arr[0x9B] = NULL; 
-	cpu_actions_arr[0x9C] = NULL; cpu_actions_arr[0x9D] = NULL; cpu_actions_arr[0x9E] = NULL; cpu_actions_arr[0x9F] = NULL;
+	cpu_actions_arr[0x90] = cpuNoAction; cpu_actions_arr[0x91] = cpuNoAction; cpu_actions_arr[0x92] = cpuKIL; cpu_actions_arr[0x93] = cpuNoAction;
+	cpu_actions_arr[0x94] = cpuNoAction; cpu_actions_arr[0x95] = cpuNoAction; cpu_actions_arr[0x96] = cpuNoAction; cpu_actions_arr[0x97] = cpuNoAction;
+	cpu_actions_arr[0x98] = cpuTYA; cpu_actions_arr[0x99] = cpuNoAction; cpu_actions_arr[0x9A] = cpuTXS; cpu_actions_arr[0x9B] = cpuNoAction; 
+	cpu_actions_arr[0x9C] = cpuNoAction; cpu_actions_arr[0x9D] = cpuNoAction; cpu_actions_arr[0x9E] = cpuNoAction; cpu_actions_arr[0x9F] = cpuNoAction;
 
 	cpu_actions_arr[0xA0] = cpuLDY; cpu_actions_arr[0xA1] = cpuLDA; cpu_actions_arr[0xA2] = cpuLDX; cpu_actions_arr[0xA3] = cpuLAX;
 	cpu_actions_arr[0xA4] = cpuLDY; cpu_actions_arr[0xA5] = cpuLDA; cpu_actions_arr[0xA6] = cpuLDX; cpu_actions_arr[0xA7] = cpuLAX;
 	cpu_actions_arr[0xA8] = cpuTAY; cpu_actions_arr[0xA9] = cpuLDA; cpu_actions_arr[0xAA] = cpuTAX; cpu_actions_arr[0xAB] = cpuAXT; 
 	cpu_actions_arr[0xAC] = cpuLDY; cpu_actions_arr[0xAD] = cpuLDA; cpu_actions_arr[0xAE] = cpuLDX; cpu_actions_arr[0xAF] = cpuLAX;
 
-	cpu_actions_arr[0xB0] = NULL; cpu_actions_arr[0xB1] = cpuLDA; cpu_actions_arr[0xB2] = cpuKIL; cpu_actions_arr[0xB3] = cpuLAX;
+	cpu_actions_arr[0xB0] = cpuNoAction; cpu_actions_arr[0xB1] = cpuLDA; cpu_actions_arr[0xB2] = cpuKIL; cpu_actions_arr[0xB3] = cpuLAX;
 	cpu_actions_arr[0xB4] = cpuLDY; cpu_actions_arr[0xB5] = cpuLDA; cpu_actions_arr[0xB6] = cpuLDX; cpu_actions_arr[0xB7] = cpuLAX;
 	cpu_actions_arr[0xB8] = cpuCLV; cpu_actions_arr[0xB9] = cpuLDA; cpu_actions_arr[0xBA] = cpuTSX; cpu_actions_arr[0xBB] = cpuLAR; 
 	cpu_actions_arr[0xBC] = cpuLDY; cpu_actions_arr[0xBD] = cpuLDA; cpu_actions_arr[0xBE] = cpuLDX; cpu_actions_arr[0xBF] = cpuLAX;
 
-	cpu_actions_arr[0xC0] = cpuCMPy; cpu_actions_arr[0xC1] = cpuCMPa; cpu_actions_arr[0xC2] = NULL; cpu_actions_arr[0xC3] = cpuDCP;
+	cpu_actions_arr[0xC0] = cpuCMPy; cpu_actions_arr[0xC1] = cpuCMPa; cpu_actions_arr[0xC2] = cpuNoAction; cpu_actions_arr[0xC3] = cpuDCP;
 	cpu_actions_arr[0xC4] = cpuCMPy; cpu_actions_arr[0xC5] = cpuCMPa; cpu_actions_arr[0xC6] = cpuDECt; cpu_actions_arr[0xC7] = cpuDCP;
 	cpu_actions_arr[0xC8] = cpuINY; cpu_actions_arr[0xC9] = cpuCMPa; cpu_actions_arr[0xCA] = cpuDEX; cpu_actions_arr[0xCB] = cpuCMPax; 
 	cpu_actions_arr[0xCC] = cpuCMPy; cpu_actions_arr[0xCD] = cpuCMPa; cpu_actions_arr[0xCE] = cpuDECt; cpu_actions_arr[0xCF] = cpuDCP;
 
-	cpu_actions_arr[0xD0] = NULL; cpu_actions_arr[0xD1] = cpuCMPa; cpu_actions_arr[0xD2] = cpuKIL; cpu_actions_arr[0xD3] = cpuDCP;
-	cpu_actions_arr[0xD4] = NULL; cpu_actions_arr[0xD5] = cpuCMPa; cpu_actions_arr[0xD6] = cpuDECt; cpu_actions_arr[0xD7] = cpuDCP;
-	cpu_actions_arr[0xD8] = cpuCLD; cpu_actions_arr[0xD9] = cpuCMPa; cpu_actions_arr[0xDA] = NULL; cpu_actions_arr[0xDB] = cpuDCP; 
-	cpu_actions_arr[0xDC] = NULL; cpu_actions_arr[0xDD] = cpuCMPa; cpu_actions_arr[0xDE] = cpuDECt; cpu_actions_arr[0xDF] = cpuDCP;
+	cpu_actions_arr[0xD0] = cpuNoAction; cpu_actions_arr[0xD1] = cpuCMPa; cpu_actions_arr[0xD2] = cpuKIL; cpu_actions_arr[0xD3] = cpuDCP;
+	cpu_actions_arr[0xD4] = cpuNoAction; cpu_actions_arr[0xD5] = cpuCMPa; cpu_actions_arr[0xD6] = cpuDECt; cpu_actions_arr[0xD7] = cpuDCP;
+	cpu_actions_arr[0xD8] = cpuCLD; cpu_actions_arr[0xD9] = cpuCMPa; cpu_actions_arr[0xDA] = cpuNoAction; cpu_actions_arr[0xDB] = cpuDCP; 
+	cpu_actions_arr[0xDC] = cpuNoAction; cpu_actions_arr[0xDD] = cpuCMPa; cpu_actions_arr[0xDE] = cpuDECt; cpu_actions_arr[0xDF] = cpuDCP;
 
-	cpu_actions_arr[0xE0] = cpuCMPx; cpu_actions_arr[0xE1] = cpuSBC; cpu_actions_arr[0xE2] = NULL; cpu_actions_arr[0xE3] = cpuISC;
+	cpu_actions_arr[0xE0] = cpuCMPx; cpu_actions_arr[0xE1] = cpuSBC; cpu_actions_arr[0xE2] = cpuNoAction; cpu_actions_arr[0xE3] = cpuISC;
 	cpu_actions_arr[0xE4] = cpuCMPx; cpu_actions_arr[0xE5] = cpuSBC; cpu_actions_arr[0xE6] = cpuINCt; cpu_actions_arr[0xE7] = cpuISC;
-	cpu_actions_arr[0xE8] = cpuINX; cpu_actions_arr[0xE9] = cpuSBC; cpu_actions_arr[0xEA] = NULL; cpu_actions_arr[0xEB] = cpuSBC; 
+	cpu_actions_arr[0xE8] = cpuINX; cpu_actions_arr[0xE9] = cpuSBC; cpu_actions_arr[0xEA] = cpuNoAction; cpu_actions_arr[0xEB] = cpuSBC; 
 	cpu_actions_arr[0xEC] = cpuCMPx; cpu_actions_arr[0xED] = cpuSBC; cpu_actions_arr[0xEE] = cpuINCt; cpu_actions_arr[0xEF] = cpuISC;
 
-	cpu_actions_arr[0xF0] = NULL; cpu_actions_arr[0xF1] = cpuSBC; cpu_actions_arr[0xF2] = cpuKIL; cpu_actions_arr[0xF3] = cpuISC;
-	cpu_actions_arr[0xF4] = NULL; cpu_actions_arr[0xF5] = cpuSBC; cpu_actions_arr[0xF6] = cpuINCt; cpu_actions_arr[0xF7] = cpuISC;
-	cpu_actions_arr[0xF8] = cpuSED; cpu_actions_arr[0xF9] = cpuSBC; cpu_actions_arr[0xFA] = NULL; cpu_actions_arr[0xFB] = cpuISC; 
-	cpu_actions_arr[0xFC] = NULL; cpu_actions_arr[0xFD] = cpuSBC; cpu_actions_arr[0xFE] = cpuINCt; cpu_actions_arr[0xFF] = cpuISC;
+	cpu_actions_arr[0xF0] = cpuNoAction; cpu_actions_arr[0xF1] = cpuSBC; cpu_actions_arr[0xF2] = cpuKIL; cpu_actions_arr[0xF3] = cpuISC;
+	cpu_actions_arr[0xF4] = cpuNoAction; cpu_actions_arr[0xF5] = cpuSBC; cpu_actions_arr[0xF6] = cpuINCt; cpu_actions_arr[0xF7] = cpuISC;
+	cpu_actions_arr[0xF8] = cpuSED; cpu_actions_arr[0xF9] = cpuSBC; cpu_actions_arr[0xFA] = cpuNoAction; cpu_actions_arr[0xFB] = cpuISC; 
+	cpu_actions_arr[0xFC] = cpuNoAction; cpu_actions_arr[0xFD] = cpuSBC; cpu_actions_arr[0xFE] = cpuINCt; cpu_actions_arr[0xFF] = cpuISC;
+
+	cpu_action_func = cpuNoAction;
 }
 
 /* Do all IRQ related updates */
@@ -724,7 +729,7 @@ static bool cpuHandleIrqUpdates()
 	{
 		cpu_action_arr = cpu_reset_arr;
 		cpu_arr_pos = 0;
-		cpu_action_func = NULL;
+		cpu_action_func = cpuNoAction;
 		reset = false;
 		return true;
 	}
@@ -732,7 +737,7 @@ static bool cpuHandleIrqUpdates()
 	{
 		cpu_action_arr = cpu_nmi_arr;
 		cpu_arr_pos = 0;
-		cpu_action_func = NULL;
+		cpu_action_func = cpuNoAction;
 		#if DEBUG_INTR
 		printf("NMI from p %02x pc %04x\n",p,pc);
 		#endif
@@ -743,7 +748,7 @@ static bool cpuHandleIrqUpdates()
 	{
 		cpu_action_arr = cpu_irq_arr;
 		cpu_arr_pos = 0;
-		cpu_action_func = NULL;
+		cpu_action_func = cpuNoAction;
 		#if DEBUG_INTR
 		printf("INTR %d %d %d from p %02x pc %04x\n",interrupt,dmc_interrupt,apu_interrupt,p,pc);
 		#endif
@@ -851,8 +856,7 @@ doaction:
 			pc++;
 			break;
 		case CPU_ACTION:
-			if(cpu_action_func)
-				cpu_action_func();
+			cpu_action_func();
 			break;
 		case CPU_NULL_READ8_PC:
 			memGet8(pc);
@@ -870,16 +874,14 @@ doaction:
 			break;
 		case CPU_NULL_READ8_PC_ACTION:
 			memGet8(pc);
-			if(cpu_action_func)
-				cpu_action_func();
+			cpu_action_func();
 			break;
 		case CPU_TMP_READ8_PC_INC:
 			cpuTmp = memGet8(pc++);
 			break;
 		case CPU_TMP_READ8_PC_INC_ACTION:
 			cpuTmp = memGet8(pc++);
-			if(cpu_action_func)
-				cpu_action_func();
+			cpu_action_func();
 			break;
 		case CPU_ADDR_READ8_PC_INC:
 			absAddr = memGet8(pc++);
@@ -940,15 +942,13 @@ doaction:
 			break;
 		case CPU_ADDR_READ8_ACTION:
 			cpuTmp = memGet8(absAddr);
-			if(cpu_action_func)
-				cpu_action_func();
+			cpu_action_func();
 			break;
 		case CPU_ADDR_READ8_ACTION_CHK:
 			cpuTmp = memGet8(absAddr);
 			if(!cpuDoAddrIndFix())
 			{
-				if(cpu_action_func)
-					cpu_action_func();
+				cpu_action_func();
 				//only execute extra cycle
 				//if fixup is needed
 				cpu_arr_pos++;
@@ -1017,8 +1017,7 @@ doaction:
 		case CPU_ADDR_WRITE8_ACTION:
 			memSet8(absAddr, cpuTmp);
 			cpuWriteTMP = true;
-			if(cpu_action_func)
-				cpu_action_func();
+			cpu_action_func();
 			break;
 		case CPU_CHECK_BCC:
 			takeBranch = !(p & P_FLAG_CARRY);
