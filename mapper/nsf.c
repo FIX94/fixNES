@@ -14,6 +14,7 @@
 #include "../input.h"
 #include "../mem.h"
 #include "../apu.h"
+#include "../ppu.h"
 #include "../audio_fds.h"
 #include "../audio_mmc5.h"
 #include "../audio_vrc6.h"
@@ -101,7 +102,8 @@ void nsfinit(uint8_t *nsfBIN, uint32_t nsfBINsize, uint8_t *prgRAMin, uint32_t p
 	printf("NSF Player inited in %s Mode (VRC6 %s, VRC7 %s, FDS %s, MMC5 %s) %s banking\n", nesPAL ? "PAL" : "NTSC", 
 		onOff(vrc6enabled), onOff(vrc7enabled), onOff(fdsEnabled), onOff(mmc5enabled), nsf_bankEnable ? "with" : "without");
 	if(nsfBIN[0xE] != 0) printf("Playing back %.32s\n", nsfBIN+0xE);
-	printf("Track %i/%i         ", nsf_curTrack, nsf_trackTotal);
+	//printf("Track %i/%i         ", nsf_curTrack, nsf_trackTotal);
+	ppuDrawNSFTrackNum(nsf_curTrack, nsf_trackTotal);
 	inputInit();
 	nsfInitPlayback();
 }
@@ -321,7 +323,8 @@ void nsfcycle()
 		nsf_curTrack++;
 		if(nsf_curTrack > nsf_trackTotal)
 			nsf_curTrack = 1;
-		printf("\rTrack %i/%i         ", nsf_curTrack, nsf_trackTotal);
+		//printf("\rTrack %i/%i         ", nsf_curTrack, nsf_trackTotal);
+		ppuDrawNSFTrackNum(nsf_curTrack, nsf_trackTotal);
 		nsfInitPlayback();
 	}
 	else if(!inValReads[BUTTON_RIGHT])
@@ -333,27 +336,28 @@ void nsfcycle()
 		nsf_curTrack--;
 		if(nsf_curTrack < 1)
 			nsf_curTrack = nsf_trackTotal;
-		printf("\rTrack %i/%i         ", nsf_curTrack, nsf_trackTotal);
+		//printf("\rTrack %i/%i         ", nsf_curTrack, nsf_trackTotal);
+		ppuDrawNSFTrackNum(nsf_curTrack, nsf_trackTotal);
 		nsfInitPlayback();
 	}
 	else if(!inValReads[BUTTON_LEFT])
 		nsf_prevValReads[BUTTON_LEFT] = 0;
+}
 
+void nsfVsync()
+{
 	if(nsf_playing)
 		return;
 
-	if(ppuDrawDone())
+	//wait for init return
+	if(nsf_init_timeout)
 	{
-		//wait for init return
-		if(nsf_init_timeout)
-		{
-			nsf_init_timeout--;
-			return;
-		}
-		//will get started on next CPU_GET_INSTRUCTION state
-		nsf_startPlayback = true;
-		nsf_playing = true;
+		nsf_init_timeout--;
+		return;
 	}
+	//will get started on next CPU_GET_INSTRUCTION state
+	nsf_startPlayback = true;
+	nsf_playing = true;
 }
 
 uint16_t nsfGetPlayAddr()

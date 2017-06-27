@@ -15,6 +15,7 @@ void nsfset8(uint16_t addr, uint8_t val);
 uint8_t nsfchrGet8(uint16_t addr);
 void nsfchrSet8(uint16_t addr, uint8_t val);
 void nsfcycle();
+void nsfVsync();
 
 extern bool nsf_startPlayback;
 extern bool nsf_endPlayback;

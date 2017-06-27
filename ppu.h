@@ -25,6 +25,8 @@ void ppuSetNameTblHorizontal();
 void ppuSetNameTbl4Screen();
 void ppuSetNameTblCustom(uint16_t addrA, uint16_t addrB, uint16_t addrC, uint16_t addrD);
 
+void ppuDrawNSFTrackNum(uint8_t cTrack, uint8_t trackTotal);
+
 extern bool ppu4Screen;
 
 #endif

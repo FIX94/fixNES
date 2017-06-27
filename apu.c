@@ -34,10 +34,15 @@
 #define DMC_IRQ_ENABLE (1<<7)
 
 static uint8_t APU_IO_Reg[0x18];
-
+#if AUDIO_FLOAT
 static float lpVal;
 static float hpVal;
 static float *apuOutBuf;
+#else
+static int32_t lpVal;
+static int32_t hpVal;
+static int16_t *apuOutBuf;
+#endif
 static uint32_t apuBufSize;
 static uint32_t apuBufSizeBytes;
 static uint32_t curBufPos;
@@ -80,10 +85,13 @@ typedef struct _sweep_t {
 } sweep_t;
 
 static sweep_t p1Sweep, p2Sweep;
-
+#if AUDIO_FLOAT
 static float pulseLookupTbl[32];
 static float tndLookupTbl[204];
-
+#else
+static int32_t pulseLookupTbl[32];
+static int32_t tndLookupTbl[204];
+#endif
 //used externally
 const uint8_t lengthLookupTbl[0x20] = {
 	10,254, 20,  2, 40,  4, 80,  6, 160,  8, 60, 10, 14, 12, 26, 14,
@@ -155,26 +163,48 @@ void apuInitBufs()
 	//effective frequencies for 50.000Hz and 60.000Hz Video out
 	//apuFrequency = nesPAL ? 831187 : 893415;
 	//effective frequencies for Original PPU Video out
-	apuFrequency = nesPAL ? 831303 : 894886;
+	//apuFrequency = nesPAL ? 831303 : 894886;
+	apuFrequency = nesPAL ? 207825 : 223721;
 	double dt = 1.0/((double)apuFrequency);
 	//LP at 22kHz
 	double rc = 1.0/(M_2_PI * 22000.0);
+#if AUDIO_FLOAT
 	lpVal = dt / (rc + dt);
+#else
+	//convert to 32bit int for calcs later
+	lpVal = (int32_t)((dt / (rc + dt))*32768.0);
+#endif
 	//HP at 40Hz
 	rc = 1.0/(M_2_PI * 40.0);
+#if AUDIO_FLOAT
 	hpVal = rc / (rc + dt);
-
-	apuBufSize = apuFrequency/60;
+#else
+	//convert to 32bit int for calcs later
+	hpVal = (int32_t)((rc / (rc + dt))*32768.0);
+#endif
+	apuBufSize = apuFrequency/60*2;
+#if AUDIO_FLOAT
 	apuBufSizeBytes = apuBufSize*sizeof(float);
-
 	apuOutBuf = (float*)malloc(apuBufSizeBytes);
-
+	printf("Audio: 32-bit Float Output\n"); 
+#else
+	apuBufSizeBytes = apuBufSize*sizeof(int16_t);
+	apuOutBuf = (int16_t*)malloc(apuBufSizeBytes);
+	printf("Audio: 16-bit Short Output\n");
+#endif
 	/* https://wiki.nesdev.com/w/index.php/APU_Mixer#Lookup_Table */
 	uint8_t i;
+#if AUDIO_FLOAT
 	for(i = 0; i < 32; i++)
-		pulseLookupTbl[i] = 95.52 / ((8128.0 / i) + 100);
+		pulseLookupTbl[i] = (95.52 / ((8128.0 / i) + 100));
 	for(i = 0; i < 204; i++)
-		tndLookupTbl[i] = 163.67 / ((24329.0 / i) + 100);
+		tndLookupTbl[i] = (163.67 / ((24329.0 / i) + 100));
+#else
+	for(i = 0; i < 32; i++)
+		pulseLookupTbl[i] = (int32_t)((95.52 / ((8128.0 / i) + 100))*32768.0);
+	for(i = 0; i < 204; i++)
+		tndLookupTbl[i] = (int32_t)((163.67 / ((24329.0 / i) + 100))*32768.0);
+#endif
 }
 
 void apuDeinitBufs()
@@ -312,8 +342,11 @@ void apuClockTimers()
 		}
 	}
 }
-
+#if AUDIO_FLOAT
 static float lastHPOut = 0, lastLPOut = 0;
+#else
+static int32_t lastHPOut = 0, lastLPOut = 0;
+#endif
 static uint8_t lastP1Out = 0, lastP2Out = 0, lastTriOut = 0, lastNoiseOut = 0;
 
 extern bool emuSkipVsync, emuSkipFrame;
@@ -374,37 +407,81 @@ bool apuCycle()
 		else
 			noiseOut = 0;
 	}
+#if AUDIO_FLOAT
 	float curIn = pulseLookupTbl[p1Out + p2Out] + tndLookupTbl[(3*triOut) + (2*noiseOut) + dmcVol];
 	//very rough still
 	if(vrc6enabled)
 	{
 		vrc6AudioCycle();
 		curIn += ((float)vrc6Out)*0.008f;
-		curIn *= 0.665f;
+		curIn *= 0.6667f;
 	}
 	if(fdsEnabled)
 	{
 		fdsAudioCycle();
 		curIn += ((float)fdsOut)*0.00617f;
-		curIn *= 0.72f;
+		curIn *= 0.75f;
 	}
 	if(mmc5enabled)
 	{
 		mmc5AudioCycle();
 		curIn += pulseLookupTbl[mmc5Out];
-		curIn *= 0.78f;
+		curIn *= 0.75f;
 	}
-	float curLPout = lastLPOut+(lpVal*(curIn-lastLPOut));
-	float curHPOut = hpVal*(lastHPOut+curLPout-curIn);
-	//set output
 	if(vrc7enabled)
-		apuOutBuf[curBufPos] = ((((float)vrc7Out)*0.0000019f)+(-curHPOut))*0.5f;
-	else
-		apuOutBuf[curBufPos] = -curHPOut;
+	{
+		curIn += (((float)(vrc7Out>>7))/32768.f);
+		curIn *= 0.75f;
+	}
+	//amplify input
+	curIn *= 2.0f;
+	float curLPout = lastLPOut+(lpVal*(curIn-lastLPOut));
+	float curHPOut = hpVal*(lastHPOut+lastLPOut-curLPout);
+	//set output
+	apuOutBuf[curBufPos] = curHPOut;
 	lastLPOut = curLPout;
 	lastHPOut = curHPOut;
-	curBufPos++;
-
+#else
+	int32_t curIn = pulseLookupTbl[p1Out + p2Out] + tndLookupTbl[(3*triOut) + (2*noiseOut) + dmcVol];
+	//very rough still
+	if(vrc6enabled)
+	{
+		vrc6AudioCycle();
+		curIn += ((int32_t)vrc6Out)*262;
+		curIn <<= 1; curIn /= 3;
+	}
+	if(fdsEnabled)
+	{
+		fdsAudioCycle();
+		curIn += ((int32_t)fdsOut)*202;
+		curIn *= 3; curIn >>= 2;
+	}
+	if(mmc5enabled)
+	{
+		mmc5AudioCycle();
+		curIn += pulseLookupTbl[mmc5Out];
+		curIn *= 3; curIn >>= 2;
+	}
+	if(vrc7enabled)
+	{
+		curIn += vrc7Out>>7;
+		curIn *= 3; curIn >>= 2;
+	}
+	//amplify input
+	curIn <<= 1;
+	int32_t curOut;
+	//gen output
+	curOut = lastLPOut+((lpVal*(curIn-lastLPOut))>>15); //Set Lowpass Output
+	curIn = (lastHPOut+lastLPOut-curOut); //Set Highpass Input
+	curIn += (curIn>>31)&1; //Add Sign Bit for proper Downshift later
+	lastLPOut = curOut; //Save Lowpass Output
+	curOut = (hpVal*curIn)>>15; //Set Highpass Output
+	lastHPOut = curOut; //Save Highpass Output
+	//Save Clipped Highpass Output
+	apuOutBuf[curBufPos] = (curOut > 32767)?(32767):((curOut < -32768)?(-32768):curOut);
+#endif
+	apuOutBuf[curBufPos+1] = apuOutBuf[curBufPos];
+	curBufPos+=2;
 	return true;
 }
 

@@ -25,13 +25,16 @@
 #include "audio.h"
 #include "audio_fds.h"
 #include "audio_vrc7.h"
+#include "mapper_h/nsf.h"
 
 #define DEBUG_HZ 0
 #define DEBUG_MAIN_CALLS 0
 #define DEBUG_KEY 0
 #define DEBUG_LOAD_INFO 1
 
-static const char *VERSION_STRING = "fixNES Alpha v0.8.3";
+static const char *VERSION_STRING = "fixNES Alpha v0.9";
+static char window_title[256];
+static char window_title_pause[256];
 
 static void nesEmuDisplayFrame(void);
 static void nesEmuMainLoop(void);
@@ -82,6 +85,7 @@ static DWORD emuMainTotalElapsed = 0;
 #define VISIBLE_DOTS 256
 #define VISIBLE_LINES 240
 
+static uint32_t linesToDraw = VISIBLE_LINES;
 static const uint32_t visibleImg = VISIBLE_DOTS*VISIBLE_LINES*4;
 static uint8_t scaleFactor = 2;
 static bool emuSaveEnabled = false;
@@ -96,11 +100,19 @@ extern uint8_t inValReads[8];
 int main(int argc, char** argv)
 {
 	puts(VERSION_STRING);
+	strcpy(window_title, VERSION_STRING);
+	memset(textureImage,0,visibleImg);
 	if(argc >= 2 && (strstr(argv[1],".nes") != NULL || strstr(argv[1],".NES") != NULL))
 	{
 		nesPAL = (strstr(argv[1],"(E)") != NULL);
 		FILE *nesF = fopen(argv[1],"rb");
-		if(!nesF) return EXIT_SUCCESS;
+		if(!nesF)
+		{
+			printf("Main: Could not open %s!\n", argv[1]);
+			puts("Press enter to exit");
+			getc(stdin);
+			return EXIT_SUCCESS;
+		}
 		fseek(nesF,0,SEEK_END);
 		size_t fsize = ftell(nesF);
 		rewind(nesF);
@@ -142,7 +154,8 @@ int main(int argc, char** argv)
 		{
 			printf("Mapper init failed!\n");
 			free(emuNesROM);
-			emuNesROM = NULL;
+			puts("Press enter to exit");
+			getc(stdin);
 			return EXIT_SUCCESS;
 		}
 		if(emuNesROM[6] & 8)
@@ -155,6 +168,7 @@ int main(int argc, char** argv)
 		printf("Trainer: %i Saving: %i VRAM Mode: %s\n", trainer, emuSaveEnabled, (emuNesROM[6] & 1) ? "Vertical" : 
 			((!(emuNesROM[6] & 1)) ? "Horizontal" : "4-Screen"));
 		#endif
+		sprintf(window_title, "%s NES - %s\n", nesPAL ? "PAL" : "NTSC", VERSION_STRING);
 		if(emuSaveEnabled)
 		{
 			emuSaveName = strdup(argv[1]);
@@ -172,7 +186,13 @@ int main(int argc, char** argv)
 	else if(argc >= 2 && (strstr(argv[1],".nsf") != NULL || strstr(argv[1],".NSF") != NULL))
 	{
 		FILE *nesF = fopen(argv[1],"rb");
-		if(!nesF) return EXIT_SUCCESS;
+		if(!nesF)
+		{
+			printf("Main: Could not open %s!\n", argv[1]);
+			puts("Press enter to exit");
+			getc(stdin);
+			return EXIT_SUCCESS;
+		}
 		fseek(nesF,0,SEEK_END);
 		size_t fsize = ftell(nesF);
 		rewind(nesF);
@@ -185,9 +205,14 @@ int main(int argc, char** argv)
 		{
 			printf("NSF init failed!\n");
 			free(emuNesROM);
+			puts("Press enter to exit");
+			getc(stdin);
 			return EXIT_SUCCESS;
 		}
+		if(emuNesROM[0xE] != 0)
+			sprintf(window_title, "%.32s (%s NSF) - %s\n", (char*)(emuNesROM+0xE), nesPAL ? "PAL" : "NTSC", VERSION_STRING);
 		nesEmuNSFPlayback = true;
+		linesToDraw = 30;
 	}
 	else if(argc >= 2 && (strstr(argv[1],".fds") != NULL || strstr(argv[1],".FDS") != NULL
 						|| strstr(argv[1],".qd") != NULL || strstr(argv[1],".QD") != NULL))
@@ -216,7 +241,13 @@ int main(int argc, char** argv)
 		if(!saveValid)
 		{
 			FILE *nesF = fopen(argv[1],"rb");
-			if(!nesF) return EXIT_SUCCESS;
+			if(!nesF)
+			{
+				printf("Main: Could not open %s!\n", argv[1]);
+				puts("Press enter to exit");
+				getc(stdin);
+				return EXIT_SUCCESS;
+			}
 			fseek(nesF,0,SEEK_END);
 			size_t fsize = ftell(nesF);
 			rewind(nesF);
@@ -282,12 +313,20 @@ int main(int argc, char** argv)
 		{
 			printf("FDS init failed!\n");
 			free(emuNesROM);
-			emuNesROM = NULL;
+			puts("Press enter to exit");
+			getc(stdin);
 			return EXIT_SUCCESS;
 		}
+		sprintf(window_title, "Famicom Disk System - %s\n", VERSION_STRING);
 	}
 	if(emuNesROM == NULL)
+	{
+		printf("Main: No File to Open! Make sure to call fixNES with a .nes/.nsf/.fds/.qd File as Argument.\n");
+		puts("Press enter to exit");
+		getc(stdin);
 		return EXIT_SUCCESS;
+	}
+	sprintf(window_title_pause, "%s (Pause)", window_title);
 	#if WINDOWS_BUILD
 	#if DEBUG_HZ
 	emuFrameStart = GetTickCount();
@@ -296,16 +335,15 @@ int main(int argc, char** argv)
 	emuMainFrameStart = GetTickCount();
 	#endif
 	#endif
-	memset(textureImage,0,visibleImg);
 	cpuCycleTimer = nesPAL ? 16 : 12;
 	//do one scanline per idle loop
 	ppuCycleTimer = nesPAL ? 5 : 4;
 	mainLoopRuns = nesPAL ? DOTS*ppuCycleTimer : DOTS*ppuCycleTimer;
 	mainLoopPos = mainLoopRuns;
 	glutInit(&argc, argv);
-	glutInitWindowSize(VISIBLE_DOTS*scaleFactor, VISIBLE_LINES*scaleFactor);
+	glutInitWindowSize(VISIBLE_DOTS*scaleFactor, linesToDraw*scaleFactor);
 	glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGBA);
-	glutCreateWindow(VERSION_STRING);
+	glutCreateWindow(nesPause ? window_title_pause : window_title);
 	audioInit();
 	atexit(&nesEmuDeinit);
 	glutKeyboardFunc(&nesEmuHandleKeyDown);
@@ -320,7 +358,7 @@ int main(int argc, char** argv)
 	wglSwapIntervalEXT(1);
 	#endif
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-	glTexImage2D(GL_TEXTURE_2D, 0, 4, VISIBLE_DOTS, VISIBLE_LINES, 0, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV, textureImage);
+	glTexImage2D(GL_TEXTURE_2D, 0, 4, VISIBLE_DOTS, linesToDraw, 0, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV, textureImage);
 	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
 	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
 	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
@@ -380,9 +418,8 @@ bool emuSkipVsync = false;
 bool emuSkipFrame = false;
 
 //static uint32_t mCycles = 0;
-static bool emuApuDoCycle = false;
-
 static uint16_t mainClock = 1;
+static uint16_t apuClock = 1;
 static uint16_t ppuClock = 1;
 static uint16_t vrc7Clock = 1;
 
@@ -400,16 +437,21 @@ static void nesEmuMainLoop(void)
 		}
 		if(mainClock == cpuCycleTimer)
 		{
-			//runs every second cpu clock
-			if(emuApuDoCycle && !apuCycle())
+			//runs every 8th cpu clock
+			if(apuClock == 8)
 			{
-				#if (WINDOWS_BUILD && DEBUG_MAIN_CALLS)
-				emuMainTimesSkipped++;
-				#endif
-				audioSleep();
-				return;
+				if(!apuCycle())
+				{
+					#if (WINDOWS_BUILD && DEBUG_MAIN_CALLS)
+					emuMainTimesSkipped++;
+					#endif
+					audioSleep();
+					return;
+				}
+				apuClock = 1;
 			}
-			emuApuDoCycle ^= true;
+			else
+				apuClock++;
 			//runs every cpu cycle
 			apuClockTimers();
 			//main CPU clock
@@ -429,7 +471,7 @@ static void nesEmuMainLoop(void)
 		{
 			if(!ppuCycle())
 				exit(EXIT_SUCCESS);
-			if(!nesEmuNSFPlayback && ppuDrawDone())
+			if(ppuDrawDone())
 			{
 				//printf("%i\n",mCycles);
 				//mCycles = 0;
@@ -451,6 +493,8 @@ static void nesEmuMainLoop(void)
 				glutPostRedisplay();
 				if(ppuDebugPauseFrame)
 					nesPause = true;
+				if(nesEmuNSFPlayback)
+					nsfVsync();
 			}
 			ppuClock = 1;
 		}
@@ -556,69 +600,70 @@ static void nesEmuHandleKeyDown(unsigned char key, int x, int y)
 				#endif
 				inPause = true;
 				nesPause ^= true;
+				glutSetWindowTitle(nesPause ? window_title_pause : window_title);
 			}
 			break;
 		case '1':
 			if(!inResize)
 			{
 				inResize = true;
-				glutReshapeWindow(VISIBLE_DOTS*1, VISIBLE_LINES*1);
+				glutReshapeWindow(VISIBLE_DOTS*1, linesToDraw*1);
 			}
 			break;
 		case '2':
 			if(!inResize)
 			{
 				inResize = true;
-				glutReshapeWindow(VISIBLE_DOTS*2, VISIBLE_LINES*2);
+				glutReshapeWindow(VISIBLE_DOTS*2, linesToDraw*2);
 			}
 			break;
 		case '3':
 			if(!inResize)
 			{
 				inResize = true;
-				glutReshapeWindow(VISIBLE_DOTS*3, VISIBLE_LINES*3);
+				glutReshapeWindow(VISIBLE_DOTS*3, linesToDraw*3);
 			}
 			break;
 		case '4':
 			if(!inResize)
 			{
 				inResize = true;
-				glutReshapeWindow(VISIBLE_DOTS*4, VISIBLE_LINES*4);
+				glutReshapeWindow(VISIBLE_DOTS*4, linesToDraw*4);
 			}
 			break;
 		case '5':
 			if(!inResize)
 			{
 				inResize = true;
-				glutReshapeWindow(VISIBLE_DOTS*5, VISIBLE_LINES*5);
+				glutReshapeWindow(VISIBLE_DOTS*5, linesToDraw*5);
 			}
 			break;
 		case '6':
 			if(!inResize)
 			{
 				inResize = true;
-				glutReshapeWindow(VISIBLE_DOTS*6, VISIBLE_LINES*6);
+				glutReshapeWindow(VISIBLE_DOTS*6, linesToDraw*6);
 			}
 			break;
 		case '7':
 			if(!inResize)
 			{
 				inResize = true;
-				glutReshapeWindow(VISIBLE_DOTS*7, VISIBLE_LINES*7);
+				glutReshapeWindow(VISIBLE_DOTS*7, linesToDraw*7);
 			}
 			break;
 		case '8':
 			if(!inResize)
 			{
 				inResize = true;
-				glutReshapeWindow(VISIBLE_DOTS*8, VISIBLE_LINES*8);
+				glutReshapeWindow(VISIBLE_DOTS*8, linesToDraw*8);
 			}
 			break;
 		case '9':
 			if(!inResize)
 			{
 				inResize = true;
-				glutReshapeWindow(VISIBLE_DOTS*9, VISIBLE_LINES*9);
+				glutReshapeWindow(VISIBLE_DOTS*9, linesToDraw*9);
 			}
 			break;
 		case 'o':
@@ -802,7 +847,7 @@ static void nesEmuDisplayFrame()
 			emuRenderFrame = false;
 			return;
 		}
-		glTexImage2D(GL_TEXTURE_2D, 0, 4, VISIBLE_DOTS, VISIBLE_LINES, 0, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV, textureImage);
+		glTexImage2D(GL_TEXTURE_2D, 0, 4, VISIBLE_DOTS, linesToDraw, 0, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV, textureImage);
 		emuRenderFrame = false;
 	}
 
@@ -814,10 +859,10 @@ static void nesEmuDisplayFrame()
 	glMatrixMode(GL_MODELVIEW);
 	glLoadIdentity();
 
-	double upscaleVal = round((((double)glutGet(GLUT_WINDOW_HEIGHT))/((double)VISIBLE_LINES))*20.0)/20.0;
+	double upscaleVal = round((((double)glutGet(GLUT_WINDOW_HEIGHT))/((double)linesToDraw))*20.0)/20.0;
 	double windowMiddle = ((double)glutGet(GLUT_WINDOW_WIDTH))/2.0;
 	double drawMiddle = (((double)VISIBLE_DOTS)*upscaleVal)/2.0;
-	double drawHeight = ((double)VISIBLE_LINES)*upscaleVal;
+	double drawHeight = ((double)linesToDraw)*upscaleVal;
 
 	glBegin(GL_QUADS);
 		glTexCoord2f(0,0); glVertex2f(windowMiddle-drawMiddle,drawHeight);
