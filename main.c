@@ -32,7 +32,7 @@
 #define DEBUG_KEY 0
 #define DEBUG_LOAD_INFO 1
 
-static const char *VERSION_STRING = "fixNES Alpha v0.9";
+static const char *VERSION_STRING = "fixNES Alpha v0.9.1";
 static char window_title[256];
 static char window_title_pause[256];
 
@@ -213,6 +213,7 @@ int main(int argc, char** argv)
 			sprintf(window_title, "%.32s (%s NSF) - %s\n", (char*)(emuNesROM+0xE), nesPAL ? "PAL" : "NTSC", VERSION_STRING);
 		nesEmuNSFPlayback = true;
 		linesToDraw = 30;
+		scaleFactor = 3;
 	}
 	else if(argc >= 2 && (strstr(argv[1],".fds") != NULL || strstr(argv[1],".FDS") != NULL
 						|| strstr(argv[1],".qd") != NULL || strstr(argv[1],".QD") != NULL))

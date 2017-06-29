@@ -434,7 +434,7 @@ bool apuCycle()
 		curIn *= 0.75f;
 	}
 	//amplify input
-	curIn *= 2.0f;
+	curIn *= 3.0f;
 	float curLPout = lastLPOut+(lpVal*(curIn-lastLPOut));
 	float curHPOut = hpVal*(lastHPOut+lastLPOut-curLPout);
 	//set output
@@ -468,7 +468,7 @@ bool apuCycle()
 		curIn *= 3; curIn >>= 2;
 	}
 	//amplify input
-	curIn <<= 1;
+	curIn *= 3;
 	int32_t curOut;
 	//gen output
 	curOut = lastLPOut+((lpVal*(curIn-lastLPOut))>>15); //Set Lowpass Output
