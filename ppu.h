@@ -27,6 +27,9 @@ void ppuSetNameTblCustom(uint16_t addrA, uint16_t addrB, uint16_t addrC, uint16_
 
 void ppuDrawNSFTrackNum(uint8_t cTrack, uint8_t trackTotal);
 
+uint8_t ppuVRAMGet8(uint16_t addr);
+void ppuVRAMSet8(uint16_t addr, uint8_t val);
+
 extern bool ppu4Screen;
 
 #endif

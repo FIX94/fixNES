@@ -50,6 +50,10 @@
 
 //set or used externally
 bool ppu4Screen = false;
+bool ppu816Sprite = false;
+bool ppuInFrame = false;
+bool ppuScanlineDone = false;
+uint8_t ppuDrawnXTile = 0;
 
 //from main.c
 extern uint32_t textureImage[0xF000];
@@ -74,7 +78,7 @@ static const uint8_t PPU_Pal[192] =
 } ;
 
 static uint8_t PPU_Reg[8];
-static uint8_t PPU_VRAM[0x2000];
+static uint8_t PPU_VRAM[0x1000];
 
 static uint8_t PPU_OAM[0x100];
 static uint8_t PPU_OAM2[0x20];
@@ -125,7 +129,7 @@ extern bool nesPAL;
 void ppuInit()
 {
 	memset(PPU_Reg,0,8);
-	memset(PPU_VRAM,0,0x2000);
+	memset(PPU_VRAM,0,0x1000);
 	memset(PPU_OAM,0,0x100);
 	memset(PPU_PALRAM,0,0x20);
 	memset(PPU_OAM2,0xFF,0x20);
@@ -192,6 +196,8 @@ void ppuInit()
 	}
 }
 
+extern uint8_t m5_exMode;
+extern uint8_t m5exGetAttrib(uint16_t addr);
 static inline uint16_t ppuGetVramTbl(uint16_t tblStart)
 {
 	return ppuNameTbl[(tblStart>>10)&3];
@@ -207,43 +213,69 @@ bool ppuCycle()
 
 	bool pictureOutput = (PPU_Reg[1] & (PPU_BG_ENABLE | PPU_SPRITE_ENABLE)) != 0;
 
+	/* For MMC5 Scanline Detect */
+	if(curDot == 0)
+	{
+		if((curLine <= VISIBLE_LINES) && pictureOutput)
+		{
+			ppuInFrame = true;
+			ppuScanlineDone = true;
+		}
+		else
+			ppuInFrame = false;
+	}
 	/* Do Background Updates */
 	if((curLine == ppuPreRenderLine || curLine < VISIBLE_LINES))
 	{
 		/* Do BG Reg Updates every 8 dots */
 		if((curDot & 7) == 0 && (curDot >= 319 || (curDot && curDot <= VISIBLE_DOTS)))
 		{
-			uint16_t cPpuTbl = ppuGetVramTbl(ppuVramAddr);
-			/* Select new BG Background Attribute */
-			uint8_t cAttrib = ((ppuVramAddr>>4)&0x38) | ((ppuVramAddr>>2)&7);
-			uint16_t attributeAddr = cPpuTbl | (0x3C0 | cAttrib);
-			uint8_t cPalByte = PPU_VRAM[attributeAddr];
-			bool left = ((ppuVramAddr&2) == 0);
-			//top tiles
-			if((ppuVramAddr&0x40) == 0)
+			/* MMC5 Scroll Related */
+			if(curDot == 320)
+				ppuDrawnXTile = 0;
+			else
+				ppuDrawnXTile++;
+			if(m5_exMode == 1)
 			{
-				if(left)
-				{
-					ppuBGAttribValA = (cPalByte)&1;
-					ppuBGAttribValB = (cPalByte>>1)&1;
-				}
-				else
-				{
-					ppuBGAttribValA = (cPalByte>>2)&1;
-					ppuBGAttribValB = (cPalByte>>3)&1;
-				}
+				/* MMC5 Ex Mode 1 has different Attribute for every Tile */
+				uint8_t cPalByte = m5exGetAttrib(ppuVramAddr);
+				ppuBGAttribValA = (cPalByte)&1;
+				ppuBGAttribValB = (cPalByte>>1)&1;
 			}
-			else //bottom tiles
+			else
 			{
-				if(left)
+				uint16_t cPpuTbl = ppuGetVramTbl(ppuVramAddr);
+				/* Select new BG Background Attribute */
+				uint8_t cAttrib = ((ppuVramAddr>>4)&0x38) | ((ppuVramAddr>>2)&7);
+				uint16_t attributeAddr = cPpuTbl | (0x3C0 | cAttrib);
+				uint8_t cPalByte = mapperVramGet8(attributeAddr);
+				bool left = ((ppuVramAddr&2) == 0);
+				//top tiles
+				if((ppuVramAddr&0x40) == 0)
 				{
-					ppuBGAttribValA = (cPalByte>>4)&1;
-					ppuBGAttribValB = (cPalByte>>5)&1;
+					if(left)
+					{
+						ppuBGAttribValA = (cPalByte)&1;
+						ppuBGAttribValB = (cPalByte>>1)&1;
+					}
+					else
+					{
+						ppuBGAttribValA = (cPalByte>>2)&1;
+						ppuBGAttribValB = (cPalByte>>3)&1;
+					}
 				}
-				else
+				else //bottom tiles
 				{
-					ppuBGAttribValA = (cPalByte>>6)&1;
-					ppuBGAttribValB = (cPalByte>>7)&1;
+					if(left)
+					{
+						ppuBGAttribValA = (cPalByte>>4)&1;
+						ppuBGAttribValB = (cPalByte>>5)&1;
+					}
+					else
+					{
+						ppuBGAttribValA = (cPalByte>>6)&1;
+						ppuBGAttribValB = (cPalByte>>7)&1;
+					}
 				}
 			}
 			if(curDot == 328)
@@ -306,9 +338,10 @@ bool ppuCycle()
 			/* Select new BG Tiles */
 			uint16_t chrROMBG = (PPU_Reg[0] & PPU_BACKGROUND_ADDR) ? 0x1000 : 0;
 			uint16_t workAddr = cPpuTbl | (ppuVramAddr & 0x3FF);
-			uint8_t curBGtileReg = PPU_VRAM[workAddr];
+			uint8_t curBGtileReg = mapperVramGet8(workAddr);
 			uint8_t curTileY = (ppuVramAddr>>12)&7;
 			uint16_t curBGTile = chrROMBG+(curBGtileReg<<4)+curTileY;
+			mapperChrMode = 0;
 			ppuBGValA = mapperChrGet8(curBGTile);
 			ppuBGValB = mapperChrGet8(curBGTile+8);
 		}
@@ -449,7 +482,8 @@ bool ppuCycle()
 			if(PPU_Reg[0] & PPU_SPRITE_8_16)
 				cSpriteAdd ^= 16; //8 by 16 select
 		}
-		/* write processed values into internal draw buffer */ 
+		/* write processed values into internal draw buffer */
+		mapperChrMode = 1; 
 		PPU_Sprites[ppuSpriteTilePos] = mapperChrGet8(((chrROMSpriteAdd+(cSpriteIndex<<4)+cSpriteY+cSpriteAdd)&0xFFF) | chrROMSpriteAdd);
 		PPU_Sprites[ppuSpriteTilePos+1] = mapperChrGet8(((chrROMSpriteAdd+(cSpriteIndex<<4)+cSpriteY+8+cSpriteAdd)&0xFFF) | chrROMSpriteAdd);
 		PPU_Sprites[ppuSpriteTilePos+2] = cSpriteByte2;
@@ -610,6 +644,7 @@ void ppuSet8(uint8_t reg, uint8_t val)
 		PPU_Reg[reg] = val;
 		ppuTmpVramAddr &= ~0xC00;
 		ppuTmpVramAddr |= ((val&3)<<10);
+		ppu816Sprite = (PPU_Reg[0] & PPU_SPRITE_8_16) != 0;
 		//printf("%d %d %d\n", (PPU_Reg[0] & PPU_BACKGROUND_ADDR) != 0, (PPU_Reg[0] & PPU_SPRITE_ADDR) != 0, (PPU_Reg[0] & PPU_SPRITE_8_16) != 0);
 	}
 	else if(reg == 3)
@@ -675,7 +710,7 @@ void ppuSet8(uint8_t reg, uint8_t val)
 		{
 			uint16_t workAddr = ppuGetVramTbl(writeAddr) | (writeAddr & 0x3FF);
 			//printf("ppuVRAMwrite %04x %02x\n", workAddr, val);
-			PPU_VRAM[workAddr] = val;
+			mapperVramSet8(workAddr, val);
 		}
 		else
 		{
@@ -713,13 +748,14 @@ uint8_t ppuGet8(uint8_t reg)
 		if(writeAddr < 0x2000)
 		{
 			ret = ppuVramReadBuf;
+			mapperChrMode = 2;
 			ppuVramReadBuf = mapperChrGet8(writeAddr);
 		}
 		else if(writeAddr < 0x3F00)
 		{
 			ret = ppuVramReadBuf;
 			uint16_t workAddr = ppuGetVramTbl(writeAddr) | (writeAddr & 0x3FF);
-			ppuVramReadBuf = PPU_VRAM[workAddr];
+			ppuVramReadBuf = mapperVramGet8(workAddr);
 			//printf("ppuVRAMread pc %04x addr %04x ret %02x\n", cpuGetPc(), workAddr, ret);
 		}
 		else
@@ -730,7 +766,7 @@ uint8_t ppuGet8(uint8_t reg)
 			ret = PPU_PALRAM[palRamAddr]&((PPU_Reg[1]&PPU_GRAY)?0x30:0x3F);
 			//shadow read
 			uint16_t workAddr = ppuGetVramTbl(writeAddr) | (writeAddr & 0x3FF);
-			ppuVramReadBuf = PPU_VRAM[workAddr];
+			ppuVramReadBuf = mapperVramGet8(workAddr);
 		}
 		ppuVramAddr += (PPU_Reg[0] & PPU_INC_AMOUNT) ? 32 : 1;
 	}
@@ -768,7 +804,7 @@ void ppuDumpMem()
 	FILE *f = fopen("PPU_VRAM.bin","wb");
 	if(f)
 	{
-		fwrite(PPU_VRAM,1,0x800,f);
+		fwrite(PPU_VRAM,1,0x1000,f);
 		fclose(f);
 	}
 	f = fopen("PPU_OAM.bin","wb");
@@ -915,4 +951,14 @@ void ppuDrawNSFTrackNum(uint8_t cTrack, uint8_t trackTotal)
 	}
 	ppuDrawRest(curX, trackTotal%10);
 	curX+=10;
+}
+
+uint8_t ppuVRAMGet8(uint16_t addr)
+{
+	return PPU_VRAM[addr&0xFFF];
+}
+
+void ppuVRAMSet8(uint16_t addr, uint8_t val)
+{
+	PPU_VRAM[addr&0xFFF] = val;
 }

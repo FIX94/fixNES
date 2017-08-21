@@ -14,6 +14,8 @@ typedef struct _mapperList_t {
 	set8FuncT set8F;
 	chrGet8FuncT chrGet8F;
 	chrSet8FuncT chrSet8F;
+	vramGet8FuncT vramGet8F;
+	vramSet8FuncT vramSet8F;
 	cycleFuncT cycleFuncF;
 } mapperList_t;
 

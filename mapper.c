@@ -12,13 +12,16 @@
 #include "mapperList.h"
 #include "mapper_h/nsf.h"
 #include "mapper_h/fds.h"
+#include "ppu.h"
 
 get8FuncT mapperGet8;
 set8FuncT mapperSet8;
-getChrFuncT mapperGetChr;
 chrGet8FuncT mapperChrGet8;
 chrSet8FuncT mapperChrSet8;
+vramGet8FuncT mapperVramGet8;
+vramSet8FuncT mapperVramSet8;
 cycleFuncT mapperCycle;
+uint8_t mapperChrMode;
 
 bool mapperInit(uint8_t mapper, uint8_t *prgROM, uint32_t prgROMsize, uint8_t *prgRAM, uint32_t prgRAMsize, uint8_t *chrROM, uint32_t chrROMsize)
 {
@@ -33,6 +36,16 @@ bool mapperInit(uint8_t mapper, uint8_t *prgROM, uint32_t prgROMsize, uint8_t *p
 	mapperChrGet8 = mapperList[mapper].chrGet8F;
 	mapperChrSet8 = mapperList[mapper].chrSet8F;
 	mapperCycle = mapperList[mapper].cycleFuncF;
+	//some mappers re-route VRAM
+	if(mapperList[mapper].vramGet8F == NULL)
+		mapperVramGet8 = ppuVRAMGet8;
+	else
+		mapperVramGet8 = mapperList[mapper].vramGet8F;
+	if(mapperList[mapper].vramSet8F == NULL)
+		mapperVramSet8 = ppuVRAMSet8;
+	else
+		mapperVramSet8 = mapperList[mapper].vramSet8F;
+	mapperChrMode = 0;
 	return true;
 }
 
@@ -44,6 +57,7 @@ bool mapperInitNSF(uint8_t *nsfBIN, uint32_t nsfBINsize, uint8_t *prgRAM, uint32
 	mapperChrGet8 = nsfchrGet8;
 	mapperChrSet8 = nsfchrSet8;
 	mapperCycle = nsfcycle;
+	mapperChrMode = 0;
 	return true;
 }
 
@@ -78,5 +92,6 @@ bool mapperInitFDS(uint8_t *fdsFile, bool fdsSideB, uint8_t *prgRAM, uint32_t pr
 	mapperChrGet8 = fdschrGet8;
 	mapperChrSet8 = fdschrSet8;
 	mapperCycle = fdscycle;
+	mapperChrMode = 0;
 	return true;
 }

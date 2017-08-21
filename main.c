@@ -32,7 +32,7 @@
 #define DEBUG_KEY 0
 #define DEBUG_LOAD_INFO 1
 
-static const char *VERSION_STRING = "fixNES Alpha v0.9.1";
+static const char *VERSION_STRING = "fixNES Alpha v0.9.2";
 static char window_title[256];
 static char window_title_pause[256];
 
@@ -124,8 +124,13 @@ int main(int argc, char** argv)
 		bool trainer = (emuNesROM[6] & (1<<2)) != 0;
 		uint32_t prgROMsize = emuNesROM[4] * 0x4000;
 		uint32_t chrROMsize = emuNesROM[5] * 0x2000;
-		emuPrgRAMsize = emuNesROM[8] * 0x2000;
-		if(emuPrgRAMsize == 0) emuPrgRAMsize = 0x2000;
+		if(mapper == 5) //just to be on the safe side
+			emuPrgRAMsize = 0x10000;
+		else
+		{
+			emuPrgRAMsize = emuNesROM[8] * 0x2000;
+			if(emuPrgRAMsize == 0) emuPrgRAMsize = 0x2000;
+		}
 		emuPrgRAM = malloc(emuPrgRAMsize);
 		uint8_t *prgROM = emuNesROM+16;
 		if(trainer)
