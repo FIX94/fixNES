@@ -231,7 +231,7 @@ void m4clock(uint16_t addr)
 			m4_irqCtr--;
 		if((!m4_altirq || oldCtr != 0 || m4_clear) && m4_irqCtr == 0 && m4_irqEnable)
 		{
-			ppuPrintCurLineDot();
+			//ppuPrintCurLineDot();
 			//printf("MMC3 Tick at %i %i\n", curLine, curDot);
 			m4_irqStart = 2; //takes a bit before trigger
 			m4_irqEnable = false;
