@@ -101,6 +101,7 @@ static uint8_t ppuToDraw;
 static uint8_t ppuVramReadBuf;
 static uint8_t ppuOAMpos;
 static uint8_t ppuOAM2pos;
+static uint8_t ppuOAMcpPos;
 static uint8_t ppuFineXScroll;
 static uint8_t ppuSpriteTilePos;
 static uint16_t ppuBGValA;
@@ -112,17 +113,26 @@ static uint8_t ppuBGAttribValB;
 static uint8_t ppuBGAttribRegA;
 static uint8_t ppuBGAttribRegB;
 static uint8_t ppuCurOverflowAdd;
+static uint8_t ppuBytesCopied;
 static uint8_t ppulastVal;
+static uint8_t ppuTmpOAMVal;
+static uint8_t ppuCurSpriteLn;
+static uint8_t ppuCurSpriteIndex;
+static uint8_t ppuCurSpriteByte2;
+static uint8_t ppuCurSpriteByte3;
 static bool ppuHasZSprite;
 static bool ppuNextHasZSprite;
 static bool ppuFrameDone;
 static bool ppuTmpWrite;
 static bool ppuNMITriggered;
-static bool ppuSpriteSearch;
-static bool ppuCurVBlankStat;
 static bool ppuCurNMIStat;
+static bool ppuCurPicOutStat;
+static bool ppuCurVBlankStat;
 static bool ppuOddFrame;
 static bool ppuReadReg2;
+static bool ppuOAMoverflow;
+static bool ppuSearchY;
+static bool ppuLineOverflow;
 
 extern bool nesPAL;
 
@@ -146,6 +156,7 @@ void ppuInit()
 	ppuVramReadBuf = 0;
 	ppuOAMpos = 0;
 	ppuOAM2pos = 0;
+	ppuOAMcpPos = 0;
 	ppuFineXScroll = 0;
 	ppuSpriteTilePos = 0;
 	ppuBGRegA = 0;
@@ -153,17 +164,22 @@ void ppuInit()
 	ppuBGAttribRegA = 0;
 	ppuBGAttribRegB = 0;
 	ppuCurOverflowAdd = 0;
+	ppuBytesCopied = 0;
 	ppulastVal = 0;
+	ppuTmpOAMVal = 0xFF;
 	ppuHasZSprite = false;
 	ppuNextHasZSprite = false;
 	ppuFrameDone = false;
 	ppuTmpWrite = false;
 	ppuNMITriggered = false;
-	ppuSpriteSearch = false;
-	ppuCurVBlankStat = false;
 	ppuCurNMIStat = false;
+	ppuCurPicOutStat = false;
+	ppuCurVBlankStat = false;
 	ppuOddFrame = false;
 	ppuReadReg2 = false;
+	ppuOAMoverflow = false;
+	ppuSearchY = false;
+	ppuLineOverflow = false;
 	//generate full BGR LUT
 	uint8_t rtint = nesPAL ? (1<<6) : (1<<5);
 	uint8_t gtint = nesPAL ? (1<<5) : (1<<6);
@@ -206,17 +222,17 @@ extern bool nesEmuNSFPlayback;
 static uint8_t ppuSprite0hit = 0;
 bool ppuCycle()
 {
+	ppuCurNMIStat = !!(PPU_Reg[0] & PPU_FLAG_NMI);
+	ppuCurPicOutStat = (PPU_Reg[1] & (PPU_BG_ENABLE | PPU_SPRITE_ENABLE)) != 0;
+	ppuCurVBlankStat = !!(PPU_Reg[2] & PPU_FLAG_VBLANK);
+
 	if(nesEmuNSFPlayback)
 		goto ppuIncreasePos;
-	ppuCurVBlankStat = !!(PPU_Reg[2] & PPU_FLAG_VBLANK);
-	ppuCurNMIStat = !!(PPU_Reg[0] & PPU_FLAG_NMI);
-
-	bool pictureOutput = (PPU_Reg[1] & (PPU_BG_ENABLE | PPU_SPRITE_ENABLE)) != 0;
 
 	/* For MMC5 Scanline Detect */
 	if(curDot == 0)
 	{
-		if((curLine <= VISIBLE_LINES) && pictureOutput)
+		if((curLine <= VISIBLE_LINES) && ppuCurPicOutStat)
 		{
 			ppuInFrame = true;
 			ppuScanlineDone = true;
@@ -290,7 +306,7 @@ bool ppuCycle()
 				}
 			}
 		}
-		if(pictureOutput)
+		if(ppuCurPicOutStat)
 		{
 			/* Update tile address every 8 dots */
 			if((curDot & 7) == 0 && (curDot >= 328 || (curDot >= 8 && curDot <= VISIBLE_DOTS)))
@@ -387,7 +403,7 @@ bool ppuCycle()
 		if(curCol != 0xFF)
 		{
 			uint16_t cPalIdx;
-			if(pictureOutput) //use color from bg or sprite input
+			if(ppuCurPicOutStat) //use color from bg or sprite input
 				cPalIdx = (PPU_PALRAM[curCol&0x1F]&((PPU_Reg[1]&PPU_GRAY)?0x30:0x3F))|((PPU_Reg[1]&0xE0)<<1);
 			else if(ppuVramAddr >= 0x3F00 && ppuVramAddr < 0x4000) //bg and sprite disabled but address within PALRAM
 				cPalIdx = (PPU_PALRAM[ppuVramAddr&0x1F]&((PPU_Reg[1]&PPU_GRAY)?0x30:0x3F))|((PPU_Reg[1]&0xE0)<<1);
@@ -400,95 +416,174 @@ bool ppuCycle()
 	}
 
 	/* set to 0 during not visible dots up to post-render line */
-	if(pictureOutput && curDot > 257 && curLine < VISIBLE_LINES)
+	if(ppuCurPicOutStat && curDot > 257 && curLine < VISIBLE_LINES)
 	{
 		ppuOAMpos = 0;
-		ppuSpriteSearch = true;
+		ppuOAMcpPos = 0;
 		ppuCurOverflowAdd = 0;
+		ppuBytesCopied = 0;
+		ppuOAMoverflow = false;
+		ppuSearchY = true;
+		ppuLineOverflow = false;
 	}
 	/* Update vertical values on pre-render scanline */
-	if(pictureOutput && curLine == ppuPreRenderLine && curDot >= 280 && curDot <= 304)
+	if(ppuCurPicOutStat && curLine == ppuPreRenderLine && curDot >= 280 && curDot <= 304)
 	{
 		ppuVramAddr &= ~PPU_VRAM_VERTICAL_MASK;
 		ppuVramAddr |= (ppuTmpVramAddr & PPU_VRAM_VERTICAL_MASK);
 	}
-	/* Clear out OAM2 for next eval */
-	if(curDot < 64 && ((curDot&1) == 0) && (curLine == ppuPreRenderLine || curLine < VISIBLE_LINES))
+	/* Start sprite eval for next line */
+	if(curDot >= 64 && curDot < 256 && curLine < VISIBLE_LINES && ppuCurPicOutStat)
 	{
-		PPU_OAM2[ppuOAM2pos] = 0xFF;
-		ppuOAM2pos++; ppuOAM2pos &= 0x1F;
-	} /* Start sprite eval for next line */
-	else if(curDot >= 64 && curDot < 192 && ((curDot&1) == 0) && curLine < VISIBLE_LINES && ppuSpriteSearch && pictureOutput)
-	{
-		uint8_t cSpriteLn = PPU_OAM[(ppuOAMpos+ppuCurOverflowAdd)&0xFF];
-		/* nes sprite overflow bug */
-		if(ppuOAM2pos == 0x20)
+		if((curDot&1) == 0)
 		{
-			if(ppuCurOverflowAdd < 3)
-				ppuCurOverflowAdd++;
-			else
-				ppuCurOverflowAdd = 0;
+			ppuTmpOAMVal = PPU_OAM[(ppuOAMpos+ppuOAMcpPos)&0xFF];
+			//printf("%i %i %i %02x\n", ppuOAMpos,  ppuOAMcpPos, (ppuOAMpos+ppuOAMcpPos)&0xFF, ppuTmpOAMVal);
 		}
-		uint8_t cSpriteAdd = (PPU_Reg[0] & PPU_SPRITE_8_16) ? 16 : 8;
-		if(ppuSpriteSearch && cSpriteLn <= curLine && (cSpriteLn+cSpriteAdd) > curLine)
+		else
 		{
-			if(ppuOAM2pos != 0x20)
+			bool spriteCopied = false;
+			if(!ppuOAMoverflow)
 			{
-				if(ppuOAM2pos == 0 && ppuOAMpos == 0)
-					ppuNextHasZSprite = true;
-				*(uint32_t*)(PPU_OAM2+ppuOAM2pos) = *(uint32_t*)(PPU_OAM+ppuOAMpos);
-				//printf("Copying sprite with line %i at line %i pos oam %i oam2 %i\n", cSpriteLn, curLine, ppuOAMpos, ppuOAM2pos);
-				ppuOAM2pos += 4;
+				if(ppuSearchY)
+				{
+					uint8_t ppuCurSpriteLn = ppuTmpOAMVal;
+					uint8_t cSpriteAdd = (PPU_Reg[0] & PPU_SPRITE_8_16) ? 16 : 8;
+					if(ppuCurSpriteLn <= curLine && (ppuCurSpriteLn+cSpriteAdd) > curLine)
+					{
+						ppuSearchY = false;
+						if(ppuOAM2pos == 0 && ppuOAMpos == 0)
+							ppuNextHasZSprite = true;
+						if(ppuOAM2pos != 0x20)
+						{
+							PPU_OAM2[ppuOAM2pos+ppuOAMcpPos] = ppuTmpOAMVal;
+							//printf("Copying sprite with line %i at line %i pos oam %i oam2 %i\n", ppuCurSpriteLn, curLine, ppuOAMpos, ppuOAM2pos);
+						}
+						else
+						{
+							//if(!(PPU_Reg[2] & PPU_FLAG_OVERFLOW))
+							//	printf("Overflow with line %i at line %i pos oam %i oam2 %i\n", ppuCurSpriteLn, curLine, ppuOAMpos, ppuOAM2pos);
+							PPU_Reg[2] |= PPU_FLAG_OVERFLOW;
+							ppuLineOverflow = true;
+						}
+						ppuBytesCopied++;
+						if(ppuOAMcpPos < 3)
+							ppuOAMcpPos++;
+						else
+						{
+							ppuOAMcpPos = 0;
+							ppuOAMpos += 4;
+							if(ppuOAMpos == 0)
+								ppuOAMoverflow = true;
+						}
+					}
+					//no matching sprite, increase N
+					if(ppuSearchY)
+					{
+						ppuOAMpos += 4;
+						if(!spriteCopied && ppuOAM2pos == 0x20 && !ppuLineOverflow) /* nes sprite overflow bug */
+						{
+							if(ppuOAMcpPos < 3)
+								ppuOAMcpPos++;
+							else
+								ppuOAMcpPos = 0;
+						}
+						if(ppuOAMpos == 0)
+							ppuOAMoverflow = true;
+					}
+				}
+				else
+				{
+					if(ppuOAM2pos != 0x20)
+						PPU_OAM2[ppuOAM2pos+ppuOAMcpPos] = ppuTmpOAMVal;
+					if(ppuOAMcpPos < 3)
+						ppuOAMcpPos++;
+					else
+					{
+						ppuOAMcpPos = 0;
+						ppuOAMpos += 4;
+						if(ppuOAMpos == 0)
+							ppuOAMoverflow = true;
+					}
+					if(ppuBytesCopied < 3) //we still have to read from this
+						ppuBytesCopied++;
+					else //Back to next sprite
+					{
+						if(ppuOAM2pos != 0x20)
+							ppuOAM2pos += 4;
+						ppuBytesCopied = 0;
+						ppuOAMcpPos = 0;
+						ppuSearchY = true;
+						spriteCopied = true;
+						if(ppuLineOverflow) //overflow sprite copied, end
+							ppuOAMoverflow = true;
+					}
+				}
 			}
 			else
-			{
-				//if(!(PPU_Reg[2] & PPU_FLAG_OVERFLOW))
-				//	printf("Overflow on line %i\n", curLine);
-				PPU_Reg[2] |= PPU_FLAG_OVERFLOW;
-				ppuSpriteSearch = false;
-			}
+				ppuOAMpos += 4;
+			if(ppuOAM2pos == 0x20)
+				ppuTmpOAMVal = PPU_OAM2[0];
 		}
-		ppuOAMpos += 4;
-		//if(ppuOAMpos == 0)
-		//	ppuSpriteSearch = false;
-		//printf("%i\n", ppuOAMpos);
+		//printf("dot %i pos %i\n", curDot, ppuOAMpos);
 	}
 	/* Grab Sprite Tiles to be drawn next line */
-	if(curDot >= 260 && curDot <= 316 && (curDot&7) == 4 && (curLine == ppuPreRenderLine || curLine < VISIBLE_LINES) && pictureOutput)
+	if(curDot >= 256 && curDot < 320 && (curLine == ppuPreRenderLine || curLine < VISIBLE_LINES) && ppuCurPicOutStat)
 	{
-		uint8_t cSpriteLn = PPU_OAM2[ppuSpriteTilePos];
-		uint8_t cSpriteIndex = PPU_OAM2[ppuSpriteTilePos+1];
-		uint8_t cSpriteByte2 = PPU_OAM2[ppuSpriteTilePos+2];
-		uint8_t cSpriteByte3 = PPU_OAM2[ppuSpriteTilePos+3];
-		uint8_t cSpriteAnd = (PPU_Reg[0] & PPU_SPRITE_8_16) ? 15 : 7;
-		uint8_t cSpriteAdd = 0; //used to select which 8 by 16 tile
-		uint8_t cSpriteY = (curLine - cSpriteLn)&cSpriteAnd;
-		if(cSpriteY > 7) //8 by 16 select
+		if((curDot&7) == 0)
 		{
-			cSpriteAdd = 16;
-			cSpriteY &= 7;
+			ppuTmpOAMVal = PPU_OAM2[ppuSpriteTilePos];
+			ppuCurSpriteLn = ppuTmpOAMVal;
 		}
-		uint16_t chrROMSpriteAdd = 0;
-		if(PPU_Reg[0] & PPU_SPRITE_8_16)
+		else if((curDot&7) == 1)
 		{
-			chrROMSpriteAdd = ((cSpriteIndex & 1) << 12);
-			cSpriteIndex &= ~1;
+			ppuTmpOAMVal = PPU_OAM2[ppuSpriteTilePos+1];
+			ppuCurSpriteIndex = ppuTmpOAMVal;
 		}
-		else if(PPU_Reg[0] & PPU_SPRITE_ADDR)
-			chrROMSpriteAdd = 0x1000;
-		if(cSpriteByte2 & PPU_SPRITE_FLIP_Y)
+		else if((curDot&7) == 2)
 		{
-			cSpriteY ^= 7;
+			ppuTmpOAMVal = PPU_OAM2[ppuSpriteTilePos+2];
+			ppuCurSpriteByte2 = ppuTmpOAMVal;
+		}
+		else if((curDot&7) == 3)
+		{
+			ppuTmpOAMVal = PPU_OAM2[ppuSpriteTilePos+3];
+			ppuCurSpriteByte3 = ppuTmpOAMVal;
+		}
+		else if((curDot&7) == 4)
+		{
+			uint8_t cSpriteAnd = (PPU_Reg[0] & PPU_SPRITE_8_16) ? 15 : 7;
+			uint8_t cSpriteAdd = 0; //used to select which 8 by 16 tile
+			uint8_t cSpriteY = (curLine - ppuCurSpriteLn)&cSpriteAnd;
+			if(cSpriteY > 7) //8 by 16 select
+			{
+				cSpriteAdd = 16;
+				cSpriteY &= 7;
+			}
+			uint16_t chrROMSpriteAdd = 0;
 			if(PPU_Reg[0] & PPU_SPRITE_8_16)
-				cSpriteAdd ^= 16; //8 by 16 select
+			{
+				chrROMSpriteAdd = ((ppuCurSpriteIndex & 1) << 12);
+				ppuCurSpriteIndex &= ~1;
+			}
+			else if(PPU_Reg[0] & PPU_SPRITE_ADDR)
+				chrROMSpriteAdd = 0x1000;
+			if(ppuCurSpriteByte2 & PPU_SPRITE_FLIP_Y)
+			{
+				cSpriteY ^= 7;
+				if(PPU_Reg[0] & PPU_SPRITE_8_16)
+					cSpriteAdd ^= 16; //8 by 16 select
+			}
+			/* write processed values into internal draw buffer */
+			mapperChrMode = 1; 
+			PPU_Sprites[ppuSpriteTilePos] = mapperChrGet8(((chrROMSpriteAdd+(ppuCurSpriteIndex<<4)+cSpriteY+cSpriteAdd)&0xFFF) | chrROMSpriteAdd);
+			PPU_Sprites[ppuSpriteTilePos+1] = mapperChrGet8(((chrROMSpriteAdd+(ppuCurSpriteIndex<<4)+cSpriteY+8+cSpriteAdd)&0xFFF) | chrROMSpriteAdd);
+			PPU_Sprites[ppuSpriteTilePos+2] = ppuCurSpriteByte2;
+			PPU_Sprites[ppuSpriteTilePos+3] = ppuCurSpriteByte3;
+			ppuSpriteTilePos+=4;
 		}
-		/* write processed values into internal draw buffer */
-		mapperChrMode = 1; 
-		PPU_Sprites[ppuSpriteTilePos] = mapperChrGet8(((chrROMSpriteAdd+(cSpriteIndex<<4)+cSpriteY+cSpriteAdd)&0xFFF) | chrROMSpriteAdd);
-		PPU_Sprites[ppuSpriteTilePos+1] = mapperChrGet8(((chrROMSpriteAdd+(cSpriteIndex<<4)+cSpriteY+8+cSpriteAdd)&0xFFF) | chrROMSpriteAdd);
-		PPU_Sprites[ppuSpriteTilePos+2] = cSpriteByte2;
-		PPU_Sprites[ppuSpriteTilePos+3] = cSpriteByte3;
-		ppuSpriteTilePos+=4;
+		else if(curDot == 319)
+			ppuTmpOAMVal = PPU_OAM2[0];
 	}
 ppuIncreasePos:
 	/* increase pos */
@@ -508,6 +603,8 @@ ppuIncreasePos:
 		ppuSpriteTilePos = 0; //reset
 		ppuToDraw = ppuOAM2pos;
 		ppuOAM2pos = 0;
+		ppuTmpOAMVal = 0xFF;
+		memset(PPU_OAM2, ppuTmpOAMVal, 0x20);
 		//printf("Line done\n");
 	}
 	if(ppuSprite0hit == 1)
@@ -519,7 +616,7 @@ ppuIncreasePos:
 		ppuSprite0hit--;
 	/* VBlank start at first dot after post-render line */
 	/* Though results are better when starting it a bit later */
-	if(curDot == 5 && curLine == 241)
+	if(curDot == 4 && curLine == 241)
 	{
 		ppuNMITriggered = false;
 		if(!ppuReadReg2)
@@ -531,7 +628,7 @@ ppuIncreasePos:
 	ppuReadReg2 = false;
 	/* VBlank ends at first dot of the pre-render line */
 	/* Though results are better when clearing it a bit later */
-	if(curDot == 5 && curLine == ppuPreRenderLine)
+	if(curDot == 4 && curLine == ppuPreRenderLine)
 	{
 		#if PPU_DEBUG_VSYNC
 		printf("PPU End VBlank\n");
@@ -546,6 +643,11 @@ ppuIncreasePos:
 	}
 	//ppuCycles++;
 	return true;
+}
+
+void ppuPrintCurLineDot()
+{
+	printf("%i %i\n", curLine, curDot);
 }
 
 static uint8_t ppuDoBackground(uint8_t color, uint8_t dot)
@@ -697,6 +799,9 @@ void ppuSet8(uint8_t reg, uint8_t val)
 			ppuTmpVramAddr &= ~0xFF;
 			ppuTmpVramAddr |= val;
 			ppuVramAddr = ppuTmpVramAddr;
+			//For MMC3 IRQ (Shadow Read)
+			if(ppuVramAddr < 0x2000)
+				mapperChrGet8(ppuVramAddr);
 		}
 	}
 	else if(reg == 7)
@@ -720,6 +825,9 @@ void ppuSet8(uint8_t reg, uint8_t val)
 			PPU_PALRAM[palRamAddr] = val;
 		}
 		ppuVramAddr += (PPU_Reg[0] & PPU_INC_AMOUNT) ? 32 : 1;
+		//For MMC3 IRQ (Shadow Read)
+		if(ppuVramAddr < 0x2000)
+			mapperChrGet8(ppuVramAddr);
 	}
 	else if(reg != 2)
 	{
@@ -731,8 +839,6 @@ void ppuSet8(uint8_t reg, uint8_t val)
 uint8_t ppuGet8(uint8_t reg)
 {
 	uint8_t ret = ppulastVal;
-	//if(ret & PPU_FLAG_VBLANK)
-	//printf("ppuGet8 %04x:%02x\n",reg,ret);
 	if(reg == 2)
 	{
 		ret = PPU_Reg[reg];
@@ -741,7 +847,13 @@ uint8_t ppuGet8(uint8_t reg)
 		ppuReadReg2 = true;
 	}
 	else if(reg == 4)
-		ret = PPU_OAM[ppuOAMpos];
+	{
+		if(ppuCurVBlankStat || !ppuCurPicOutStat)
+			ret = PPU_OAM[ppuOAMpos];
+		else
+			ret = ppuTmpOAMVal;
+		//printf("Cycle %i line %i val %02x\n", curDot, curLine, ret);
+	}
 	else if(reg == 7)
 	{
 		uint16_t writeAddr = (ppuVramAddr & 0x3FFF);
@@ -769,7 +881,12 @@ uint8_t ppuGet8(uint8_t reg)
 			ppuVramReadBuf = mapperVramGet8(workAddr);
 		}
 		ppuVramAddr += (PPU_Reg[0] & PPU_INC_AMOUNT) ? 32 : 1;
+		//For MMC3 IRQ (Shadow Read)
+		if(ppuVramAddr < 0x2000)
+			mapperChrGet8(ppuVramAddr);
 	}
+	//if(ret & PPU_FLAG_VBLANK)
+	//printf("ppuGet8 %04x:%02x\n",reg,ret);
 	ppulastVal = ret;
 	return ret;
 }

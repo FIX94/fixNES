@@ -32,7 +32,6 @@ static bool m4_irqEnable;
 static bool m4_altirq;
 static bool m4_clear;
 static uint8_t m4_irqReloadVal;
-static uint8_t m4_irqCooldown;
 static uint8_t m4_irqStart;
 extern bool mapper_interrupt;
 static uint16_t m4_prevAddr;
@@ -78,7 +77,6 @@ void m4init(uint8_t *prgROMin, uint32_t prgROMsizeIn,
 	m4_altirq = false;
 	m4_clear = false;
 	m4_irqReloadVal = 0xFF;
-	m4_irqCooldown = 0;
 	m4_chr_bank_flip = false;
 	m4_prg_bank_flip = false;
 	m4_prevAddr = 0;
@@ -220,31 +218,27 @@ void m4set8(uint16_t addr, uint8_t val)
 		}
 	}
 }
-
+extern void ppuPrintCurLineDot();
 void m4clock(uint16_t addr)
 {
-	if(addr & 0x1000)
+	if((addr & 0x1000) && !(m4_prevAddr & 0x1000))
 	{
-		if(m4_irqCooldown == 0)
+		//printf("MMC3 Beep at %i %i\n", curLine, curDot);
+		uint8_t oldCtr = m4_irqCtr;
+		if(m4_irqCtr == 0 || m4_clear)
+			m4_irqCtr = m4_irqReloadVal;
+		else
+			m4_irqCtr--;
+		if((!m4_altirq || oldCtr != 0 || m4_clear) && m4_irqCtr == 0 && m4_irqEnable)
 		{
-			//printf("MMC3 Beep at %i %i\n", curLine, curDot);
-			uint8_t oldCtr = m4_irqCtr;
-			if(m4_irqCtr == 0 || m4_clear)
-				m4_irqCtr = m4_irqReloadVal;
-			else
-				m4_irqCtr--;
-			if((!m4_altirq || oldCtr != 0 || m4_clear) && m4_irqCtr == 0 && m4_irqEnable)
-			{
-				//printf("MMC3 Tick at %i %i\n", curLine, curDot);
-				m4_irqStart = 5; //takes a bit before trigger
-				m4_irqEnable = false;
-			}
-			m4_clear = false;
+			ppuPrintCurLineDot();
+			//printf("MMC3 Tick at %i %i\n", curLine, curDot);
+			m4_irqStart = 2; //takes a bit before trigger
+			m4_irqEnable = false;
 		}
-		//make sure to pass all other sprites
-		//before counting up again
-		m4_irqCooldown = 20;
+		m4_clear = false;
 	}
+	m4_prevAddr = addr;
 }
 
 uint8_t m4chrGet8(uint16_t addr)
@@ -269,6 +263,7 @@ uint8_t m4chrGet8(uint16_t addr)
 
 void m4chrSet8(uint16_t addr, uint8_t val)
 {
+	m4clock(addr);
 	//printf("m4chrSet8 %04x %02x\n", addr, val);
 	if(m4_chrROM == m4_chrRAM) //Writable
 		m4_chrROM[addr&0x1FFF] = val;
@@ -276,12 +271,6 @@ void m4chrSet8(uint16_t addr, uint8_t val)
 
 void m4cycle()
 {
-	uint16_t curAddr = ppuGetCurVramAddr();
-	if((curAddr & 0x1000) && !(m4_prevAddr & 0x1000))
-		m4clock(curAddr);
-	m4_prevAddr = curAddr;
-	if(m4_irqCooldown)
-		m4_irqCooldown--;
 	if(m4_irqStart == 1)
 	{
 		mapper_interrupt = true;
