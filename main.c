@@ -11,6 +11,7 @@
 #include <string.h>
 #include <malloc.h>
 #include <inttypes.h>
+#include <ctype.h>
 #include <GL/glut.h>
 #include <GL/glext.h>
 #include <time.h>
@@ -26,15 +27,32 @@
 #include "audio_fds.h"
 #include "audio_vrc7.h"
 #include "mapper_h/nsf.h"
-
+#if ZIPSUPPORT
+#include "unzip/unzip.h"
+#endif
 #define DEBUG_HZ 0
 #define DEBUG_MAIN_CALLS 0
 #define DEBUG_KEY 0
 #define DEBUG_LOAD_INFO 1
 
-static const char *VERSION_STRING = "fixNES Alpha v0.9.4";
+static const char *VERSION_STRING = "fixNES Alpha v0.9.5";
 static char window_title[256];
 static char window_title_pause[256];
+
+enum {
+	FTYPE_UNK = 0,
+	FTYPE_NES,
+	FTYPE_NSF,
+	FTYPE_FDS,
+	FTYPE_QD,
+#if ZIPSUPPORT
+	FTYPE_ZIP,
+#endif
+};
+
+static void nesEmuFileOpen(char *name);
+static bool nesEmuFileRead();
+static void nesEmuFileClose();
 
 static void nesEmuDisplayFrame(void);
 static void nesEmuMainLoop(void);
@@ -45,9 +63,11 @@ static void nesEmuHandleKeyDown(unsigned char key, int x, int y);
 static void nesEmuHandleKeyUp(unsigned char key, int x, int y);
 static void nesEmuHandleSpecialDown(int key, int x, int y);
 static void nesEmuHandleSpecialUp(int key, int x, int y);
-
+static int emuFileType = FTYPE_UNK;
+static char emuFileName[1024];
 static uint8_t *emuNesROM = NULL;
-static char *emuSaveName = NULL;
+static uint32_t emuNesROMsize = 0;
+static char emuSaveName[1024];
 static uint8_t *emuPrgRAM = NULL;
 static uint32_t emuPrgRAMsize = 0;
 //used externally
@@ -102,23 +122,23 @@ int main(int argc, char** argv)
 	puts(VERSION_STRING);
 	strcpy(window_title, VERSION_STRING);
 	memset(textureImage,0,visibleImg);
-	if(argc >= 2 && (strstr(argv[1],".nes") != NULL || strstr(argv[1],".NES") != NULL))
+	emuFileType = FTYPE_UNK;
+	memset(emuFileName,0,1024);
+	memset(emuSaveName,0,1024);
+	if(argc >= 2)
+		nesEmuFileOpen(argv[1]);
+	if(emuFileType == FTYPE_NES)
 	{
-		nesPAL = (strstr(argv[1],"(E)") != NULL);
-		FILE *nesF = fopen(argv[1],"rb");
-		if(!nesF)
+		if(!nesEmuFileRead())
 		{
-			printf("Main: Could not open %s!\n", argv[1]);
+			nesEmuFileClose();
+			printf("Main: Could not read %s!\n", emuFileName);
 			puts("Press enter to exit");
 			getc(stdin);
 			return EXIT_SUCCESS;
 		}
-		fseek(nesF,0,SEEK_END);
-		size_t fsize = ftell(nesF);
-		rewind(nesF);
-		emuNesROM = malloc(fsize);
-		fread(emuNesROM,1,fsize,nesF);
-		fclose(nesF);
+		nesEmuFileClose();
+		nesPAL = (strstr(emuFileName,"(E)") != NULL);
 		uint8_t mapper = ((emuNesROM[6] & 0xF0) >> 4) | ((emuNesROM[7] & 0xF0));
 		emuSaveEnabled = (emuNesROM[6] & (1<<1)) != 0;
 		bool trainer = (emuNesROM[6] & (1<<2)) != 0;
@@ -151,7 +171,6 @@ int main(int argc, char** argv)
 		apuInit();
 		inputInit();
 		#if DEBUG_LOAD_INFO
-		printf("Read in %s\n", argv[1]);
 		printf("Used Mapper: %i\n", mapper);
 		printf("PRG: 0x%x bytes PRG RAM: 0x%x bytes CHR: 0x%x bytes\n", prgROMsize, emuPrgRAMsize, chrROMsize);
 		#endif
@@ -176,8 +195,9 @@ int main(int argc, char** argv)
 		sprintf(window_title, "%s NES - %s\n", nesPAL ? "PAL" : "NTSC", VERSION_STRING);
 		if(emuSaveEnabled)
 		{
-			emuSaveName = strdup(argv[1]);
+			memcpy(emuSaveName, emuFileName, 1024);
 			memcpy(emuSaveName+strlen(emuSaveName)-3,"sav",3);
+			printf("Save Path: %s\n",emuSaveName);
 			FILE *save = fopen(emuSaveName, "rb");
 			if(save)
 			{
@@ -188,25 +208,20 @@ int main(int argc, char** argv)
 		if(argc == 5 && (strstr(argv[2],".fm2") != NULL || strstr(argv[2],".FM2") != NULL))
 			fm2playInit(argv[2], atoi(argv[3]), !!atoi(argv[4]));
 	}
-	else if(argc >= 2 && (strstr(argv[1],".nsf") != NULL || strstr(argv[1],".NSF") != NULL))
+	else if(emuFileType == FTYPE_NSF)
 	{
-		FILE *nesF = fopen(argv[1],"rb");
-		if(!nesF)
+		if(!nesEmuFileRead())
 		{
-			printf("Main: Could not open %s!\n", argv[1]);
+			nesEmuFileClose();
+			printf("Main: Could not read %s!\n", emuFileName);
 			puts("Press enter to exit");
 			getc(stdin);
 			return EXIT_SUCCESS;
 		}
-		fseek(nesF,0,SEEK_END);
-		size_t fsize = ftell(nesF);
-		rewind(nesF);
-		emuNesROM = malloc(fsize);
-		fread(emuNesROM,1,fsize,nesF);
-		fclose(nesF);
+		nesEmuFileClose();
 		emuPrgRAMsize = 0x2000;
 		emuPrgRAM = malloc(emuPrgRAMsize);
-		if(!mapperInitNSF(emuNesROM, fsize, emuPrgRAM, emuPrgRAMsize))
+		if(!mapperInitNSF(emuNesROM, emuNesROMsize, emuPrgRAM, emuPrgRAMsize))
 		{
 			printf("NSF init failed!\n");
 			free(emuNesROM);
@@ -220,11 +235,14 @@ int main(int argc, char** argv)
 		linesToDraw = 30;
 		scaleFactor = 3;
 	}
-	else if(argc >= 2 && (strstr(argv[1],".fds") != NULL || strstr(argv[1],".FDS") != NULL
-						|| strstr(argv[1],".qd") != NULL || strstr(argv[1],".QD") != NULL))
+	else if(emuFileType == FTYPE_FDS || emuFileType == FTYPE_QD)
 	{
-		emuSaveName = strdup(argv[1]);
-		memcpy(emuSaveName+strlen(emuSaveName)-3,"sav",3);
+		memcpy(emuSaveName, emuFileName, 1024);
+		if(emuFileType == FTYPE_FDS)
+			memcpy(emuSaveName+strlen(emuSaveName)-3,"sav",3);
+		else //.qd has one less character
+			memcpy(emuSaveName+strlen(emuSaveName)-2,"sav",3);
+		printf("Save Path: %s\n",emuSaveName); 
 		bool saveValid = false;
 		FILE *save = fopen(emuSaveName, "rb");
 		if(save)
@@ -244,33 +262,34 @@ int main(int argc, char** argv)
 				printf("Save file ignored\n");
 			fclose(save);
 		}
-		if(!saveValid)
+		if(saveValid) //can use save as ROM
+			nesEmuFileClose();
+		else //no (valid) save, parse file
 		{
-			FILE *nesF = fopen(argv[1],"rb");
-			if(!nesF)
+			if(!nesEmuFileRead())
 			{
-				printf("Main: Could not open %s!\n", argv[1]);
+				nesEmuFileClose();
+				printf("Main: Could not read %s!\n", emuFileName);
 				puts("Press enter to exit");
 				getc(stdin);
 				return EXIT_SUCCESS;
 			}
-			fseek(nesF,0,SEEK_END);
-			size_t fsize = ftell(nesF);
-			rewind(nesF);
-			uint8_t *nesFread = malloc(fsize);
-			fread(nesFread,1,fsize,nesF);
-			fclose(nesF);
+			nesEmuFileClose();
+			uint8_t *nesFread = emuNesROM;
+			uint32_t nesFread_len = emuNesROMsize;
+			emuNesROM = NULL;
+			emuNesROMsize = 0;
 			uint8_t *fds_src;
 			uint32_t fds_src_len;
 			if(nesFread[0] == 0x46 && nesFread[1] == 0x44 && nesFread[2] == 0x53)
 			{
 				fds_src = nesFread+0x10;
-				fds_src_len = fsize-0x10;
+				fds_src_len = nesFread_len-0x10;
 			}
 			else
 			{
 				fds_src = nesFread;
-				fds_src_len = fsize;
+				fds_src_len = nesFread_len;
 			}
 			bool fds_no_crc = (fds_src[0x38] == 0x02 && fds_src[0x3A] == 0x03 
 							&& fds_src[0x3A] != 0x02 && fds_src[0x3E] != 0x03);
@@ -279,55 +298,72 @@ int main(int argc, char** argv)
 				if(fds_src_len == 0x1FFB8)
 				{
 					emuFdsHasSideB = true;
-					emuNesROM = malloc(0x20000);
-					memset(emuNesROM, 0, 0x20000);
+					emuNesROMsize = 0x20000;
+					emuNesROM = malloc(emuNesROMsize);
+					memset(emuNesROM, 0, emuNesROMsize);
 					nesEmuFdsSetup(fds_src, emuNesROM); //setup individually
 					nesEmuFdsSetup(fds_src+0xFFDC, emuNesROM+0x10000);
 				}
 				else if(fds_src_len == 0xFFDC)
 				{
-					emuNesROM = malloc(0x10000);
-					memset(emuNesROM, 0, 0x10000);
+					emuFdsHasSideB = false;
+					emuNesROMsize = 0x10000;
+					emuNesROM = malloc(emuNesROMsize);
+					memset(emuNesROM, 0, emuNesROMsize);
 					nesEmuFdsSetup(fds_src, emuNesROM);
 				}
+				else
+					printf("Unknown FDS Length: %x\n", fds_src_len);
 			}
 			else
 			{
 				if(fds_src_len == 0x20000)
 				{
 					emuFdsHasSideB = true;
-					emuNesROM = malloc(0x20000);
-					memcpy(emuNesROM, fds_src, 0x20000);
+					emuNesROMsize = 0x20000;
+					emuNesROM = malloc(emuNesROMsize);
+					memcpy(emuNesROM, fds_src, emuNesROMsize);
 				}
 				else if(fds_src_len == 0x10000)
 				{
-					emuNesROM = malloc(0x10000);
-					memcpy(emuNesROM, fds_src, 0x10000);
+					emuFdsHasSideB = false;
+					emuNesROMsize = 0x10000;
+					emuNesROM = malloc(emuNesROMsize);
+					memcpy(emuNesROM, fds_src, emuNesROMsize);
 				}
+				else
+					printf("Unknown FDS Length: %x\n", fds_src_len);
 			}
 			free(nesFread);
 		}
-		emuPrgRAMsize = 0x8000;
-		emuPrgRAM = malloc(emuPrgRAMsize);
-		apuInitBufs();
-		cpuInit();
-		ppuInit();
-		memInit();
-		apuInit();
-		inputInit();
-		if(!mapperInitFDS(emuNesROM, emuFdsHasSideB, emuPrgRAM, emuPrgRAMsize))
+		if(emuNesROM != NULL)
 		{
-			printf("FDS init failed!\n");
-			free(emuNesROM);
-			puts("Press enter to exit");
-			getc(stdin);
-			return EXIT_SUCCESS;
+			emuPrgRAMsize = 0x8000;
+			emuPrgRAM = malloc(emuPrgRAMsize);
+			apuInitBufs();
+			cpuInit();
+			ppuInit();
+			memInit();
+			apuInit();
+			inputInit();
+			if(!mapperInitFDS(emuNesROM, emuFdsHasSideB, emuPrgRAM, emuPrgRAMsize))
+			{
+				printf("FDS init failed!\n");
+				free(emuNesROM);
+				puts("Press enter to exit");
+				getc(stdin);
+				return EXIT_SUCCESS;
+			}
+			sprintf(window_title, "Famicom Disk System - %s\n", VERSION_STRING);
 		}
-		sprintf(window_title, "Famicom Disk System - %s\n", VERSION_STRING);
 	}
 	if(emuNesROM == NULL)
 	{
+#if ZIPSUPPORT
+		printf("Main: No File to Open! Make sure to call fixNES with a .nes/.nsf/.fds/.qd/.zip File as Argument.\n");
+#else
 		printf("Main: No File to Open! Make sure to call fixNES with a .nes/.nsf/.fds/.qd File as Argument.\n");
+#endif
 		puts("Press enter to exit");
 		getc(stdin);
 		return EXIT_SUCCESS;
@@ -375,6 +411,178 @@ int main(int argc, char** argv)
 	glutMainLoop();
 
 	return EXIT_SUCCESS;
+}
+
+static FILE *nesEmuFilePointer = NULL;
+#if ZIPSUPPORT
+static bool nesEmuFileIsZip = false;
+static uint8_t *nesEmuZipBuf = NULL;
+static uint32_t nesEmuZipLen = 0;
+static unzFile nesEmuZipObj;
+static unz_file_info nesEmuZipObjInfo;
+#endif
+static int nesEmuGetFileType(char *name)
+{
+	int nLen = strlen(name);
+	if(nLen > 4 && name[nLen-4] == '.')
+	{
+		if(tolower(name[nLen-3]) == 'n' && tolower(name[nLen-2]) == 'e' && tolower(name[nLen-1]) == 's')
+			return FTYPE_NES;
+		else if(tolower(name[nLen-3]) == 'n' && tolower(name[nLen-2]) == 's' && tolower(name[nLen-1]) == 'f')
+			return FTYPE_NSF;
+		else if(tolower(name[nLen-3]) == 'f' && tolower(name[nLen-2]) == 'd' && tolower(name[nLen-1]) == 's')
+			return FTYPE_FDS;
+#if ZIPSUPPORT
+		else if(tolower(name[nLen-3]) == 'z' && tolower(name[nLen-2]) == 'i' && tolower(name[nLen-1]) == 'p')
+			return FTYPE_ZIP;
+#endif
+	}
+	else if(nLen > 3 && name[nLen-3] == '.')
+	{
+		if(tolower(name[nLen-2]) == 'q' && tolower(name[nLen-1]) == 'd')
+			return FTYPE_QD;
+	}
+	return FTYPE_UNK;
+}
+
+static void nesEmuFileOpen(char *name)
+{
+	emuFileType = FTYPE_UNK;
+	memset(emuFileName,0,1024);
+	memset(emuSaveName,0,1024);
+	int baseType = nesEmuGetFileType(name);
+#if ZIPSUPPORT
+	if(baseType == FTYPE_ZIP)
+	{
+		printf("Base ZIP File: %s\n", name);
+		FILE *tmp = fopen(name,"rb");
+		if(!tmp)
+		{
+			printf("Main: Could not open %s!\n", name);
+			return;
+		}
+		fseek(tmp,0,SEEK_END);
+		nesEmuZipLen = ftell(tmp);
+		rewind(tmp);
+		nesEmuZipBuf = malloc(nesEmuZipLen);
+		if(!nesEmuZipBuf)
+		{
+			printf("Main: Could not allocate ZIP buffer!\n");
+			fclose(tmp);
+			return;
+		}
+		fread(nesEmuZipBuf,1,nesEmuZipLen,tmp);
+		fclose(tmp);
+		char filepath[20];
+		snprintf(filepath,20,"%x+%x",(unsigned int)nesEmuZipBuf,nesEmuZipLen);
+		nesEmuZipObj = unzOpen(filepath);
+		int err = unzGoToFirstFile(nesEmuZipObj);
+		while (err == UNZ_OK)
+		{
+			char tmpName[256];
+			err = unzGetCurrentFileInfo(nesEmuZipObj,&nesEmuZipObjInfo,tmpName,256,NULL,0,NULL,0);
+			if(err == UNZ_OK)
+			{
+				int curInZipType = nesEmuGetFileType(tmpName);
+				if(curInZipType != FTYPE_ZIP && curInZipType != FTYPE_UNK)
+				{
+					emuFileType = curInZipType;
+					nesEmuFileIsZip = true;
+					if(strchr(name,'/') != NULL || strchr(name,'\\') != NULL)
+					{
+						char *nPath = name;
+						if(strchr(nPath,'/') != NULL)
+							nPath = (strrchr(nPath,'/')+1);
+						if(strchr(nPath,'\\') != NULL)
+							nPath = (strrchr(nPath,'\\')+1);
+						strncpy(emuFileName, name, nPath-name);
+					}
+					char *zName = tmpName;
+					if(strchr(zName,'/') != NULL)
+						zName = (strrchr(zName,'/')+1);
+					if(strchr(zName,'\\') != NULL)
+						zName = (strrchr(zName,'\\')+1);
+					strcat(emuFileName, zName);
+					printf("File in ZIP Type: %s\n", emuFileType == FTYPE_NES ? "NES" : (emuFileType == FTYPE_NSF ? "NSF" : "FDS"));
+					printf("Full Path from ZIP: %s\n", emuFileName);
+					break;
+				}
+				else
+					err = unzGoToNextFile(nesEmuZipObj);
+			}
+		}
+		if(emuFileType == FTYPE_UNK)
+		{
+			printf("Found no usable file in ZIP\n");
+			unzClose(nesEmuZipObj);
+			if(nesEmuZipBuf)
+				free(nesEmuZipBuf);
+			nesEmuZipBuf = NULL;
+			nesEmuZipLen = 0;
+		}
+	}
+	else if(baseType != FTYPE_UNK)
+#else
+	if(baseType != FTYPE_UNK)
+#endif
+	{
+		nesEmuFilePointer = fopen(name,"rb");
+		if(!nesEmuFilePointer)
+			printf("Main: Could not open %s!\n", name);
+		else
+		{
+			emuFileType = baseType;
+			strncpy(emuFileName, name, 1024);
+			printf("File Type: %s\n", baseType == FTYPE_NES ? "NES" : (baseType == FTYPE_NSF ? "NSF" : "FDS"));
+			printf("Full Path: %s\n", emuFileName);
+		}
+	}
+}
+
+static bool nesEmuFileRead()
+{
+#if ZIPSUPPORT
+	if(nesEmuFileIsZip)
+	{
+		unzOpenCurrentFile(nesEmuZipObj);
+		emuNesROMsize = nesEmuZipObjInfo.uncompressed_size;
+		emuNesROM = malloc(emuNesROMsize);
+		if(emuNesROM)
+			unzReadCurrentFile(nesEmuZipObj,emuNesROM,emuNesROMsize);
+		unzCloseCurrentFile(nesEmuZipObj);
+	}
+	else
+#endif
+	{
+		fseek(nesEmuFilePointer,0,SEEK_END);
+		emuNesROMsize = ftell(nesEmuFilePointer);
+		rewind(nesEmuFilePointer);
+		emuNesROM = malloc(emuNesROMsize);
+		if(emuNesROM)
+			fread(emuNesROM,1,emuNesROMsize,nesEmuFilePointer);
+	}
+	if(emuNesROM)
+		return true;
+	//else
+	printf("Main: Could not allocate ROM buffer!\n");
+	return false;
+}
+
+//cleans up vars from read
+static void nesEmuFileClose()
+{
+#if ZIPSUPPORT
+	if(nesEmuFileIsZip)
+		unzClose(nesEmuZipObj);
+	nesEmuFileIsZip = false;
+	if(nesEmuZipBuf)
+		free(nesEmuZipBuf);
+	nesEmuZipBuf = NULL;
+	nesEmuZipLen = 0;
+#endif
+	if(nesEmuFilePointer)
+		fclose(nesEmuFilePointer);
+	nesEmuFilePointer = NULL;
 }
 
 static volatile bool emuRenderFrame = false;

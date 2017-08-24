@@ -57,6 +57,8 @@ bool mapperInitNSF(uint8_t *nsfBIN, uint32_t nsfBINsize, uint8_t *prgRAM, uint32
 	mapperChrGet8 = nsfchrGet8;
 	mapperChrSet8 = nsfchrSet8;
 	mapperCycle = nsfcycle;
+	mapperVramGet8 = ppuVRAMGet8;
+	mapperVramSet8 = ppuVRAMSet8;
 	mapperChrMode = 0;
 	return true;
 }
@@ -91,6 +93,8 @@ bool mapperInitFDS(uint8_t *fdsFile, bool fdsSideB, uint8_t *prgRAM, uint32_t pr
 	mapperSet8 = fdsset8;
 	mapperChrGet8 = fdschrGet8;
 	mapperChrSet8 = fdschrSet8;
+	mapperVramGet8 = ppuVRAMGet8;
+	mapperVramSet8 = ppuVRAMSet8;
 	mapperCycle = fdscycle;
 	mapperChrMode = 0;
 	return true;
