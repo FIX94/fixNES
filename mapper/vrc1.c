@@ -9,6 +9,7 @@
 #include <stdbool.h>
 #include <inttypes.h>
 #include "../ppu.h"
+#include "../mapper.h"
 
 static uint8_t *vrc1_prgROM;
 static uint8_t *vrc1_prgRAM;
@@ -38,10 +39,10 @@ void vrc1init(uint8_t *prgROMin, uint32_t prgROMsizeIn,
 	vrc1_curPRGBank1 = 0x2000;
 	vrc1_curPRGBank2 = 0x4000;
 	vrc1_lastPRGBank = (prgROMsizeIn - 0x2000);
-	vrc1_prgROMand = prgROMsizeIn-1;
+	vrc1_prgROMand = mapperGetAndValue(prgROMsizeIn);
 	vrc1_chrROM = chrROMin;
 	vrc1_chrROMsize = chrROMsizeIn;
-	vrc1_chrROMand = chrROMsizeIn-1;
+	vrc1_chrROMand = mapperGetAndValue(chrROMsizeIn);
 	vrc1_curCHRBank0 = 0;
 	vrc1_curCHRBank1 = 0;
 	vrc1_prg_bank_flip = false;

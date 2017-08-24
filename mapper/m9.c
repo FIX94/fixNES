@@ -9,13 +9,16 @@
 #include <inttypes.h>
 #include <stdbool.h>
 #include "../ppu.h"
+#include "../mapper.h"
 
 static uint8_t *m9_prgROM;
 static uint8_t *m9_prgRAM;
 static uint8_t *m9_chrROM;
 static uint32_t m9_prgROMsize;
+static uint32_t m9_prgROMand;
 static uint32_t m9_prgRAMsize;
 static uint32_t m9_chrROMsize;
+static uint32_t m9_chrROMand;
 static uint32_t m9_curPRGBank;
 static uint32_t m9_lastPRGBank;
 static uint32_t m9_curCHRBank00;
@@ -31,12 +34,14 @@ void m9init(uint8_t *prgROMin, uint32_t prgROMsizeIn,
 {
 	m9_prgROM = prgROMin;
 	m9_prgROMsize = prgROMsizeIn;
+	m9_prgROMand = mapperGetAndValue(m9_prgROMsize);
 	m9_prgRAM = prgRAMin;
 	m9_prgRAMsize = prgRAMsizeIn;
 	m9_curPRGBank = 0;
 	m9_lastPRGBank = (prgROMsizeIn - 0x8000)&0x3FFFF;
 	m9_chrROM = chrROMin;
 	m9_chrROMsize = chrROMsizeIn;
+	m9_chrROMand = mapperGetAndValue(m9_chrROMsize);
 	m9_curCHRBank00 = 0;
 	m9_curCHRBank01 = 0;
 	m9_curCHRBank10 = 0;
@@ -70,15 +75,15 @@ void m9set8(uint16_t addr, uint8_t val)
 	else if(addr < 0xA000)
 		return;
 	else if(addr < 0xB000)
-		m9_curPRGBank = ((val&0xF)<<13)&(m9_prgROMsize-1);
+		m9_curPRGBank = ((val&0xF)<<13)&m9_prgROMand;
 	else if(addr < 0xC000)
-		m9_curCHRBank00 = ((val&0x1F)<<12)&(m9_chrROMsize-1);
+		m9_curCHRBank00 = ((val&0x1F)<<12)&m9_chrROMand;
 	else if(addr < 0xD000)
-		m9_curCHRBank01 = ((val&0x1F)<<12)&(m9_chrROMsize-1);
+		m9_curCHRBank01 = ((val&0x1F)<<12)&m9_chrROMand;
 	else if(addr < 0xE000)
-		m9_curCHRBank10 = ((val&0x1F)<<12)&(m9_chrROMsize-1);
+		m9_curCHRBank10 = ((val&0x1F)<<12)&m9_chrROMand;
 	else if(addr < 0xF000)
-		m9_curCHRBank11 = ((val&0x1F)<<12)&(m9_chrROMsize-1);
+		m9_curCHRBank11 = ((val&0x1F)<<12)&m9_chrROMand;
 	else
 	{
 		if((val&1) == 0)

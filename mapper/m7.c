@@ -10,10 +10,12 @@
 #include <inttypes.h>
 #include <string.h>
 #include "../ppu.h"
+#include "../mapper.h"
 
 static uint8_t *m7_prgROM;
 static uint8_t *m7_chrROM;
 static uint32_t m7_prgROMsize;
+static uint32_t m7_prgROMand;
 static uint32_t m7_chrROMsize;
 static uint32_t m7_curPRGBank;
 
@@ -25,9 +27,10 @@ void m7init(uint8_t *prgROMin, uint32_t prgROMsizeIn,
 {
 	m7_prgROM = prgROMin;
 	m7_prgROMsize = prgROMsizeIn;
+	m7_prgROMand = mapperGetAndValue(m7_prgROMsize);
 	(void)prgRAMin;
 	(void)prgRAMsizeIn;
-	m7_curPRGBank = (prgROMsizeIn - 0x8000)&(m7_prgROMsize-1);
+	m7_curPRGBank = (prgROMsizeIn - 0x8000)&m7_prgROMand;
 	if(chrROMsizeIn > 0)
 	{
 		m7_chrROM = chrROMin;
@@ -61,7 +64,7 @@ void m7set8(uint16_t addr, uint8_t val)
 		//printf("000\n");
 		ppuSetNameTblSingleLower();
 	}
-	m7_curPRGBank = ((val & 7)<<15)&(m7_prgROMsize-1);
+	m7_curPRGBank = ((val & 7)<<15)&m7_prgROMand;
 }
 
 uint8_t m7chrGet8(uint16_t addr)

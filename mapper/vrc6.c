@@ -10,6 +10,7 @@
 #include <inttypes.h>
 #include <string.h>
 #include "../ppu.h"
+#include "../mapper.h"
 #include "../audio_vrc6.h"
 #include "../vrc_irq.h"
 
@@ -38,10 +39,10 @@ void vrc6init(uint8_t *prgROMin, uint32_t prgROMsizeIn,
 	vrc6_curPRGBank0 = 0;
 	vrc6_curPRGBank1 = 0x2000;
 	vrc6_lastPRGBank = (prgROMsizeIn - 0x2000);
-	vrc6_prgROMand = prgROMsizeIn-1;
+	vrc6_prgROMand = mapperGetAndValue(prgROMsizeIn);
 	vrc6_chrROM = chrROMin;
 	vrc6_chrROMsize = chrROMsizeIn;
-	vrc6_chrROMand = chrROMsizeIn-1;
+	vrc6_chrROMand = mapperGetAndValue(chrROMsizeIn);
 	memset(vrc6_CHRBank, 0, 8*sizeof(uint32_t));
 	vrc6_CHRMode = 0;
 	vrc_irq_init();

@@ -10,6 +10,7 @@
 #include <inttypes.h>
 #include <string.h>
 #include "../ppu.h"
+#include "../mapper.h"
 #include "../audio_vrc7.h"
 #include "../vrc_irq.h"
 
@@ -41,12 +42,12 @@ void vrc7init(uint8_t *prgROMin, uint32_t prgROMsizeIn,
 	vrc7_curPRGBank1 = 0x2000;
 	vrc7_curPRGBank2 = 0x4000;
 	vrc7_lastPRGBank = (prgROMsizeIn - 0x2000);
-	vrc7_prgROMand = prgROMsizeIn-1;
+	vrc7_prgROMand = mapperGetAndValue(prgROMsizeIn);
 	if(chrROMin && chrROMsizeIn)
 	{
 		vrc7_chrROM = chrROMin;
 		vrc7_chrROMsize = chrROMsizeIn;
-		vrc7_chrROMand = chrROMsizeIn-1;
+		vrc7_chrROMand = mapperGetAndValue(chrROMsizeIn);
 	}
 	else
 	{

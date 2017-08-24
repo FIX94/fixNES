@@ -90,6 +90,20 @@ void m52_init(uint8_t *prgROMin, uint32_t prgROMsizeIn,
 	printf("Mapper 52 (Mapper 4 Game Select) inited\n");
 }
 
+void m205_init(uint8_t *prgROMin, uint32_t prgROMsizeIn, 
+			uint8_t *prgRAMin, uint32_t prgRAMsizeIn,
+			uint8_t *chrROMin, uint32_t chrROMsizeIn)
+{
+	m4init(prgROMin, prgROMsizeIn, prgRAMin, prgRAMsizeIn, chrROMin, chrROMsizeIn);
+	//start with default config
+	m4_prgROMadd = 0;
+	m4_prgROMand = 0x3FFFF;
+	m4_chrROMadd = 0;
+	m4_chrROMand = 0x3FFFF;
+	m4add_regLock = false;
+	printf("Mapper 205 (Mapper 4 Game Select) inited\n");
+}
+
 void m37_set8(uint16_t addr, uint8_t val)
 {
 	if(addr < 0x8000 && addr >= 0x6000)
@@ -271,6 +285,44 @@ void m52_set8(uint16_t addr, uint8_t val)
 				m4_chrROMadd = (chrVal&6)<<17;
 			}
 			m4add_regLock = ((val&0x80) != 0);
+		}
+	}
+	else if(addr >= 0x8000)
+		m4set8(addr, val);
+}
+
+void m205_set8(uint16_t addr, uint8_t val)
+{
+	if(addr < 0x8000 && addr >= 0x6000)
+	{
+		val &= 3;
+		if(val == 0)
+		{
+			m4_prgROMadd = 0;
+			m4_prgROMand = 0x3FFFF;
+			m4_chrROMadd = 0;
+			m4_chrROMand = 0x3FFFF;
+		}
+		else if(val == 1)
+		{
+			m4_prgROMadd = 0x20000;
+			m4_prgROMand = 0x3FFFF;
+			m4_chrROMadd = 0x20000;
+			m4_chrROMand = 0x3FFFF;
+		}
+		else if(val == 2)
+		{
+			m4_prgROMadd = 0x40000;
+			m4_prgROMand = 0x1FFFF;
+			m4_chrROMadd = 0x40000;
+			m4_chrROMand = 0x1FFFF;
+		}
+		else //val == 3
+		{
+			m4_prgROMadd = 0x60000;
+			m4_prgROMand = 0x1FFFF;
+			m4_chrROMadd = 0x60000;
+			m4_chrROMand = 0x1FFFF;
 		}
 	}
 	else if(addr >= 0x8000)

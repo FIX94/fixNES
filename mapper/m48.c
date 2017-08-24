@@ -10,6 +10,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include "../ppu.h"
+#include "../mapper.h"
 
 static uint8_t *m48_prgROM;
 static uint8_t *m48_prgRAM;
@@ -46,7 +47,7 @@ void m48init(uint8_t *prgROMin, uint32_t prgROMsizeIn,
 	m48_prgROMsize = prgROMsizeIn;
 	m48_prgRAM = prgRAMin;
 	m48_prgRAMsize = prgRAMsizeIn;
-	m48_prgROMand = prgROMsizeIn-1;
+	m48_prgROMand = mapperGetAndValue(prgROMsizeIn);
 	m48_curPRGBank0 = 0;
 	m48_curPRGBank1 = 0x2000;
 	m48_lastPRGBank = (prgROMsizeIn - 0x2000);
@@ -55,7 +56,7 @@ void m48init(uint8_t *prgROMin, uint32_t prgROMsizeIn,
 	{
 		m48_chrROM = chrROMin;
 		m48_chrROMsize = chrROMsizeIn;
-		m48_chrROMand = chrROMsizeIn-1;
+		m48_chrROMand = mapperGetAndValue(chrROMsizeIn);
 	}
 	else
 	{

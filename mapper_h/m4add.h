@@ -23,10 +23,14 @@ void m47_init(uint8_t *prgROMin, uint32_t prgROMsizeIn,
 void m52_init(uint8_t *prgROMin, uint32_t prgROMsizeIn, 
 			uint8_t *prgRAMin, uint32_t prgRAMsizeIn,
 			uint8_t *chrROMin, uint32_t chrROMsizeIn);
+void m205_init(uint8_t *prgROMin, uint32_t prgROMsizeIn, 
+			uint8_t *prgRAMin, uint32_t prgRAMsizeIn,
+			uint8_t *chrROMin, uint32_t chrROMsizeIn);
 void m37_set8(uint16_t addr, uint8_t val);
 void m44_set8(uint16_t addr, uint8_t val);
 void m45_set8(uint16_t addr, uint8_t val);
 void m47_set8(uint16_t addr, uint8_t val);
 void m52_set8(uint16_t addr, uint8_t val);
+void m205_set8(uint16_t addr, uint8_t val);
 
 #endif

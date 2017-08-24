@@ -10,6 +10,7 @@
 #include <inttypes.h>
 #include <string.h>
 #include "../ppu.h"
+#include "../mapper.h"
 #include "../vrc_irq.h"
 
 static uint8_t *vrc2_4_prgROM;
@@ -39,10 +40,10 @@ void vrc2_4_init(uint8_t *prgROMin, uint32_t prgROMsizeIn,
 	vrc2_4_curPRGBank1 = 0x2000;
 	vrc2_4_lastPRGBank = (prgROMsizeIn - 0x2000);
 	vrc2_4_lastM1PRGBank = vrc2_4_lastPRGBank - 0x2000;
-	vrc2_4_prgROMand = prgROMsizeIn-1;
+	vrc2_4_prgROMand = mapperGetAndValue(prgROMsizeIn);
 	vrc2_4_chrROM = chrROMin;
 	vrc2_4_chrROMsize = chrROMsizeIn;
-	vrc2_4_chrROMand = chrROMsizeIn-1;
+	vrc2_4_chrROMand = mapperGetAndValue(chrROMsizeIn);
 	memset(vrc2_4_CHRBank, 0, 8*sizeof(uint32_t));
 	vrc2_4_prg_bank_flip = false;
 	vrc_irq_init();

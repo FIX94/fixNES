@@ -10,6 +10,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include "../ppu.h"
+#include "../mapper.h"
 
 static uint8_t *m4_prgROM;
 static uint8_t *m4_prgRAM;
@@ -49,7 +50,7 @@ void m4init(uint8_t *prgROMin, uint32_t prgROMsizeIn,
 	m4_prgROMsize = prgROMsizeIn;
 	m4_prgRAM = prgRAMin;
 	m4_prgRAMsize = prgRAMsizeIn;
-	m4_prgROMand = prgROMsizeIn-1;
+	m4_prgROMand = mapperGetAndValue(prgROMsizeIn);
 	m4_curPRGBank0 = 0;
 	m4_curPRGBank1 = 0x2000;
 	m4_lastPRGBank = (prgROMsizeIn - 0x2000);
@@ -58,7 +59,7 @@ void m4init(uint8_t *prgROMin, uint32_t prgROMsizeIn,
 	{
 		m4_chrROM = chrROMin;
 		m4_chrROMsize = chrROMsizeIn;
-		m4_chrROMand = chrROMsizeIn-1;
+		m4_chrROMand = mapperGetAndValue(chrROMsizeIn);
 	}
 	else
 	{

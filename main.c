@@ -32,7 +32,7 @@
 #define DEBUG_KEY 0
 #define DEBUG_LOAD_INFO 1
 
-static const char *VERSION_STRING = "fixNES Alpha v0.9.3";
+static const char *VERSION_STRING = "fixNES Alpha v0.9.4";
 static char window_title[256];
 static char window_title_pause[256];
 

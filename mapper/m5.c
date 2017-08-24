@@ -60,13 +60,13 @@ void m5init(uint8_t *prgROMin, uint32_t prgROMsizeIn,
 	m5_prgROMsize = prgROMsizeIn;
 	m5_prgRAM = prgRAMin;
 	m5_prgRAMsize = prgRAMsizeIn;
-	m5_prgROMand = prgROMsizeIn-1;
-	m5_prgRAMand = prgRAMsizeIn-1;
+	m5_prgROMand = mapperGetAndValue(prgROMsizeIn);
+	m5_prgRAMand = mapperGetAndValue(prgRAMsizeIn);
 	if(chrROMsizeIn > 0)
 	{
 		m5_chrROM = chrROMin;
 		m5_chrROMsize = chrROMsizeIn;
-		m5_chrROMand = chrROMsizeIn-1;
+		m5_chrROMand = mapperGetAndValue(chrROMsizeIn);
 	}
 	else
 	{

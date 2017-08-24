@@ -10,13 +10,16 @@
 #include <string.h>
 #include <stdbool.h>
 #include "../ppu.h"
+#include "../mapper.h"
 
 static uint8_t *m1_prgROM;
 static uint8_t *m1_prgRAM;
 static uint8_t *m1_chrROM;
 static uint32_t m1_prgROMsize;
+static uint32_t m1_prgROMand;
 static uint32_t m1_prgRAMsize;
 static uint32_t m1_chrROMsize;
+static uint32_t m1_chrROMand;
 static uint8_t m1_chrRAM[0x2000];
 static uint32_t m1_256KPRGBank;
 static uint32_t m1_curPRGBank;
@@ -35,6 +38,7 @@ void m1init(uint8_t *prgROMin, uint32_t prgROMsizeIn,
 {
 	m1_prgROM = prgROMin;
 	m1_prgROMsize = prgROMsizeIn;
+	m1_prgROMand = mapperGetAndValue(m1_prgROMsize);
 	m1_prgRAM = prgRAMin;
 	m1_prgRAMsize = prgRAMsizeIn;
 	m1_firstPRGBank = 0;
@@ -45,11 +49,13 @@ void m1init(uint8_t *prgROMin, uint32_t prgROMsizeIn,
 	{
 		m1_chrROM = chrROMin;
 		m1_chrROMsize = chrROMsizeIn;
+		m1_chrROMand = mapperGetAndValue(m1_chrROMsize);
 	}
 	else
 	{
 		m1_chrROM = m1_chrRAM;
 		m1_chrROMsize = 0x2000;
+		m1_chrROMand = 0x1FFF;
 	}
 	m1_curCHRBank0 = 0;
 	m1_curCHRBank1 = 0;
@@ -177,7 +183,7 @@ void m1set8(uint16_t addr, uint8_t val)
 			else if(addr < 0xC000)
 			{
 				if(m1_single_chr_bank) m1_sr &= ~1;
-				m1_curCHRBank0 = (m1_sr<<12)&(m1_chrROMsize-1);
+				m1_curCHRBank0 = (m1_sr<<12)&m1_chrROMand;
 				//printf("chr bank 0 now %04x\n", m1_curCHRBank0);
 				if(m1_prgROMsize > 0x40000)
 					m1_256KPRGBank = (m1_sr&0x10)<<14;
@@ -186,7 +192,7 @@ void m1set8(uint16_t addr, uint8_t val)
 			{
 				if(!m1_single_chr_bank)
 				{
-					m1_curCHRBank1 = (m1_sr<<12)&(m1_chrROMsize-1);
+					m1_curCHRBank1 = (m1_sr<<12)&m1_chrROMand;
 					//printf("chr bank 1 now %04x\n", m1_curCHRBank1);
 					if(m1_prgROMsize > 0x40000)
 						m1_256KPRGBank = (m1_sr&0x10)<<14;
@@ -195,7 +201,7 @@ void m1set8(uint16_t addr, uint8_t val)
 			else
 			{
 				if(m1_single_prg_bank) m1_sr &= ~1;
-				m1_curPRGBank = ((m1_sr&15)<<14)&(m1_prgROMsize-1);
+				m1_curPRGBank = ((m1_sr&15)<<14)&m1_prgROMand;
 				//printf("switchable bank now %04x\n", m1_curPRGBank);
 			}
 			//m1_sr = 0;//(m1_sr<<4);

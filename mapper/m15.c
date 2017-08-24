@@ -10,11 +10,13 @@
 #include <inttypes.h>
 #include <string.h>
 #include "../ppu.h"
+#include "../mapper.h"
 
 static uint8_t *m15_prgROM;
 static uint8_t *m15_prgRAM;
 static uint8_t *m15_chrROM;
 static uint32_t m15_prgROMsize;
+static uint32_t m15_prgROMand;
 static uint32_t m15_prgRAMsize;
 static uint32_t m15_chrROMsize;
 static uint32_t m15_curPRGBank;
@@ -30,6 +32,7 @@ void m15init(uint8_t *prgROMin, uint32_t prgROMsizeIn,
 {
 	m15_prgROM = prgROMin;
 	m15_prgROMsize = prgROMsizeIn;
+	m15_prgROMand = mapperGetAndValue(m15_prgROMsize);
 	m15_prgRAM = prgRAMin;
 	m15_prgRAMsize = prgRAMsizeIn;
 	m15_curPRGBank = 0;
@@ -81,7 +84,7 @@ void m15set8(uint16_t addr, uint8_t val)
 	{
 		m15_bankMode = (addr&3);
 		m15_upperPRGBank = ((val&(1<<7)) != 0);
-		m15_curPRGBank = ((val&0x3F)<<14)&(m15_prgROMsize-1);
+		m15_curPRGBank = ((val&0x3F)<<14)&m15_prgROMand;
 		if((val&(1<<6)) == 0)
 		{
 			//printf("Vertical mode\n");
