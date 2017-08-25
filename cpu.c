@@ -724,6 +724,27 @@ static bool ppu_nmi_handler_req = false;
 bool mapper_interrupt = false;
 static bool cpuHandleIrqUpdates()
 {
+	//update irq flag if requested
+	if(p_irq_req)
+	{
+		if(p_irq_req == 1)
+		{
+			#if DEBUG_INTR
+			printf("Setting irq disable %02x %02x %d %d %d %d\n", p, P_FLAG_IRQ_DISABLE, cpu_interrupt_req, apu_interrupt, 
+				!(p & P_FLAG_IRQ_DISABLE), (p & P_FLAG_IRQ_DISABLE) == 0);
+			#endif
+			p |= P_FLAG_IRQ_DISABLE;
+		}
+		else
+		{
+			#if DEBUG_INTR
+			printf("Clearing irq disable %02x %02x %d %d %d %d\n", p, P_FLAG_IRQ_DISABLE, cpu_interrupt_req, apu_interrupt, 
+				!(p & P_FLAG_IRQ_DISABLE), (p & P_FLAG_IRQ_DISABLE) == 0);
+			#endif
+			p &= ~P_FLAG_IRQ_DISABLE;
+		}
+		p_irq_req = 0;
+	}
 	//handle incoming IRQs
 	if(reset)
 	{
@@ -757,27 +778,6 @@ static bool cpuHandleIrqUpdates()
 		if(fds_transfer_interrupt)
 			fds_transfer_interrupt = false;
 		return true;
-	}
-	//update irq flag if requested
-	if(p_irq_req)
-	{
-		if(p_irq_req == 1)
-		{
-			#if DEBUG_INTR
-			printf("Setting irq disable %02x %02x %d %d %d %d\n", p, P_FLAG_IRQ_DISABLE, cpu_interrupt_req, apu_interrupt, 
-				!(p & P_FLAG_IRQ_DISABLE), (p & P_FLAG_IRQ_DISABLE) == 0);
-			#endif
-			p |= P_FLAG_IRQ_DISABLE;
-		}
-		else
-		{
-			#if DEBUG_INTR
-			printf("Clearing irq disable %02x %02x %d %d %d %d\n", p, P_FLAG_IRQ_DISABLE, cpu_interrupt_req, apu_interrupt, 
-				!(p & P_FLAG_IRQ_DISABLE), (p & P_FLAG_IRQ_DISABLE) == 0);
-			#endif
-			p &= ~P_FLAG_IRQ_DISABLE;
-		}
-		p_irq_req = 0;
 	}
 	//acts similar to an irq
 	if(nsf_startPlayback)

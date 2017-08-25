@@ -124,7 +124,9 @@ static bool ppuHasZSprite;
 static bool ppuNextHasZSprite;
 static bool ppuFrameDone;
 static bool ppuTmpWrite;
+static bool ppuNMIallowed;
 static bool ppuNMITriggered;
+static bool ppuVBlankFlagCleared;
 static bool ppuCurNMIStat;
 static bool ppuCurPicOutStat;
 static bool ppuCurVBlankStat;
@@ -171,7 +173,9 @@ void ppuInit()
 	ppuNextHasZSprite = false;
 	ppuFrameDone = false;
 	ppuTmpWrite = false;
+	ppuNMIallowed = false;
 	ppuNMITriggered = false;
+	ppuVBlankFlagCleared = false;
 	ppuCurNMIStat = false;
 	ppuCurPicOutStat = false;
 	ppuCurVBlankStat = false;
@@ -616,7 +620,7 @@ ppuIncreasePos:
 		ppuSprite0hit--;
 	/* VBlank start at first dot after post-render line */
 	/* Though results are better when starting it a bit later */
-	if(curDot == 4 && curLine == 241)
+	if(curDot == 3 && curLine == 241)
 	{
 		ppuNMITriggered = false;
 		if(!ppuReadReg2)
@@ -625,16 +629,25 @@ ppuIncreasePos:
 		printf("PPU Start VBlank\n");
 		#endif
 	}
+	if(curDot == 5 && curLine == 241 && ppuCurVBlankStat)
+		ppuNMIallowed = true;
+	else if(ppuVBlankFlagCleared)
+	{
+		ppuVBlankFlagCleared = false;
+		ppuNMIallowed = false;
+	}
 	ppuReadReg2 = false;
 	/* VBlank ends at first dot of the pre-render line */
 	/* Though results are better when clearing it a bit later */
-	if(curDot == 4 && curLine == ppuPreRenderLine)
+	if(curDot == 3 && curLine == ppuPreRenderLine)
 	{
 		#if PPU_DEBUG_VSYNC
 		printf("PPU End VBlank\n");
 		#endif
 		PPU_Reg[2] &= ~(PPU_FLAG_VBLANK | PPU_FLAG_SPRITEZERO | PPU_FLAG_OVERFLOW);
 	}
+	if(curDot == 8 && curLine == ppuPreRenderLine)
+		ppuNMIallowed = false;
 	/* Wrap back down after pre-render line */
 	if(curLine == ppuLinesTotal)
 	{
@@ -696,7 +709,7 @@ static uint8_t ppuDoSprites(uint8_t color, uint8_t dot)
 				sprCol |= 2;
 			if(i == 0 && ppuHasZSprite && dot < 255 && ((color&3) != 0) && (sprCol != 0) && !(PPU_Reg[2] & PPU_FLAG_SPRITEZERO) && !ppuSprite0hit)
 			{
-				ppuSprite0hit = 5;
+				ppuSprite0hit = 1;
 				#if PPU_DEBUG_ULTRA
 				printf("Zero sprite hit at x %i y %i cSpriteDot %i "
 							"table %04x color %02x sprCol %02x\n", dot, curLine, cSpriteDot, ppuGetVramTbl((PPU_Reg[0]&3)<<10), color, sprCol);
@@ -832,7 +845,7 @@ void ppuSet8(uint8_t reg, uint8_t val)
 	else if(reg != 2)
 	{
 		PPU_Reg[reg] = val;
-		//printf("ppuSet8 %04x %02x\n", reg, val);
+		//printf("ppuSet8 odd %d curDot %i curLine %i %04x %02x\n", ppuOddFrame, curDot, curLine, reg, val);
 	}
 }
 
@@ -843,6 +856,7 @@ uint8_t ppuGet8(uint8_t reg)
 	{
 		ret = PPU_Reg[reg];
 		PPU_Reg[reg] &= ~PPU_FLAG_VBLANK;
+		ppuVBlankFlagCleared = true;
 		ppuTmpWrite = false;
 		ppuReadReg2 = true;
 	}
@@ -893,7 +907,7 @@ uint8_t ppuGet8(uint8_t reg)
 
 bool ppuNMI()
 {
-	if(ppuCurVBlankStat && ppuCurNMIStat)
+	if(ppuCurNMIStat && ppuNMIallowed)
 	{
 		if(ppuNMITriggered == false)
 		{

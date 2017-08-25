@@ -29,7 +29,7 @@ void p8c8init(uint8_t *prgROMin, uint32_t prgROMsizeIn,
 {
 	p8c8_prgROM = prgROMin;
 	p8c8_prgROMsize = prgROMsizeIn;
-	p8c8_prgROMand = mapperGetAndValue(p8c8_prgROMand);
+	p8c8_prgROMand = mapperGetAndValue(p8c8_prgROMsize);
 	p8c8_prgRAM = prgRAMin;
 	p8c8_prgRAMsize = prgRAMsizeIn;
 	p8c8_chrROM = chrROMin;
