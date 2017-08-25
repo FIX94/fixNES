@@ -19,34 +19,29 @@
 //used externally
 bool mmc5enabled = false;
 uint8_t mmc5Out = 0;
+uint8_t mmc5pcm = 0;
+bool mmc5_dmcreadmode = false;
 
 #define P1_ENABLE (1<<0)
 #define P2_ENABLE (1<<1)
-#define DMC_ENABLE (1<<4)
 
 #define PULSE_CONST_V (1<<4)
 #define PULSE_HALT_LOOP (1<<5)
 
-#define DMC_HALT_LOOP (1<<6)
+#define DMC_READ_MODE (1<<0)
 #define DMC_IRQ_ENABLE (1<<7)
 
 static uint8_t MMC5_IO_Reg[0x18];
 
 static uint16_t mmc5_freq1;
 static uint16_t mmc5_freq2;
-/*static uint16_t mmc5_dmcFreq;
-static uint16_t mmc5_dmcAddr, mmc5_dmcLen, mmc5_dmcSampleBuf;
-static uint16_t mmc5_dmcCurAddr, mmc5_dmcCurLen;*/
 static uint8_t mmc5_p1LengthCtr, mmc5_p2LengthCtr;
-//static uint8_t mmc5_dmcVol, mmc5_dmcCurVol;
-//static uint8_t dmcSampleRemain;
 static uint8_t mmc5_modePos = 0;
 static uint16_t mmc5_modeCurCtr = 0;
-static uint16_t mmc5_p1freqCtr, mmc5_p2freqCtr;//, mmc5_dmcFreqCtr;
-static uint8_t mmc5_p1Cycle, mmc5_p2Cycle;//, dmcCycle;
-static bool mmc5_p1haltloop, mmc5_p2haltloop;//, mmc5_dmchaltloop;
-/*static bool mmc5_dmcstart;
-static bool mmc5_dmcirqenable;*/
+static uint16_t mmc5_p1freqCtr, mmc5_p2freqCtr;
+static uint8_t mmc5_p1Cycle, mmc5_p2Cycle;
+static bool mmc5_p1haltloop, mmc5_p2haltloop;
+static bool mmc5_dmcirqenable;
 
 static envelope_t mmc5_p1Env, mmc5_p2Env;
 
@@ -64,20 +59,17 @@ void mmc5AudioInit()
 {
 	memset(MMC5_IO_Reg,0,0x18);
 
-	mmc5_freq1 = 0; mmc5_freq2 = 0;// mmc5_dmcFreq = 0;
+	mmc5_freq1 = 0; mmc5_freq2 = 0;
 	mmc5_p1LengthCtr = 0; mmc5_p2LengthCtr = 0;
-	/*mmc5_dmcAddr = 0, mmc5_dmcLen = 0, mmc5_dmcVol = 0; mmc5_dmcSampleBuf = 0;
-	mmc5_dmcCurAddr = 0, mmc5_dmcCurLen = 0; mmc5_dmcCurVol = 0;
-	dmcSampleRemain = 0;*/
-	mmc5_p1freqCtr = 0; mmc5_p2freqCtr = 0;// mmc5_dmcFreqCtr = 0;
-	mmc5_p1Cycle = 0; mmc5_p2Cycle = 0;// dmcCycle = 0;
+	mmc5_p1freqCtr = 0; mmc5_p2freqCtr = 0;
+	mmc5_p1Cycle = 0; mmc5_p2Cycle = 0;
 
 	memset(&mmc5_p1Env,0,sizeof(envelope_t));
 	memset(&mmc5_p2Env,0,sizeof(envelope_t));
 
 	mmc5_p1haltloop = false; mmc5_p2haltloop = false;
-	/*mmc5_dmcstart = false;
-	mmc5_dmcirqenable = false;*/
+	mmc5_dmcirqenable = false;
+	mmc5_dmcreadmode = false;
 	mmc5enabled = true;
 }
 
@@ -103,59 +95,13 @@ void mmc5AudioClockTimers()
 		if(mmc5_p2Cycle >= 8)
 			mmc5_p2Cycle = 0;
 	}
+}
 
-	/*if(mmc5_dmcLen && (MMC5_IO_Reg[0x15] & DMC_ENABLE))
-	{
-		if(mmc5_dmcFreqCtr)
-			mmc5_dmcFreqCtr--;
-		if(mmc5_dmcFreqCtr == 0)
-		{
-			mmc5_dmcFreqCtr = mmc5_dmcFreq;
-			//dmcCycle++;
-			if(dmcSampleRemain)
-			{
-				if(mmc5_dmcSampleBuf&1)
-				{
-					if(mmc5_dmcVol <= 125)
-						mmc5_dmcVol += 2;
-				}
-				else if(mmc5_dmcVol >= 2)
-					mmc5_dmcVol -= 2;
-				mmc5_dmcSampleBuf>>=1;
-				dmcSampleRemain--;
-			}
-			if(!dmcSampleRemain)
-			{
-				if(mmc5_dmcCurLen)
-				{
-					mmc5_dmcSampleBuf = memGet8(mmc5_dmcCurAddr);
-					if(cpu_oam_dma > 0)
-						cpuIncWaitCycles(2);
-					else
-						cpuIncWaitCycles(4);
-					mmc5_dmcCurAddr++;
-					if(mmc5_dmcCurAddr < 0x8000)
-						mmc5_dmcCurAddr |= 0x8000;
-					mmc5_dmcCurLen--;
-					if(!mmc5_dmcCurLen)
-					{
-						if(mmc5_dmchaltloop)
-						{
-							mmc5_dmcCurAddr = mmc5_dmcAddr;
-							mmc5_dmcCurLen = mmc5_dmcLen;
-						}
-						else if(mmc5_dmcirqenable)
-						{
-							//printf("DMC IRQ\n");
-							mmc5_dmc_interrupt = true;
-						}
-					}
-					dmcSampleRemain = 8;
-				}
-				//dmcCycle = 0;
-			}
-		}
-	}*/
+void mmc5AudioPCMWrite(uint8_t val)
+{
+	if(val == 0 && mmc5_dmcirqenable)
+		mmc5_dmc_interrupt = true;
+	mmc5pcm = val;
 }
 
 static uint8_t mmc5_lastP1Out = 0, mmc5_lastP2Out = 0;
@@ -251,25 +197,18 @@ void mmc5AudioSet8(uint8_t reg, uint8_t val)
 		//printf("P2 new freq %04x\n", mmc5_freq2);
 		mmc5_p2Env.start = true;
 	}
-	/*else if(reg == 0x10)
+	else if(reg == 0x10)
 	{
-		//printf("Set 0x10 %02x\n", val);
-		mmc5_dmcFreq = dmcPeriod[val&0xF];
-		mmc5_dmchaltloop = ((val&DMC_HALT_LOOP) != 0);
-		mmc5_dmcirqenable = ((val&DMC_IRQ_ENABLE) != 0);
-		//printf("%d\n", mmc5_dmcirqenable);
+		mmc5_dmcreadmode = (val&DMC_READ_MODE)!=0;
+		mmc5_dmcirqenable = (val&DMC_IRQ_ENABLE)!=0;
 		if(!mmc5_dmcirqenable)
 			mmc5_dmc_interrupt = false;
 	}
 	else if(reg == 0x11)
-		mmc5_dmcVol = val&0x7F;
-	else if(reg == 0x12)
-		mmc5_dmcAddr = 0xC000+(val*64);
-	else if(reg == 0x13)
 	{
-		//printf("Set 0x13 %02x\n", val);
-		mmc5_dmcLen = (val*16)+1;
-	}*/
+		if(!mmc5_dmcreadmode)
+			mmc5AudioPCMWrite(val);
+	}
 	else if(reg == 0x15)
 	{
 		//printf("Set 0x15 %02x\n",val);
@@ -277,25 +216,20 @@ void mmc5AudioSet8(uint8_t reg, uint8_t val)
 			mmc5_p1LengthCtr = 0;
 		if(!(val & P2_ENABLE))
 			mmc5_p2LengthCtr = 0;
-		/*if(!(val & DMC_ENABLE))
-			mmc5_dmcCurLen = 0;
-		else if(mmc5_dmcCurLen == 0)
-		{
-			mmc5_dmcCurAddr = mmc5_dmcAddr;
-			mmc5_dmcCurLen = mmc5_dmcLen;
-		}
-		mmc5_dmc_interrupt = false;*/
 	}
 }
 
 uint8_t mmc5AudioGet8(uint8_t reg)
 {
 	//printf("%08x\n", reg);
-	if(reg == 0x15)
+	if(reg == 0x10)
 	{
-		uint8_t intrflags = ((mmc5_dmc_interrupt<<7));
-		//printf("Get 0x15 %02x\n",intrflags);
-		return ((mmc5_p1LengthCtr > 0) | ((mmc5_p2LengthCtr > 0)<<1) | intrflags);
+		uint8_t intrflag = (mmc5_dmc_interrupt<<7);
+		//printf("Get 0x10 %02x\n",intrflag);
+		mmc5_dmc_interrupt = false;
+		return intrflag;
 	}
+	else if(reg == 0x15)
+		return (mmc5_p1LengthCtr > 0) | ((mmc5_p2LengthCtr > 0)<<1);
 	return MMC5_IO_Reg[reg];
 }

@@ -143,61 +143,67 @@ uint8_t m5get8(uint16_t addr, uint8_t val)
 		switch(m5_prg_bank_mode)
 		{
 			case 0:
-				return m5_prgROM[(((m5_PRGBank[3]&~3)<<13)+(addr&0x7FFF))&m5_prgROMand];
+				val = m5_prgROM[(((m5_PRGBank[3]&~3)<<13)+(addr&0x7FFF))&m5_prgROMand];
+				break;
 			case 1:
 				if(addr < 0xC000)
 				{
 					if(m5_PRGBankType[1] == 1) //ROM
-						return m5_prgROM[(((m5_PRGBank[1]&~1)<<13)+(addr&0x3FFF))&m5_prgROMand];
+						val = m5_prgROM[(((m5_PRGBank[1]&~1)<<13)+(addr&0x3FFF))&m5_prgROMand];
 					else //RAM
-						return m5_prgRAM[((((m5_PRGBank[1]&~1)<<13)+(addr&0x3FFF))&m5_prgRAMand)|m5_prgRAMadd[1]];
+						val = m5_prgRAM[((((m5_PRGBank[1]&~1)<<13)+(addr&0x3FFF))&m5_prgRAMand)|m5_prgRAMadd[1]];
 				}
 				else
-					return m5_prgROM[(((m5_PRGBank[3]&~1)<<13)+(addr&0x3FFF))&m5_prgROMand];
+					val = m5_prgROM[(((m5_PRGBank[3]&~1)<<13)+(addr&0x3FFF))&m5_prgROMand];
+				break;
 			case 2:
 				if(addr < 0xC000)
 				{
 					if(m5_PRGBankType[1] == 1) //ROM
-						return m5_prgROM[(((m5_PRGBank[1]&~1)<<13)+(addr&0x3FFF))&m5_prgROMand];
+						val = m5_prgROM[(((m5_PRGBank[1]&~1)<<13)+(addr&0x3FFF))&m5_prgROMand];
 					else //RAM
-						return m5_prgRAM[((((m5_PRGBank[1]&~1)<<13)+(addr&0x3FFF))&m5_prgRAMand)|m5_prgRAMadd[1]];
+						val = m5_prgRAM[((((m5_PRGBank[1]&~1)<<13)+(addr&0x3FFF))&m5_prgRAMand)|m5_prgRAMadd[1]];
 				}
 				else if(addr < 0xE000)
 				{
 					if(m5_PRGBankType[2] == 1) //ROM
-						return m5_prgROM[((m5_PRGBank[2]<<13)+(addr&0x1FFF))&m5_prgROMand];
+						val = m5_prgROM[((m5_PRGBank[2]<<13)+(addr&0x1FFF))&m5_prgROMand];
 					else //RAM
-						return m5_prgRAM[(((m5_PRGBank[2]<<13)+(addr&0x1FFF))&m5_prgRAMand)|m5_prgRAMadd[2]];
+						val = m5_prgRAM[(((m5_PRGBank[2]<<13)+(addr&0x1FFF))&m5_prgRAMand)|m5_prgRAMadd[2]];
 				}
 				else
-					return m5_prgROM[((m5_PRGBank[3]<<13)+(addr&0x1FFF))&m5_prgROMand];
+					val = m5_prgROM[((m5_PRGBank[3]<<13)+(addr&0x1FFF))&m5_prgROMand];
+				break;
 			case 3:
 				if(addr < 0xA000)
 				{
 					if(m5_PRGBankType[0] == 1) //ROM
-						return m5_prgROM[((m5_PRGBank[0]<<13)+(addr&0x1FFF))&m5_prgROMand];
+						val = m5_prgROM[((m5_PRGBank[0]<<13)+(addr&0x1FFF))&m5_prgROMand];
 					else //RAM
-						return m5_prgRAM[(((m5_PRGBank[0]<<13)+(addr&0x1FFF))&m5_prgRAMand)|m5_prgRAMadd[0]];
+						val = m5_prgRAM[(((m5_PRGBank[0]<<13)+(addr&0x1FFF))&m5_prgRAMand)|m5_prgRAMadd[0]];
 				}
 				else if(addr < 0xC000)
 				{
 					if(m5_PRGBankType[1] == 1) //ROM
-						return m5_prgROM[((m5_PRGBank[1]<<13)+(addr&0x1FFF))&m5_prgROMand];
+						val = m5_prgROM[((m5_PRGBank[1]<<13)+(addr&0x1FFF))&m5_prgROMand];
 					else //RAM
-						return m5_prgRAM[(((m5_PRGBank[1]<<13)+(addr&0x1FFF))&m5_prgRAMand)|m5_prgRAMadd[1]];
+						val = m5_prgRAM[(((m5_PRGBank[1]<<13)+(addr&0x1FFF))&m5_prgRAMand)|m5_prgRAMadd[1]];
 				}
 				else if(addr < 0xE000)
 				{
 					if(m5_PRGBankType[2] == 1) //ROM
-						return m5_prgROM[((m5_PRGBank[2]<<13)+(addr&0x1FFF))&m5_prgROMand];
+						val = m5_prgROM[((m5_PRGBank[2]<<13)+(addr&0x1FFF))&m5_prgROMand];
 					else //RAM
-						return m5_prgRAM[(((m5_PRGBank[2]<<13)+(addr&0x1FFF))&m5_prgRAMand)|m5_prgRAMadd[2]];
+						val = m5_prgRAM[(((m5_PRGBank[2]<<13)+(addr&0x1FFF))&m5_prgRAMand)|m5_prgRAMadd[2]];
 				}
 				else
-					return m5_prgROM[((m5_PRGBank[3]<<13)+(addr&0x1FFF))&m5_prgROMand];
+					val = m5_prgROM[((m5_PRGBank[3]<<13)+(addr&0x1FFF))&m5_prgROMand];
+				break;
 			default:
 				break;
 		}
+		if(addr < 0xC000 && mmc5_dmcreadmode)
+			mmc5AudioPCMWrite(val);
 	}
 	return val;
 }

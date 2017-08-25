@@ -204,26 +204,30 @@ uint8_t nsfget8(uint16_t addr, uint8_t val)
 			nsf_playing = false;
 			return 0x45; //high addr, 0x456A
 		}
-		return val;
 	}
 	else 
 	{
 		if(addr < 0x8000 && (!fdsEnabled || !nsf_bankEnable))
-			return nsf_prgRAM[addr&0x1FFF];
-		uint32_t romAddr = nsfgetromAddr(addr);
-		if(romAddr >= nsf_loadAddr && (romAddr-nsf_loadAddr) < nsf_prgROMsize)
-		{
-			uint8_t ret = nsf_prgROM[romAddr-nsf_loadAddr];
-			//printf("Ret from ROM %04x with %02x\n", romAddr-nsf_loadAddr, ret);
-			if(addr < 0xE000 && fdsEnabled)
-				nsf_FillRAM[addr-0x6000] = ret;
-			return ret;
-		}
-		else if(addr < 0xE000 && fdsEnabled)
-			return nsf_FillRAM[addr-0x6000];
+			val = nsf_prgRAM[addr&0x1FFF];
 		else
-			return 0;
+		{
+			uint32_t romAddr = nsfgetromAddr(addr);
+			if(romAddr >= nsf_loadAddr && (romAddr-nsf_loadAddr) < nsf_prgROMsize)
+			{
+				val = nsf_prgROM[romAddr-nsf_loadAddr];
+				//printf("Ret from ROM %04x with %02x\n", romAddr-nsf_loadAddr, val);
+				if(addr < 0xE000 && fdsEnabled)
+					nsf_FillRAM[addr-0x6000] = val;
+			}
+			else if(addr < 0xE000 && fdsEnabled)
+				val = nsf_FillRAM[addr-0x6000];
+			else //ROM data not available so return 0
+				val = 0;
+			if(mmc5enabled && addr >= 0x8000 && addr < 0xC000 && mmc5_dmcreadmode)
+				mmc5AudioPCMWrite(val);
+		}
 	}
+	return val;
 }
 
 void nsfset8(uint16_t addr, uint8_t val)

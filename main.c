@@ -35,7 +35,7 @@
 #define DEBUG_KEY 0
 #define DEBUG_LOAD_INFO 1
 
-static const char *VERSION_STRING = "fixNES Alpha v0.9.5";
+static const char *VERSION_STRING = "fixNES Alpha v0.9.6";
 static char window_title[256];
 static char window_title_pause[256];
 
@@ -138,7 +138,9 @@ int main(int argc, char** argv)
 			return EXIT_SUCCESS;
 		}
 		nesEmuFileClose();
-		nesPAL = (strstr(emuFileName,"(E)") != NULL);
+		nesPAL = (strstr(emuFileName,"(E)") != NULL) || (strstr(emuFileName,"(Europe)") != NULL) || (strstr(emuFileName,"(Australia)") != NULL)
+			|| (strstr(emuFileName,"(France)") != NULL) || (strstr(emuFileName,"(Germany)") != NULL) || (strstr(emuFileName,"(Italy)") != NULL)
+			|| (strstr(emuFileName,"(Spain)") != NULL) || (strstr(emuFileName,"(Sweden)") != NULL);
 		uint8_t mapper = ((emuNesROM[6] & 0xF0) >> 4) | ((emuNesROM[7] & 0xF0));
 		emuSaveEnabled = (emuNesROM[6] & (1<<1)) != 0;
 		bool trainer = (emuNesROM[6] & (1<<2)) != 0;

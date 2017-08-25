@@ -425,7 +425,7 @@ bool apuCycle()
 	if(mmc5enabled)
 	{
 		mmc5AudioCycle();
-		curIn += pulseLookupTbl[mmc5Out];
+		curIn += pulseLookupTbl[mmc5Out]+(mmc5pcm*0.002f);
 		curIn *= 0.75f;
 	}
 	if(vrc7enabled)
@@ -459,7 +459,7 @@ bool apuCycle()
 	if(mmc5enabled)
 	{
 		mmc5AudioCycle();
-		curIn += pulseLookupTbl[mmc5Out];
+		curIn += pulseLookupTbl[mmc5Out]+(mmc5pcm<<6);
 		curIn *= 3; curIn >>= 2;
 	}
 	if(vrc7enabled)
