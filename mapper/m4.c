@@ -250,9 +250,9 @@ uint8_t m4chrGet8(uint16_t addr)
 	if(m4_chr_bank_flip)
 		addr ^= 0x1000;
 	if(addr < 0x800)
-		return m4_chrROM[(((m4_CHRBank[0]<<10)+(addr&0x7FF))&m4_chrROMand)|m4_chrROMadd];
+		return m4_chrROM[((((m4_CHRBank[0]&~1)<<10)+(addr&0x7FF))&m4_chrROMand)|m4_chrROMadd];
 	else if(addr < 0x1000)
-		return m4_chrROM[(((m4_CHRBank[1]<<10)+(addr&0x7FF))&m4_chrROMand)|m4_chrROMadd];
+		return m4_chrROM[((((m4_CHRBank[1]&~1)<<10)+(addr&0x7FF))&m4_chrROMand)|m4_chrROMadd];
 	else if(addr < 0x1400)
 		return m4_chrROM[(((m4_CHRBank[2]<<10)+(addr&0x3FF))&m4_chrROMand)|m4_chrROMadd];
 	else if(addr < 0x1800)
