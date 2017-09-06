@@ -73,7 +73,6 @@ void mmc5AudioInit()
 	mmc5enabled = true;
 }
 
-extern uint32_t cpu_oam_dma;
 void mmc5AudioClockTimers()
 {
 	if(mmc5_p1freqCtr)

@@ -15,6 +15,7 @@ void apuDeinitBufs();
 void apuInit();
 bool apuCycle();
 void apuClockTimers();
+void apuWriteDMCBuf(uint8_t val);
 uint8_t *apuGetBuf();
 uint32_t apuGetBufSize();
 uint32_t apuGetFrequency();

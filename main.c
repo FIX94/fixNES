@@ -35,7 +35,7 @@
 #define DEBUG_KEY 0
 #define DEBUG_LOAD_INFO 1
 
-static const char *VERSION_STRING = "fixNES Alpha v0.9.8";
+static const char *VERSION_STRING = "fixNES Alpha v1.0.0";
 static char window_title[256];
 static char window_title_pause[256];
 
@@ -116,6 +116,8 @@ static uint16_t ppuCycleTimer;
 static uint16_t cpuCycleTimer;
 //from input.c
 extern uint8_t inValReads[8];
+//from mapper.c
+extern bool mapperUse78A;
 
 int main(int argc, char** argv)
 {
@@ -172,10 +174,23 @@ int main(int argc, char** argv)
 		memInit();
 		apuInit();
 		inputInit();
+		if(emuNesROM[6] & 8)
+			ppuSetNameTbl4Screen();
+		else if(emuNesROM[6] & 1)
+			ppuSetNameTblVertical();
+		else
+			ppuSetNameTblHorizontal();
 		#if DEBUG_LOAD_INFO
 		printf("Used Mapper: %i\n", mapper);
 		printf("PRG: 0x%x bytes PRG RAM: 0x%x bytes CHR: 0x%x bytes\n", prgROMsize, emuPrgRAMsize, chrROMsize);
 		#endif
+		if(mapper == 78)
+		{
+			if(strstr(emuFileName,"Holy Diver") != NULL)
+				mapperUse78A = true;
+			else
+				mapperUse78A = false;
+		}
 		if(!mapperInit(mapper, prgROM, prgROMsize, emuPrgRAM, emuPrgRAMsize, chrROM, chrROMsize))
 		{
 			printf("Mapper init failed!\n");
@@ -184,15 +199,9 @@ int main(int argc, char** argv)
 			getc(stdin);
 			return EXIT_SUCCESS;
 		}
-		if(emuNesROM[6] & 8)
-			ppuSetNameTbl4Screen();
-		else if(emuNesROM[6] & 1)
-			ppuSetNameTblVertical();
-		else
-			ppuSetNameTblHorizontal();
 		#if DEBUG_LOAD_INFO
-		printf("Trainer: %i Saving: %i VRAM Mode: %s\n", trainer, emuSaveEnabled, (emuNesROM[6] & 1) ? "Vertical" : 
-			((!(emuNesROM[6] & 1)) ? "Horizontal" : "4-Screen"));
+		printf("Trainer: %i Saving: %i VRAM Mode: %s\n", trainer, emuSaveEnabled, (emuNesROM[6] & 8) ? "4-Screen" : 
+			((emuNesROM[6] & 1) ? "Vertical" : "Horizontal"));
 		#endif
 		sprintf(window_title, "%s NES - %s\n", nesPAL ? "PAL" : "NTSC", VERSION_STRING);
 		if(emuSaveEnabled)
@@ -708,7 +717,10 @@ static void nesEmuMainLoop(void)
 				#endif
 				glutPostRedisplay();
 				if(ppuDebugPauseFrame)
+				{
+					ppuDebugPauseFrame = false;
 					nesPause = true;
+				}
 				if(nesEmuNSFPlayback)
 					nsfVsync();
 			}

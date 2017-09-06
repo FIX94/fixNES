@@ -16,15 +16,18 @@
 #include "../apu.h"
 #include "../ppu.h"
 #include "../audio_fds.h"
-#include "../audio_mmc5.h"
 #include "../audio_vrc6.h"
 #include "../audio_vrc7.h"
+#include "../audio_mmc5.h"
+#include "../audio_n163.h"
 
 static uint8_t *nsf_prgROM;
 static uint8_t *nsf_prgRAM;
 static uint8_t nsf_FillRAM[0x8000];
 static uint32_t nsf_prgROMsize;
 static uint32_t nsf_prgRAMsize;
+static uint32_t nsf_InitPRGBank[8];
+static uint32_t nsf_InitRAMBank[2];
 static uint32_t nsf_PRGBank[8];
 static uint32_t nsf_RAMBank[2];
 static uint16_t nsf_loadAddr;
@@ -55,13 +58,19 @@ static void nsfInitPlayback()
 	nsf_init_timeout = 10; //give it a couple frames
 	memset(nsf_prgRAM, 0, nsf_prgRAMsize);
 	memset(nsf_FillRAM, 0, 0x8000);
+	memcpy(nsf_PRGBank, nsf_InitPRGBank, 8*sizeof(uint32_t));
+	memcpy(nsf_RAMBank, nsf_InitRAMBank, 2*sizeof(uint32_t));
 	cpuInitNSF(nsf_initAddr, nsf_curTrack-1, nesPAL ? 1 : 0);
 	if(vrc6enabled)
 		vrc6AudioInit();
-	if(mmc5enabled)
-		mmc5AudioInit();
+	if(vrc7enabled)
+		vrc7AudioInit();
 	if(fdsEnabled)
 		fdsAudioInit();
+	if(mmc5enabled)
+		mmc5AudioInit();
+	if(n163enabled)
+		n163AudioInit();
 }
 
 #define onOff(x) (x ? "On" : "Off")
@@ -85,22 +94,24 @@ void nsfinit(uint8_t *nsfBIN, uint32_t nsfBINsize, uint8_t *prgRAMin, uint32_t p
 		fdsAudioInit();
 	if((nsfBIN[0x7B]&8) != 0)
 		mmc5AudioInit();
+	if((nsfBIN[0x7B]&0x10) != 0)
+		n163AudioInit();
 	nsf_bankEnable = false;
 	uint8_t i;
 	for(i = 0; i < 8; i++)
 	{
-		nsf_PRGBank[i] = (nsfBIN[0x70+i]<<12);
-		if(i == 6) nsf_RAMBank[0] = nsf_PRGBank[i];
-		if(i == 7) nsf_RAMBank[1] = nsf_PRGBank[i];
-		if(nsf_PRGBank[i] != 0)
+		nsf_InitPRGBank[i] = (nsfBIN[0x70+i]<<12);
+		if(i == 6) nsf_InitRAMBank[0] = nsf_InitPRGBank[i];
+		if(i == 7) nsf_InitRAMBank[1] = nsf_InitPRGBank[i];
+		if(nsf_InitPRGBank[i] != 0)
 			nsf_bankEnable = true;
 	}
 	if(nsf_bankEnable) nsf_loadAddr &= 0xFFF;
 	nsf_curTrack = 1;
 	nsf_trackTotal = nsfBIN[6];
 	memset(nsf_prevValReads, 0, 8);
-	printf("NSF Player inited in %s Mode (VRC6 %s, VRC7 %s, FDS %s, MMC5 %s) %s banking\n", nesPAL ? "PAL" : "NTSC", 
-		onOff(vrc6enabled), onOff(vrc7enabled), onOff(fdsEnabled), onOff(mmc5enabled), nsf_bankEnable ? "with" : "without");
+	printf("NSF Player inited in %s Mode (VRC6 %s, VRC7 %s, FDS %s, MMC5 %s, N163 %s) %s banking\n", nesPAL ? "PAL" : "NTSC", 
+		onOff(vrc6enabled), onOff(vrc7enabled), onOff(fdsEnabled), onOff(mmc5enabled), onOff(n163enabled), nsf_bankEnable ? "with" : "without");
 	if(nsfBIN[0xE] != 0) printf("Playing back %.32s\n", nsfBIN+0xE);
 	//printf("Track %i/%i         ", nsf_curTrack, nsf_trackTotal);
 	ppuDrawNSFTrackNum(nsf_curTrack, nsf_trackTotal);
@@ -167,6 +178,12 @@ uint8_t nsfget8(uint16_t addr, uint8_t val)
 				return fdsAudioGetWave(addr&0x3F);
 			else if(addr == 0x4090 || addr == 0x4092)
 				return fdsAudioGet8(addr&3);
+		}
+		/* N163 Regs */
+		if(n163enabled)
+		{
+			if(addr >= 0x4800 && addr < 0x5000)
+				return n163AudioGet8(addr, val);
 		}
 		/* MMC5 Regs */
 		if(mmc5enabled)
@@ -241,6 +258,12 @@ void nsfset8(uint16_t addr, uint8_t val)
 		else if(addr >= 0x4080 && addr <= 0x408A)
 			fdsAudioSet8(addr&0x1F, val);
 	}
+	/* N163 Regs */
+	if(n163enabled)
+	{
+		if(addr >= 0x4800 && addr < 0x5000)
+			n163AudioSet8(addr, val);
+	}
 	/* MMC5 Regs */
 	if(mmc5enabled)
 	{
@@ -286,6 +309,8 @@ void nsfset8(uint16_t addr, uint8_t val)
 			nsf_prgRAM[addr&0x1FFF] = val;
 		else if(addr < 0xE000 && fdsEnabled)
 			nsf_FillRAM[addr-0x6000] = val;
+		else if(n163enabled && addr >= 0xF800)
+			n163AudioSet8(addr, val);
 		else if(vrc6enabled && ((addr >= 0x9000 && addr <= 0x9003) ||
 								(addr >= 0xA000 && addr <= 0xA002) ||
 								(addr >= 0xB000 && addr <= 0xB002)))
@@ -320,6 +345,8 @@ void nsfcycle()
 		fdsAudioClockTimers();
 	if(mmc5enabled)
 		mmc5AudioClockTimers();
+	if(n163enabled)
+		n163AudioClockTimers();
 
 	if(inValReads[BUTTON_RIGHT] && !nsf_prevValReads[BUTTON_RIGHT])
 	{

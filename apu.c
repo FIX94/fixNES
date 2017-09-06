@@ -15,6 +15,7 @@
 #include "audio_mmc5.h"
 #include "audio_vrc6.h"
 #include "audio_vrc7.h"
+#include "audio_n163.h"
 #include "audio.h"
 #include "mem.h"
 #include "cpu.h"
@@ -53,19 +54,21 @@ static uint16_t triFreq;
 static uint16_t noiseFreq;
 static uint16_t noiseShiftReg;
 static uint16_t dmcFreq;
-static uint16_t dmcAddr, dmcLen, dmcSampleBuf;
+static uint16_t dmcAddr, dmcLen;
 static uint16_t dmcCurAddr, dmcCurLen;
 static uint8_t p1LengthCtr, p2LengthCtr, noiseLengthCtr;
 static uint8_t triLengthCtr, triLinearCtr, triCurLinearCtr;
 static uint8_t dmcVol, dmcCurVol;
 static uint8_t dmcSampleRemain;
+static uint8_t dmcSampleBuf, dmcCpuBuf;
 static bool mode5 = false;
 static uint8_t modePos = 0;
 static uint16_t modeCurCtr = 0;
 static uint16_t p1freqCtr, p2freqCtr, triFreqCtr, noiseFreqCtr, dmcFreqCtr;
 static uint8_t p1Cycle, p2Cycle, triCycle;
 static bool p1haltloop, p2haltloop, trihaltloop, noisehaltloop, dmchaltloop;
-static bool dmcstart;
+static bool dmcenabled;
+static bool dmcready;
 static bool dmcirqenable;
 static bool trireload;
 static bool noiseMode1;
@@ -151,6 +154,9 @@ static const uint8_t *p1seq = pulseSeqs[0],
 					*p2seq = pulseSeqs[1];
 extern bool dmc_interrupt;
 
+extern bool cpu_dmc_dma;
+extern uint16_t cpu_dmc_dma_addr;
+
 #define M_2_PI 6.28318530717958647692
 
 extern bool nesPAL;
@@ -220,12 +226,13 @@ void apuInit()
 	memset(apuOutBuf, 0, apuBufSizeBytes);
 	curBufPos = 0;
 
-	freq1 = 0; freq2 = 0; triFreq = 0; noiseFreq = 0, dmcFreq = 0;
+	freq1 = 0; freq2 = 0; triFreq = 0; noiseFreq = 0, dmcFreq = dmcPeriod[0];
 	noiseShiftReg = 1;
 	p1LengthCtr = 0; p2LengthCtr = 0;
 	noiseLengthCtr = 0;	triLengthCtr = 0;
 	triLinearCtr = 0; triCurLinearCtr = 0;
-	dmcAddr = 0, dmcLen = 0, dmcVol = 0; dmcSampleBuf = 0;
+	dmcAddr = 0, dmcLen = 0, dmcVol = 0;
+	dmcSampleBuf = 0; dmcCpuBuf = 0;
 	dmcCurAddr = 0, dmcCurLen = 0; dmcCurVol = 0;
 	dmcSampleRemain = 0;
 	p1freqCtr = 0; p2freqCtr = 0; triFreqCtr = 0, noiseFreqCtr = 0, dmcFreqCtr = 0;
@@ -242,15 +249,54 @@ void apuInit()
 
 	p1haltloop = false;	p2haltloop = false;
 	trihaltloop = false; noisehaltloop = false;
-	dmcstart = false;
+	dmcenabled = false;
+	dmcready = false;
 	dmcirqenable = false;
 	trireload = false;
 	noiseMode1 = false;
 	//4017 starts out as 0, so enable
 	apu_enable_irq = true;
 }
+extern int testCounter;
+void apuWriteDMCBuf(uint8_t val)
+{
+	dmcready = true;
+	dmcCpuBuf = val;
+	dmcCurAddr++;
+	if(dmcCurAddr < 0x8000)
+		dmcCurAddr |= 0x8000;
+	if(!dmcCurLen)
+	{
+		if(dmchaltloop)
+		{
+			dmcCurAddr = dmcAddr;
+			dmcCurLen = dmcLen;
+		}
+		else if(dmcirqenable)
+		{
+			//printf("DMC IRQ\n");
+			dmc_interrupt = true;
+		}
+	}
+}
 
-extern uint32_t cpu_oam_dma;
+static bool apu_mode_change = false;
+static bool apu_new_mode5 = false;
+extern bool cpu_odd_cycle;
+
+static void apuChangeMode()
+{
+	if(!cpu_odd_cycle)
+		return;
+	apu_mode_change = false;
+	mode5 = apu_new_mode5;
+	modePos = 5;
+	if(mode5)
+		modeCurCtr = 1;
+	else
+		modeCurCtr = nesPAL ? 8315 : 7459;
+}
+
 void apuClockTimers()
 {
 	if(p1freqCtr)
@@ -299,7 +345,7 @@ void apuClockTimers()
 	if(dmcFreqCtr == 0)
 	{
 		dmcFreqCtr = dmcFreq;
-		if(dmcSampleRemain)
+		if(dmcenabled)
 		{
 			if(dmcSampleBuf&1)
 			{
@@ -309,39 +355,30 @@ void apuClockTimers()
 			else if(dmcVol >= 2)
 				dmcVol -= 2;
 			dmcSampleBuf>>=1;
-			dmcSampleRemain--;
 		}
-		if(!dmcSampleRemain)
+		if(dmcSampleRemain)
+			dmcSampleRemain--;
+		if(dmcSampleRemain == 0)
 		{
-			if(dmcCurLen)
+			if(dmcready)
 			{
-				dmcSampleBuf = memGet8(dmcCurAddr);
-				if(cpu_oam_dma > 0)
-					cpuIncWaitCycles(2);
-				else
-					cpuIncWaitCycles(4);
-				dmcCurAddr++;
-				if(dmcCurAddr < 0x8000)
-					dmcCurAddr |= 0x8000;
-				dmcCurLen--;
-				if(!dmcCurLen)
-				{
-					if(dmchaltloop)
-					{
-						dmcCurAddr = dmcAddr;
-						dmcCurLen = dmcLen;
-					}
-					else if(dmcirqenable)
-					{
-						//printf("DMC IRQ\n");
-						dmc_interrupt = true;
-					}
-				}
-				dmcSampleRemain = 8;
+				dmcSampleBuf = dmcCpuBuf;
+				dmcenabled = true;
+				dmcready = false;
 			}
+			else
+				dmcenabled = false;
+			dmcSampleRemain = 8;
 		}
 	}
+	if(!dmcready && !cpu_dmc_dma && dmcCurLen)
+	{
+		cpu_dmc_dma = true;
+		cpu_dmc_dma_addr = dmcCurAddr;
+		dmcCurLen--;
+	}
 }
+
 #if AUDIO_FLOAT
 static float lastHPOut = 0, lastLPOut = 0;
 #else
@@ -433,6 +470,11 @@ bool apuCycle()
 		curIn += (((float)(vrc7Out>>7))/32768.f);
 		curIn *= 0.75f;
 	}
+	if(n163enabled)
+	{
+		curIn += ((float)n163Out)*0.0008f;
+		curIn *= 0.6667f;
+	}
 	//amplify input
 	curIn *= 3.0f;
 	float curLPout = lastLPOut+(lpVal*(curIn-lastLPOut));
@@ -466,6 +508,11 @@ bool apuCycle()
 	{
 		curIn += vrc7Out>>7;
 		curIn *= 3; curIn >>= 2;
+	}
+	if(n163enabled)
+	{
+		curIn += n163Out*26;
+		curIn <<= 1; curIn /= 3;
 	}
 	//amplify input
 	curIn *= 3;
@@ -603,6 +650,9 @@ extern bool apu_interrupt;
 
 void apuLenCycle()
 {
+	if(apu_mode_change)
+		apuChangeMode();
+
 	if(mmc5enabled)
 		mmc5AudioLenCycle();
 
@@ -612,6 +662,10 @@ void apuLenCycle()
 			modeCurCtr--;
 		if(modeCurCtr == 0)
 		{
+			modePos++;
+			if(modePos >= 4)
+				modePos = 0;
+			modeCurCtr = mode4Ctr[modePos];
 			if(modePos == 1)
 				apuClockA();
 			if(modePos == 3)
@@ -621,10 +675,6 @@ void apuLenCycle()
 					apu_interrupt = true;
 			}
 			apuClockB();
-			modePos++;
-			if(modePos >= 4)
-				modePos = 0;
-			modeCurCtr = mode4Ctr[modePos];
 		}
 	}
 	else
@@ -633,14 +683,14 @@ void apuLenCycle()
 			modeCurCtr--;
 		if(modeCurCtr == 0)
 		{
-			if(modePos == 0 || modePos == 2)
-				apuClockA();
-			if(modePos != 4)
-				apuClockB();
 			modePos++;
 			if(modePos >= 5)
 				modePos = 0;
 			modeCurCtr = mode5Ctr[modePos];
+			if(modePos == 0 || modePos == 2)
+				apuClockA();
+			if(modePos != 4)
+				apuClockB();
 		}
 	}
 }
@@ -809,13 +859,9 @@ void apuSet8(uint8_t reg, uint8_t val)
 		apu_enable_irq = ((val&(1<<6)) == 0);
 		if(!apu_enable_irq)
 			apu_interrupt = false;
-		mode5 = ((val&(1<<7)) != 0);
-		//printf("Set 0x17 %d %d\n", apu_enable_irq, mode5);
-		modePos = 0;
-		if(mode5)
-			modeCurCtr = 1;
-		else
-			modeCurCtr = nesPAL ? 8315 : 7459;
+		apu_new_mode5 = ((val&(1<<7)) != 0);
+		//printf("Set 0x17 %d %d\n", apu_enable_irq, apu_new_mode5);
+		apu_mode_change = true;
 	}
 }
 

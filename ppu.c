@@ -89,6 +89,8 @@ static uint32_t PPU_BGRLUT[0x200];
 static uint8_t PPU_Sprites[0x20];
 
 static uint16_t ppuNameTbl[4] = { 0, 0, 0, 0 };
+//Initial settings for Namco 175
+static uint16_t ppuNameTblBak[4] = { 0, 0, 0, 0 };
 
 //static uint32_t ppuCycles;
 static uint16_t curLine;
@@ -102,6 +104,7 @@ static uint8_t ppuVramReadBuf;
 static uint8_t ppuOAMpos;
 static uint8_t ppuOAM2pos;
 static uint8_t ppuOAMcpPos;
+static uint8_t ppuOAMzSpritePos;
 static uint8_t ppuFineXScroll;
 static uint8_t ppuSpriteTilePos;
 static uint16_t ppuBGValA;
@@ -159,6 +162,7 @@ void ppuInit()
 	ppuOAMpos = 0;
 	ppuOAM2pos = 0;
 	ppuOAMcpPos = 0;
+	ppuOAMzSpritePos = 0;
 	ppuFineXScroll = 0;
 	ppuSpriteTilePos = 0;
 	ppuBGRegA = 0;
@@ -224,6 +228,7 @@ static inline uint16_t ppuGetVramTbl(uint16_t tblStart)
 }
 extern bool nesEmuNSFPlayback;
 static uint8_t ppuSprite0hit = 0;
+static uint8_t ppuSpriteOverflow = 0;
 bool ppuCycle()
 {
 	ppuCurNMIStat = !!(PPU_Reg[0] & PPU_FLAG_NMI);
@@ -324,7 +329,7 @@ bool ppuCycle()
 					ppuVramAddr++;
 			}
 			/* update Y position for writes */
-			if(curDot == VISIBLE_DOTS)
+			if(curDot == 251)
 			{
 				if(((ppuVramAddr>>12)&7) != 7)
 					ppuVramAddr += (1<<12);
@@ -394,13 +399,11 @@ bool ppuCycle()
 		ppuBGAttribRegA |= ppuBGAttribValA;
 		ppuBGAttribRegB |= ppuBGAttribValB;
 		curCol = ppuDoSprites(curCol, curDot);
-		if((curCol&3) == 0) //0,4,8 and C wrap
-			curCol &= ~0x10; //down to 0x00
 		/* make sure to to clip top and bottom if requested */
 		if(doOverscan && (curLine < 8 || curLine >= 232))
 			curCol = 0xFF;
 		/* If left is clipped, also clip right */
-		if((!(PPU_Reg[1] & PPU_BG_8PX) || !(PPU_Reg[1] & PPU_SPRITE_8PX)) && (curDot < 8 || curDot > 248))
+		if(ppuCurPicOutStat && !(PPU_Reg[1] & (PPU_BG_8PX | PPU_SPRITE_8PX)) && (curDot < 8 || curDot > 248))
 			curCol = 0xFF;
 		/* Draw current dot on screen */
 		size_t drawPos = (curDot)+(curLine<<8);
@@ -420,9 +423,10 @@ bool ppuCycle()
 	}
 
 	/* set to 0 during not visible dots up to post-render line */
-	if(ppuCurPicOutStat && curDot > 257 && curLine < VISIBLE_LINES)
+	if(curDot > 257 && curLine < VISIBLE_LINES)
 	{
-		ppuOAMpos = 0;
+		if(ppuCurPicOutStat)
+			ppuOAMpos = 0;
 		ppuOAMcpPos = 0;
 		ppuCurOverflowAdd = 0;
 		ppuBytesCopied = 0;
@@ -441,6 +445,13 @@ bool ppuCycle()
 	{
 		if((curDot&1) == 0)
 		{
+			if(curDot == 64)
+			{
+				ppuOAMzSpritePos = ppuOAMpos;
+				//OAM Bug in 2C02
+				if(ppuOAMpos & 0xF8)
+					memcpy(PPU_OAM,PPU_OAM + (ppuOAMpos & 0xF8), 8);
+			}
 			ppuTmpOAMVal = PPU_OAM[(ppuOAMpos+ppuOAMcpPos)&0xFF];
 			//printf("%i %i %i %02x\n", ppuOAMpos,  ppuOAMcpPos, (ppuOAMpos+ppuOAMcpPos)&0xFF, ppuTmpOAMVal);
 		}
@@ -456,7 +467,7 @@ bool ppuCycle()
 					if(ppuCurSpriteLn <= curLine && (ppuCurSpriteLn+cSpriteAdd) > curLine)
 					{
 						ppuSearchY = false;
-						if(ppuOAM2pos == 0 && ppuOAMpos == 0)
+						if(ppuOAM2pos == 0 && ppuOAMpos == ppuOAMzSpritePos)
 							ppuNextHasZSprite = true;
 						if(ppuOAM2pos != 0x20)
 						{
@@ -465,9 +476,10 @@ bool ppuCycle()
 						}
 						else
 						{
-							//if(!(PPU_Reg[2] & PPU_FLAG_OVERFLOW))
+							//if(!(PPU_Reg[2] & PPU_FLAG_OVERFLOW) && !ppuSpriteOverflow)
 							//	printf("Overflow with line %i at line %i pos oam %i oam2 %i\n", ppuCurSpriteLn, curLine, ppuOAMpos, ppuOAM2pos);
-							PPU_Reg[2] |= PPU_FLAG_OVERFLOW;
+							if(!(PPU_Reg[2] & PPU_FLAG_OVERFLOW) && !ppuSpriteOverflow)
+								ppuSpriteOverflow = 3;
 							ppuLineOverflow = true;
 						}
 						ppuBytesCopied++;
@@ -604,6 +616,7 @@ ppuIncreasePos:
 		curLine++;
 		ppuHasZSprite = ppuNextHasZSprite;
 		ppuNextHasZSprite = false; //reset
+		ppuOAMzSpritePos = 0; // reset
 		ppuSpriteTilePos = 0; //reset
 		ppuToDraw = ppuOAM2pos;
 		ppuOAM2pos = 0;
@@ -611,6 +624,13 @@ ppuIncreasePos:
 		memset(PPU_OAM2, ppuTmpOAMVal, 0x20);
 		//printf("Line done\n");
 	}
+	if(ppuSpriteOverflow == 1)
+	{
+		PPU_Reg[2] |= PPU_FLAG_OVERFLOW;
+		ppuSpriteOverflow = 0;
+	}
+	else if(ppuSpriteOverflow > 1)
+		ppuSpriteOverflow--;
 	if(ppuSprite0hit == 1)
 	{
 		PPU_Reg[2] |= PPU_FLAG_SPRITEZERO;
@@ -638,13 +658,15 @@ ppuIncreasePos:
 	}
 	ppuReadReg2 = false;
 	/* VBlank ends at first dot of the pre-render line */
+	if(curDot == 1 && curLine == ppuPreRenderLine)
+		PPU_Reg[2] &= ~(PPU_FLAG_SPRITEZERO | PPU_FLAG_OVERFLOW);
 	/* Though results are better when clearing it a bit later */
 	if(curDot == 3 && curLine == ppuPreRenderLine)
 	{
 		#if PPU_DEBUG_VSYNC
 		printf("PPU End VBlank\n");
 		#endif
-		PPU_Reg[2] &= ~(PPU_FLAG_VBLANK | PPU_FLAG_SPRITEZERO | PPU_FLAG_OVERFLOW);
+		PPU_Reg[2] &= ~(PPU_FLAG_VBLANK);
 	}
 	if(curDot == 8 && curLine == ppuPreRenderLine)
 		ppuNMIallowed = false;
@@ -660,7 +682,7 @@ ppuIncreasePos:
 
 void ppuPrintCurLineDot()
 {
-	printf("%i %i\n", curLine, curDot);
+	printf("%i %i %02x\n", curLine, curDot, ppuOAMpos);
 }
 
 static uint8_t ppuDoBackground(uint8_t color, uint8_t dot)
@@ -709,12 +731,12 @@ static uint8_t ppuDoSprites(uint8_t color, uint8_t dot)
 				sprCol |= 2;
 			if(i == 0 && ppuHasZSprite && dot < 255 && ((color&3) != 0) && (sprCol != 0) && !(PPU_Reg[2] & PPU_FLAG_SPRITEZERO) && !ppuSprite0hit)
 			{
-				ppuSprite0hit = 1;
+				ppuSprite0hit = 5;
 				#if PPU_DEBUG_ULTRA
 				printf("Zero sprite hit at x %i y %i cSpriteDot %i "
 							"table %04x color %02x sprCol %02x\n", dot, curLine, cSpriteDot, ppuGetVramTbl((PPU_Reg[0]&3)<<10), color, sprCol);
 				#endif
-				//if(line != 30)
+				//if(curLine < 224)
 				//	ppuDebugPauseFrame = true;
 			}
 			//done looking at sprites, we have to
@@ -765,14 +787,14 @@ void ppuSet8(uint8_t reg, uint8_t val)
 	else if(reg == 3)
 	{
 		#if PPU_DEBUG_ULTRA
-		printf("ppuOAMpos was %02x set to %02x\n", ppuOAMpos, val);
+		printf("ppuOAMpos at line %i dot %i was %02x set to %02x\n", curLine, curDot, ppuOAMpos, val);
 		#endif
 		ppuOAMpos = val;
 	}
 	else if(reg == 4)
 	{
 		#if PPU_DEBUG_ULTRA
-		printf("Setting OAM at %02x to %02x\n", ppuOAMpos, val);
+		printf("Setting OAM at line %i dot %i addr %02x to %02x\n", curLine, curDot, ppuOAMpos, val);
 		#endif
 		PPU_OAM[ppuOAMpos++] = val;
 	}
@@ -834,7 +856,7 @@ void ppuSet8(uint8_t reg, uint8_t val)
 		{
 			uint8_t palRamAddr = (writeAddr&0x1F);
 			if((palRamAddr&3) == 0)
-				palRamAddr &= ~0x10;
+				PPU_PALRAM[palRamAddr^0x10] = val;
 			PPU_PALRAM[palRamAddr] = val;
 		}
 		ppuVramAddr += (PPU_Reg[0] & PPU_INC_AMOUNT) ? 32 : 1;
@@ -921,15 +943,6 @@ bool ppuNMI()
 	return false;
 }
 
-void ppuLoadOAM(uint8_t val)
-{
-	#if PPU_DEBUG_ULTRA
-	printf("ppuLoadOAM\n");
-	#endif
-	PPU_OAM[ppuOAMpos] = val;
-	ppuOAMpos++;
-}
-
 void ppuDumpMem()
 {
 	FILE *f = fopen("PPU_VRAM.bin","wb");
@@ -985,9 +998,22 @@ void ppuSetNameTbl4Screen()
 
 void ppuSetNameTblCustom(uint16_t addrA, uint16_t addrB, uint16_t addrC, uint16_t addrD)
 {
+	//printf("%04x %04x %04x %04x\n", addrA, addrB, addrC, addrD);
+	//ppuPrintCurLineDot();
 	ppuNameTbl[0] = addrA; ppuNameTbl[1] = addrB; ppuNameTbl[2] = addrC; ppuNameTbl[3] = addrD;
 }
 
+void ppuBackUpTbl()
+{
+	ppuNameTblBak[0] = ppuNameTbl[0]; ppuNameTblBak[1] = ppuNameTbl[1];
+	ppuNameTblBak[2] = ppuNameTbl[2]; ppuNameTblBak[3] = ppuNameTbl[3];  
+}
+
+void ppuRestoreTbl()
+{
+	ppuNameTbl[0] = ppuNameTblBak[0]; ppuNameTbl[1] = ppuNameTblBak[1];
+	ppuNameTbl[2] = ppuNameTblBak[2]; ppuNameTbl[3] = ppuNameTblBak[3];  
+}
 
 //64x12 1BPP "Track"
 static const uint8_t ppuNSFTextTrack[96] =

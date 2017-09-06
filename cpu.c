@@ -37,7 +37,11 @@ bool apu_interrupt;
 bool fds_interrupt;
 bool fds_transfer_interrupt;
 bool cpu_odd_cycle;
-uint32_t cpu_oam_dma;
+bool cpu_oam_dma;
+bool cpu_oam_dma_pause;
+uint16_t cpu_oam_dma_addr;
+bool cpu_dmc_dma;
+uint16_t cpu_dmc_dma_addr;
 extern bool nesPause;
 static bool needsIndFix;
 static bool takeBranch;
@@ -58,7 +62,11 @@ void cpuInit()
 	takeBranch = false;
 	cpuTmp = 0; zPage = 0;
 	absAddr = 0;
-	cpu_oam_dma = 0;
+	cpu_oam_dma = false;
+	cpu_oam_dma_pause = false;
+	cpu_oam_dma_addr = 0;
+	cpu_dmc_dma = false;
+	cpu_dmc_dma_addr = 0;
 	pc = 0;
 	oldPc = 0;
 	indVal = 0;
@@ -368,24 +376,24 @@ static cpu_action_t cpu_action_func;
 
 enum {
 	CPU_GET_INSTRUCTION = 0,
-	CPU_GET_INSTRUCTION_IRQSKIP,
-	CPU_ACTION,
-	CPU_INC_PC,
 	CPU_NULL_READ8_PC,
 	CPU_NULL_READ8_PC_INC,
 	CPU_NULL_READ8_PC_CHK,
 	CPU_NULL_READ8_PC_ACTION,
+	CPU_NULL_READ8_PC_ADDR_ADDX_ZP,
+	CPU_NULL_READ8_PC_ADDR_ADDY_ZP,
+	CPU_NULL_READ8_PC_TMP_ADDX,
+	CPU_NULL_READ8_PC_STACK_INC,
+	CPU_NULL_READ8_PC_STACK_DEC,
+	CPU_NULL_READ8_PC_STACK_DEC_SET_S1_S2_I,
 	CPU_TMP_READ8_PC_INC,
 	CPU_TMP_READ8_PC_INC_ACTION,
+	CPU_PCL_FROM_TMP_PCH_READ8_PC,
 	CPU_ADDR_READ8_PC_INC,
 	CPU_ADDRL_READ8_PC_INC,
 	CPU_ADDRH_READ8_PC_INC,
 	CPU_ADDRH_READ8_PC_INC_ADDX,
 	CPU_ADDRH_READ8_PC_INC_ADDY,
-	CPU_NULL_READ8_ADDR_ADDX_ZP,
-	CPU_NULL_READ8_ADDR_ADDY_ZP,
-	CPU_PCL_FROM_TMP_PCH_READ8_PC,
-	CPU_NULL_READ8_TMP_ADDX,
 	CPU_ADDRL_READ8_TMP_INC,
 	CPU_ADDRH_READ8_TMP,
 	CPU_ADDRH_READ8_TMP_ADDY,
@@ -394,7 +402,6 @@ enum {
 	CPU_ADDR_READ8_ACTION,
 	CPU_ADDR_READ8_ACTION_CHK,
 	CPU_INC_PAGE_ADDR_READ8_SET_PC,
-	CPU_NULL_READ8_S,
 	CPU_ADDR_WRITE8,
 	CPU_ADDR_WRITE8_A,
 	CPU_ADDR_WRITE8_X,
@@ -413,18 +420,15 @@ enum {
 	CPU_CHECK_BMI,
 	CPU_CHECK_BVC,
 	CPU_CHECK_BVS,
-	CPU_STACK_INC,
 	CPU_STACK_GET_A,
 	CPU_STACK_GET_P,
 	CPU_STACK_GET_P_INC,
 	CPU_STACK_GET_PCL_INC,
 	CPU_STACK_GET_PCH,
-	CPU_STACK_DEC,
 	CPU_STACK_STORE_A_DEC,
 	CPU_STACK_STORE_P_DEC,
 	CPU_STACK_STORE_PCH_DEC,
 	CPU_STACK_STORE_PCL_DEC,
-	CPU_STACK_DEC_SET_S1_S2_I,
 	CPU_STACK_STORE_P_DEC_SET_I,
 	CPU_STACK_SET_S1_S2_STORE_P_DEC_SET_I,
 	CPU_STACK_CLEAR_S1_SET_S2_STORE_P_DEC_SET_I,
@@ -434,6 +438,89 @@ enum {
 	CPU_READ_RESETVEC_PCH,
 	CPU_READ_IRQVEC_PCL,
 	CPU_READ_IRQVEC_PCH,
+	CPU_STATE_END,
+};
+
+enum {
+	CPU_READ_PC = 0,
+	CPU_READ_CPUTMP,
+	CPU_READ_ABSADDR,
+	CPU_READ_STACK,
+	CPU_READ_NMIVECL,
+	CPU_READ_NMIVECH,
+	CPU_READ_RESETVECL,
+	CPU_READ_RESETVECH,
+	CPU_READ_IRQVECL,
+	CPU_READ_IRQVECH,
+	CPU_WRITE_ADDR,
+	CPU_WRITE_STACK,
+};
+
+// every cpu state does a mem read/write, this defines all
+static uint8_t cpu_mem_type[CPU_STATE_END] = {
+	CPU_READ_PC,
+	CPU_READ_PC,
+	CPU_READ_PC,
+	CPU_READ_PC,
+	CPU_READ_PC,
+	CPU_READ_PC,
+	CPU_READ_PC,
+	CPU_READ_PC,
+	CPU_READ_PC,
+	CPU_READ_PC,
+	CPU_READ_PC,
+	CPU_READ_PC,
+	CPU_READ_PC,
+	CPU_READ_PC,
+	CPU_READ_PC,
+	CPU_READ_PC,
+	CPU_READ_PC,
+	CPU_READ_PC,
+	CPU_READ_PC,
+	CPU_READ_CPUTMP,
+	CPU_READ_CPUTMP,
+	CPU_READ_CPUTMP,
+	CPU_READ_ABSADDR,
+	CPU_READ_ABSADDR,
+	CPU_READ_ABSADDR,
+	CPU_READ_ABSADDR,
+	CPU_READ_ABSADDR,
+	CPU_WRITE_ADDR,
+	CPU_WRITE_ADDR,
+	CPU_WRITE_ADDR,
+	CPU_WRITE_ADDR,
+	CPU_WRITE_ADDR,
+	CPU_WRITE_ADDR,
+	CPU_WRITE_ADDR,
+	CPU_WRITE_ADDR,
+	CPU_WRITE_ADDR,
+	CPU_WRITE_ADDR,
+	CPU_READ_PC,
+	CPU_READ_PC,
+	CPU_READ_PC,
+	CPU_READ_PC,
+	CPU_READ_PC,
+	CPU_READ_PC,
+	CPU_READ_PC,
+	CPU_READ_PC,
+	CPU_READ_STACK,
+	CPU_READ_STACK,
+	CPU_READ_STACK,
+	CPU_READ_STACK,
+	CPU_READ_STACK,
+	CPU_WRITE_STACK,
+	CPU_WRITE_STACK,
+	CPU_WRITE_STACK,
+	CPU_WRITE_STACK,
+	CPU_WRITE_STACK,
+	CPU_WRITE_STACK,
+	CPU_WRITE_STACK,
+	CPU_READ_NMIVECL,
+	CPU_READ_NMIVECH,
+	CPU_READ_RESETVECL,
+	CPU_READ_RESETVECH,
+	CPU_READ_IRQVECL,
+	CPU_READ_IRQVECH,
 };
 
 static uint8_t cpu_start_arr[1] = { CPU_GET_INSTRUCTION };
@@ -441,20 +528,20 @@ static uint8_t *cpu_action_arr = cpu_start_arr;
 static uint8_t cpu_arr_pos = 0;
 
 /* arrays for non-callable instructions */
-static uint8_t cpu_reset_arr[6] = { CPU_STACK_DEC, CPU_STACK_DEC, CPU_STACK_DEC_SET_S1_S2_I, CPU_READ_RESETVEC_PCL, CPU_READ_RESETVEC_PCH, CPU_GET_INSTRUCTION };
+static uint8_t cpu_reset_arr[6] = { CPU_NULL_READ8_PC_STACK_DEC, CPU_NULL_READ8_PC_STACK_DEC, CPU_NULL_READ8_PC_STACK_DEC_SET_S1_S2_I, CPU_READ_RESETVEC_PCL, CPU_READ_RESETVEC_PCH, CPU_GET_INSTRUCTION };
 static uint8_t cpu_nmi_arr[7] = { CPU_NULL_READ8_PC, CPU_STACK_STORE_PCH_DEC, CPU_STACK_STORE_PCL_DEC, CPU_STACK_CLEAR_S1_SET_S2_STORE_P_DEC_SET_I, CPU_READ_NMIVEC_PCL, CPU_READ_NMIVEC_PCH, CPU_GET_INSTRUCTION };
 static uint8_t cpu_irq_arr[7] = { CPU_NULL_READ8_PC, CPU_STACK_STORE_PCH_DEC, CPU_STACK_STORE_PCL_DEC, CPU_STACK_STORE_P_DEC_SET_I, CPU_READ_IRQVEC_PCL, CPU_READ_IRQVEC_PCH, CPU_GET_INSTRUCTION };
-static uint8_t cpu_kill_arr[2] = { CPU_ACTION, CPU_GET_INSTRUCTION };
+static uint8_t cpu_kill_arr[2] = { CPU_NULL_READ8_PC_ACTION, CPU_GET_INSTRUCTION };
 
 /* arrays for single special instructions */
 static uint8_t cpu_brk_arr[7] = { CPU_NULL_READ8_PC_INC, CPU_STACK_STORE_PCH_DEC, CPU_STACK_STORE_PCL_DEC, CPU_STACK_SET_S1_S2_STORE_P_DEC_SET_I, CPU_READ_IRQVEC_PCL, CPU_READ_IRQVEC_PCH, CPU_GET_INSTRUCTION };
-static uint8_t cpu_rti_arr[6] = { CPU_NULL_READ8_PC, CPU_STACK_INC, CPU_STACK_GET_P_INC, CPU_STACK_GET_PCL_INC, CPU_STACK_GET_PCH, CPU_GET_INSTRUCTION };
-static uint8_t cpu_rts_arr[6] = { CPU_NULL_READ8_PC, CPU_STACK_INC, CPU_STACK_GET_PCL_INC, CPU_STACK_GET_PCH, CPU_INC_PC, CPU_GET_INSTRUCTION };
+static uint8_t cpu_rti_arr[6] = { CPU_NULL_READ8_PC, CPU_NULL_READ8_PC_STACK_INC, CPU_STACK_GET_P_INC, CPU_STACK_GET_PCL_INC, CPU_STACK_GET_PCH, CPU_GET_INSTRUCTION };
+static uint8_t cpu_rts_arr[6] = { CPU_NULL_READ8_PC, CPU_NULL_READ8_PC_STACK_INC, CPU_STACK_GET_PCL_INC, CPU_STACK_GET_PCH, CPU_NULL_READ8_PC_INC, CPU_GET_INSTRUCTION };
 static uint8_t cpu_php_arr[3] = { CPU_NULL_READ8_PC, CPU_STACK_STORE_P_DEC, CPU_GET_INSTRUCTION };
 static uint8_t cpu_pha_arr[3] = { CPU_NULL_READ8_PC, CPU_STACK_STORE_A_DEC, CPU_GET_INSTRUCTION };
-static uint8_t cpu_plp_arr[4] = { CPU_NULL_READ8_PC, CPU_STACK_INC, CPU_STACK_GET_P, CPU_GET_INSTRUCTION };
-static uint8_t cpu_pla_arr[4] = { CPU_NULL_READ8_PC, CPU_STACK_INC, CPU_STACK_GET_A, CPU_GET_INSTRUCTION };
-static uint8_t cpu_jsr_arr[6] = { CPU_TMP_READ8_PC_INC, CPU_NULL_READ8_S, CPU_STACK_STORE_PCH_DEC, CPU_STACK_STORE_PCL_DEC, CPU_PCL_FROM_TMP_PCH_READ8_PC, CPU_GET_INSTRUCTION };
+static uint8_t cpu_plp_arr[4] = { CPU_NULL_READ8_PC, CPU_NULL_READ8_PC_STACK_INC, CPU_STACK_GET_P, CPU_GET_INSTRUCTION };
+static uint8_t cpu_pla_arr[4] = { CPU_NULL_READ8_PC, CPU_NULL_READ8_PC_STACK_INC, CPU_STACK_GET_A, CPU_GET_INSTRUCTION };
+static uint8_t cpu_jsr_arr[6] = { CPU_TMP_READ8_PC_INC, CPU_NULL_READ8_PC, CPU_STACK_STORE_PCH_DEC, CPU_STACK_STORE_PCL_DEC, CPU_PCL_FROM_TMP_PCH_READ8_PC, CPU_GET_INSTRUCTION };
 static uint8_t cpu_absjmp_arr[3] = { CPU_TMP_READ8_PC_INC, CPU_PCL_FROM_TMP_PCH_READ8_PC, CPU_GET_INSTRUCTION };
 static uint8_t cpu_indjmp_arr[5] = { CPU_ADDRL_READ8_PC_INC, CPU_ADDRH_READ8_PC_INC, CPU_ADDR_READ8, CPU_INC_PAGE_ADDR_READ8_SET_PC, CPU_GET_INSTRUCTION };
 
@@ -463,11 +550,11 @@ static uint8_t cpu_zpstx_arr[3] = { CPU_ADDR_READ8_PC_INC, CPU_ADDR_WRITE8_X, CP
 static uint8_t cpu_zpsty_arr[3] = { CPU_ADDR_READ8_PC_INC, CPU_ADDR_WRITE8_Y, CPU_GET_INSTRUCTION };
 static uint8_t cpu_zpaax_arr[3] = { CPU_ADDR_READ8_PC_INC, CPU_ADDR_WRITE8_AX, CPU_GET_INSTRUCTION };
 
-static uint8_t cpu_zpXsta_arr[4] = { CPU_ADDR_READ8_PC_INC, CPU_NULL_READ8_ADDR_ADDX_ZP, CPU_ADDR_WRITE8_A, CPU_GET_INSTRUCTION };
-static uint8_t cpu_zpXsty_arr[4] = { CPU_ADDR_READ8_PC_INC, CPU_NULL_READ8_ADDR_ADDX_ZP, CPU_ADDR_WRITE8_Y, CPU_GET_INSTRUCTION };
+static uint8_t cpu_zpXsta_arr[4] = { CPU_ADDR_READ8_PC_INC, CPU_NULL_READ8_PC_ADDR_ADDX_ZP, CPU_ADDR_WRITE8_A, CPU_GET_INSTRUCTION };
+static uint8_t cpu_zpXsty_arr[4] = { CPU_ADDR_READ8_PC_INC, CPU_NULL_READ8_PC_ADDR_ADDX_ZP, CPU_ADDR_WRITE8_Y, CPU_GET_INSTRUCTION };
 
-static uint8_t cpu_zpYstx_arr[4] = { CPU_ADDR_READ8_PC_INC, CPU_NULL_READ8_ADDR_ADDY_ZP, CPU_ADDR_WRITE8_X, CPU_GET_INSTRUCTION };
-static uint8_t cpu_zpYaax_arr[4] = { CPU_ADDR_READ8_PC_INC, CPU_NULL_READ8_ADDR_ADDY_ZP, CPU_ADDR_WRITE8_AX, CPU_GET_INSTRUCTION };
+static uint8_t cpu_zpYstx_arr[4] = { CPU_ADDR_READ8_PC_INC, CPU_NULL_READ8_PC_ADDR_ADDY_ZP, CPU_ADDR_WRITE8_X, CPU_GET_INSTRUCTION };
+static uint8_t cpu_zpYaax_arr[4] = { CPU_ADDR_READ8_PC_INC, CPU_NULL_READ8_PC_ADDR_ADDY_ZP, CPU_ADDR_WRITE8_AX, CPU_GET_INSTRUCTION };
 
 static uint8_t cpu_abssta_arr[4] = { CPU_ADDRL_READ8_PC_INC, CPU_ADDRH_READ8_PC_INC, CPU_ADDR_WRITE8_A, CPU_GET_INSTRUCTION };
 static uint8_t cpu_absstx_arr[4] = { CPU_ADDRL_READ8_PC_INC, CPU_ADDRH_READ8_PC_INC, CPU_ADDR_WRITE8_X, CPU_GET_INSTRUCTION };
@@ -482,8 +569,8 @@ static uint8_t cpu_absYaxa_arr[5] = { CPU_ADDRL_READ8_PC_INC, CPU_ADDRH_READ8_PC
 static uint8_t cpu_absYxas_arr[5] = { CPU_ADDRL_READ8_PC_INC, CPU_ADDRH_READ8_PC_INC_ADDY, CPU_ADDR_READ8, CPU_ADDR_WRITE8_XAS, CPU_GET_INSTRUCTION };
 static uint8_t cpu_absYsxa_arr[5] = { CPU_ADDRL_READ8_PC_INC, CPU_ADDRH_READ8_PC_INC_ADDY, CPU_ADDR_READ8, CPU_ADDR_WRITE8_SXA, CPU_GET_INSTRUCTION };
 
-static uint8_t cpu_indXsta_arr[6] = { CPU_TMP_READ8_PC_INC, CPU_NULL_READ8_TMP_ADDX, CPU_ADDRL_READ8_TMP_INC, CPU_ADDRH_READ8_TMP, CPU_ADDR_WRITE8_A, CPU_GET_INSTRUCTION };
-static uint8_t cpu_indXaax_arr[6] = { CPU_TMP_READ8_PC_INC, CPU_NULL_READ8_TMP_ADDX, CPU_ADDRL_READ8_TMP_INC, CPU_ADDRH_READ8_TMP, CPU_ADDR_WRITE8_AX, CPU_GET_INSTRUCTION };
+static uint8_t cpu_indXsta_arr[6] = { CPU_TMP_READ8_PC_INC, CPU_NULL_READ8_PC_TMP_ADDX, CPU_ADDRL_READ8_TMP_INC, CPU_ADDRH_READ8_TMP, CPU_ADDR_WRITE8_A, CPU_GET_INSTRUCTION };
+static uint8_t cpu_indXaax_arr[6] = { CPU_TMP_READ8_PC_INC, CPU_NULL_READ8_PC_TMP_ADDX, CPU_ADDRL_READ8_TMP_INC, CPU_ADDRH_READ8_TMP, CPU_ADDR_WRITE8_AX, CPU_GET_INSTRUCTION };
 
 static uint8_t cpu_indYsta_arr[6] = { CPU_TMP_READ8_PC_INC, CPU_ADDRL_READ8_TMP_INC, CPU_ADDRH_READ8_TMP_ADDY, CPU_ADDR_READ8_CHK, CPU_ADDR_WRITE8_A, CPU_GET_INSTRUCTION };
 static uint8_t cpu_indYaxa_arr[6] = { CPU_TMP_READ8_PC_INC, CPU_ADDRL_READ8_TMP_INC, CPU_ADDRH_READ8_TMP_ADDY, CPU_ADDR_READ8_CHK, CPU_ADDR_WRITE8_AXA, CPU_GET_INSTRUCTION };
@@ -529,9 +616,9 @@ static uint8_t cpu_imm_arr[2] = { CPU_TMP_READ8_PC_INC_ACTION, CPU_GET_INSTRUCTI
 static uint8_t cpu_zpread_arr[3] = { CPU_ADDR_READ8_PC_INC, CPU_ADDR_READ8_ACTION, CPU_GET_INSTRUCTION };
 static uint8_t cpu_zpreadwrite_arr[5] = { CPU_ADDR_READ8_PC_INC, CPU_ADDR_READ8, CPU_ADDR_WRITE8_ACTION, CPU_ADDR_WRITE8, CPU_GET_INSTRUCTION };
 
-static uint8_t cpu_zpXread_arr[4] = { CPU_ADDR_READ8_PC_INC, CPU_NULL_READ8_ADDR_ADDX_ZP, CPU_ADDR_READ8_ACTION, CPU_GET_INSTRUCTION };
-static uint8_t cpu_zpYread_arr[4] = { CPU_ADDR_READ8_PC_INC, CPU_NULL_READ8_ADDR_ADDY_ZP, CPU_ADDR_READ8_ACTION, CPU_GET_INSTRUCTION };
-static uint8_t cpu_zpXreadwrite_arr[6] = { CPU_ADDR_READ8_PC_INC, CPU_NULL_READ8_ADDR_ADDX_ZP, CPU_ADDR_READ8, CPU_ADDR_WRITE8_ACTION, CPU_ADDR_WRITE8, CPU_GET_INSTRUCTION };
+static uint8_t cpu_zpXread_arr[4] = { CPU_ADDR_READ8_PC_INC, CPU_NULL_READ8_PC_ADDR_ADDX_ZP, CPU_ADDR_READ8_ACTION, CPU_GET_INSTRUCTION };
+static uint8_t cpu_zpYread_arr[4] = { CPU_ADDR_READ8_PC_INC, CPU_NULL_READ8_PC_ADDR_ADDY_ZP, CPU_ADDR_READ8_ACTION, CPU_GET_INSTRUCTION };
+static uint8_t cpu_zpXreadwrite_arr[6] = { CPU_ADDR_READ8_PC_INC, CPU_NULL_READ8_PC_ADDR_ADDX_ZP, CPU_ADDR_READ8, CPU_ADDR_WRITE8_ACTION, CPU_ADDR_WRITE8, CPU_GET_INSTRUCTION };
 
 static uint8_t cpu_absread_arr[4] = { CPU_ADDRL_READ8_PC_INC, CPU_ADDRH_READ8_PC_INC, CPU_ADDR_READ8_ACTION, CPU_GET_INSTRUCTION };
 static uint8_t cpu_absreadwrite_arr[6] = { CPU_ADDRL_READ8_PC_INC, CPU_ADDRH_READ8_PC_INC, CPU_ADDR_READ8, CPU_ADDR_WRITE8_ACTION, CPU_ADDR_WRITE8, CPU_GET_INSTRUCTION };
@@ -541,8 +628,8 @@ static uint8_t cpu_absYread_arr[5] = { CPU_ADDRL_READ8_PC_INC, CPU_ADDRH_READ8_P
 static uint8_t cpu_absXreadwrite_arr[7] = { CPU_ADDRL_READ8_PC_INC, CPU_ADDRH_READ8_PC_INC_ADDX, CPU_ADDR_READ8_CHK, CPU_ADDR_READ8, CPU_ADDR_WRITE8_ACTION, CPU_ADDR_WRITE8, CPU_GET_INSTRUCTION };
 static uint8_t cpu_absYreadwrite_arr[7] = { CPU_ADDRL_READ8_PC_INC, CPU_ADDRH_READ8_PC_INC_ADDY, CPU_ADDR_READ8_CHK, CPU_ADDR_READ8, CPU_ADDR_WRITE8_ACTION, CPU_ADDR_WRITE8, CPU_GET_INSTRUCTION };
 
-static uint8_t cpu_indXread_arr[6] = { CPU_TMP_READ8_PC_INC, CPU_NULL_READ8_TMP_ADDX, CPU_ADDRL_READ8_TMP_INC, CPU_ADDRH_READ8_TMP, CPU_ADDR_READ8_ACTION, CPU_GET_INSTRUCTION };
-static uint8_t cpu_indXreadwrite_arr[8] = { CPU_TMP_READ8_PC_INC, CPU_NULL_READ8_TMP_ADDX, CPU_ADDRL_READ8_TMP_INC, CPU_ADDRH_READ8_TMP, CPU_ADDR_READ8, CPU_ADDR_WRITE8_ACTION, CPU_ADDR_WRITE8, CPU_GET_INSTRUCTION };
+static uint8_t cpu_indXread_arr[6] = { CPU_TMP_READ8_PC_INC, CPU_NULL_READ8_PC_TMP_ADDX, CPU_ADDRL_READ8_TMP_INC, CPU_ADDRH_READ8_TMP, CPU_ADDR_READ8_ACTION, CPU_GET_INSTRUCTION };
+static uint8_t cpu_indXreadwrite_arr[8] = { CPU_TMP_READ8_PC_INC, CPU_NULL_READ8_PC_TMP_ADDX, CPU_ADDRL_READ8_TMP_INC, CPU_ADDRH_READ8_TMP, CPU_ADDR_READ8, CPU_ADDR_WRITE8_ACTION, CPU_ADDR_WRITE8, CPU_GET_INSTRUCTION };
 static uint8_t cpu_indYread_arr[6] = { CPU_TMP_READ8_PC_INC, CPU_ADDRL_READ8_TMP_INC, CPU_ADDRH_READ8_TMP_ADDY, CPU_ADDR_READ8_ACTION_CHK, CPU_ADDR_READ8_ACTION, CPU_GET_INSTRUCTION };
 static uint8_t cpu_indYreadwrite_arr[8] = { CPU_TMP_READ8_PC_INC, CPU_ADDRL_READ8_TMP_INC, CPU_ADDRH_READ8_TMP_ADDY, CPU_ADDR_READ8_CHK, CPU_ADDR_READ8, CPU_ADDR_WRITE8_ACTION, CPU_ADDR_WRITE8, CPU_GET_INSTRUCTION };
 
@@ -784,11 +871,13 @@ static bool cpuHandleIrqUpdates()
 	{
 		cpuStartPlayNSF();
 		nsf_startPlayback = false;
+		return true;
 	}
 	else if(nsf_endPlayback)
 	{
 		cpuEndPlayNSF();
 		nsf_endPlayback = false;
+		return true;
 	}
 	return false;
 }
@@ -816,22 +905,186 @@ static bool cpuDoAddrIndFix()
 		return false;
 }
 
+static bool cpuDMATryHalt()
+{
+	bool ret = true;
+	uint8_t cpuType = cpu_mem_type[cpu_action_arr[cpu_arr_pos]];
+	switch(cpuType)
+	{
+		case CPU_READ_PC:
+			memGet8(pc);
+			break;
+		case CPU_READ_CPUTMP:
+			memGet8(cpuTmp);
+			break;
+		case CPU_READ_ABSADDR:
+			memGet8(absAddr);
+			break;
+		case CPU_READ_STACK:
+			memGet8(0x100+s);
+			break;
+		case CPU_READ_NMIVECL:
+			memGet8(0xFFFA);
+			break;
+		case CPU_READ_NMIVECH:
+			memGet8(0xFFFB);
+			break;
+		case CPU_READ_RESETVECL:
+			memGet8(0xFFFC);
+			break;
+		case CPU_READ_RESETVECH:
+			memGet8(0xFFFD);
+			break;
+		case CPU_READ_IRQVECL:
+			memGet8(0xFFFE);
+			break;
+		case CPU_READ_IRQVECH:
+			memGet8(0xFFFF);
+			break;
+		default: //CPU_WRITE
+			ret = false;
+			break;
+	}
+	return ret;
+}
+
+static bool cpu_currently_dma = false;
+static uint8_t cpu_oam_dma_ptr = 0;
+static bool cpu_oam_ready = false;
+static bool cpu_dmc_dma_dummyread = false;
+static uint8_t cpu_oam_dma_val = 0;
+
+static bool cpuTryTakeover()
+{
+	//printf("DMA Takeover tick\n");
+	bool cpu_is_read = cpuDMATryHalt();
+	if(cpu_is_read)
+	{
+		//printf("DMA Takeover done\n");
+		cpu_currently_dma = true;	
+		//reset OAM DMA pointer
+		cpu_oam_dma_ptr = 0;
+		//set OAM ready to false
+		cpu_oam_ready = false;
+		//set dmc dummy read to true
+		cpu_dmc_dma_dummyread = true;
+		return true;
+	}
+	return false;
+}
+
+static bool cpu_dmc_halted = false;
+static bool cpu_oam_halted = false;
+static bool dmchaltattempt = false;
+static void cpuDoDMA()
+{
+	if(cpu_dmc_dma)
+	{
+		if(cpu_currently_dma && cpu_dmc_halted)
+		{
+			if(cpu_dmc_dma_dummyread) //1st read always dummy read
+			{
+				cpu_dmc_dma_dummyread = false;
+				if(!cpu_oam_dma || cpu_oam_dma_pause)
+				{
+					cpuDMATryHalt();
+					return;
+				}
+			}
+			else if(!cpu_odd_cycle) //READ on even
+			{
+				//printf("DMC DMA Read %04x %i\n",cpu_dmc_dma_addr,testCounter2);
+				uint8_t dmc_dma_val = memGet8(cpu_dmc_dma_addr);
+				apuWriteDMCBuf(dmc_dma_val);
+				cpu_dmc_dma = false;
+				if(!cpu_oam_halted) //done with DMA
+					cpu_currently_dma = false;
+				//for next dmc dma
+				dmchaltattempt = false;
+				cpu_dmc_halted = false;
+				return;
+			}
+			else //WRITE on odd, possibly another dummy read
+			{
+				if(!cpu_oam_dma || cpu_oam_dma_pause)
+				{
+					cpuDMATryHalt();
+					return;
+				}
+			}
+		}
+		else
+		{
+			//First DMC halt attempt ALWAYS during odd (write) cycle
+			//Second (or 3rd) halt attempt during any cycle
+			if(cpu_odd_cycle || dmchaltattempt)
+			{
+				if(cpu_currently_dma || cpuTryTakeover())
+				{
+					cpu_dmc_halted = true;
+					//fully ignore OAM DMA if this is out 2nd/3rd attempt
+					if(cpu_oam_dma && dmchaltattempt)
+						cpu_oam_dma_pause = true;
+					else //was first halt attempt, possibly allows next OAM DMA cycle
+						cpu_oam_dma_pause = false;
+				}
+				else
+					dmchaltattempt = true;
+			}
+		}
+	}
+	if(cpu_oam_dma)
+	{
+		if(cpu_currently_dma && cpu_oam_halted)
+		{
+			if(!cpu_odd_cycle) //READ on even
+			{
+				//printf("OAM DMA Read %04x\n",cpu_oam_dma_addr|cpu_oam_dma_ptr);
+				cpu_oam_dma_val = memGet8(cpu_oam_dma_addr|cpu_oam_dma_ptr);
+				cpu_oam_ready = true;
+			}
+			else //WRITE on odd
+			{
+				if(cpu_oam_ready)
+				{
+					cpu_oam_ready = false;
+					//printf("OAM DMA Write %02x\n", cpu_oam_dma_val);
+					memSet8(0x2004,cpu_oam_dma_val);
+					cpu_oam_dma_ptr++;
+					//wrapped back, done with DMA
+					if(cpu_oam_dma_ptr == 0)
+					{
+						//printf("OAM DMA Done\n");
+						cpu_oam_dma = false;
+						if(!cpu_dmc_halted) //done with DMA
+							cpu_currently_dma = false;
+						cpu_oam_halted = false;
+					}
+				}
+				else //alignment cycle
+					cpuDMATryHalt();
+			}
+		}
+		else if(cpu_currently_dma || cpuTryTakeover())
+			cpu_oam_halted = true;
+	}
+}
+
 /* Main CPU Interpreter */
-//int testCounter = 0;
+int testCounter = 0;
 bool cpuCycle()
 {
 	cpu_odd_cycle^=true;
-	//testCounter++;
+	testCounter++;
 	//printf("CPU Cycle\n");
+	//do DMC and OAM DMA first
+	cpuDoDMA();
+	if(cpu_currently_dma)
+		return true;
 	//make sure to wait if needed
 	if(waitCycles)
 	{
 		waitCycles--;
-		return true;
-	}
-	if(cpu_oam_dma)
-	{
-		cpu_oam_dma--;
 		return true;
 	}
 	uint8_t instr, cpu_action;
@@ -841,22 +1094,15 @@ doaction:
 	switch(cpu_action)
 	{
 		case CPU_GET_INSTRUCTION:
+			instr = memGet8(pc);
 			//if IRQ occurs end this cycle early
 			if(cpuHandleIrqUpdates())
 				break;
-		case CPU_GET_INSTRUCTION_IRQSKIP:
-			instr = memGet8(pc);
 			cpu_action_arr = cpu_instr_arr[instr];
 			cpu_arr_pos = 0;
 			cpu_action_func = cpu_actions_arr[instr];
 			//printf("%04x %02x %02x %02x %02x %02x\n", pc, instr, a, x, y, p);
 			pc++;
-			break;
-		case CPU_INC_PC:
-			pc++;
-			break;
-		case CPU_ACTION:
-			cpu_action_func();
 			break;
 		case CPU_NULL_READ8_PC:
 			memGet8(pc);
@@ -876,12 +1122,42 @@ doaction:
 			memGet8(pc);
 			cpu_action_func();
 			break;
+		case CPU_NULL_READ8_PC_ADDR_ADDX_ZP:
+			memGet8(pc);
+			absAddr += x;
+			absAddr &= 0xFF;
+			break;
+		case CPU_NULL_READ8_PC_ADDR_ADDY_ZP:
+			memGet8(pc);
+			absAddr += y;
+			absAddr &= 0xFF;
+			break;
+		case CPU_NULL_READ8_PC_TMP_ADDX:
+			memGet8(pc);
+			cpuTmp += x;
+			break;
+		case CPU_NULL_READ8_PC_STACK_INC:
+			memGet8(pc);
+			s++;
+			break;
+		case CPU_NULL_READ8_PC_STACK_DEC:
+			memGet8(pc);
+			s--;
+			break;
+		case CPU_NULL_READ8_PC_STACK_DEC_SET_S1_S2_I:
+			memGet8(pc);
+			s--;
+			p = (P_FLAG_IRQ_DISABLE | P_FLAG_S1 | P_FLAG_S2);
+			break;
 		case CPU_TMP_READ8_PC_INC:
 			cpuTmp = memGet8(pc++);
 			break;
 		case CPU_TMP_READ8_PC_INC_ACTION:
 			cpuTmp = memGet8(pc++);
 			cpu_action_func();
+			break;
+		case CPU_PCL_FROM_TMP_PCH_READ8_PC:
+			pc = (cpuTmp | (memGet8(pc)<<8));
 			break;
 		case CPU_ADDR_READ8_PC_INC:
 			absAddr = memGet8(pc++);
@@ -908,21 +1184,6 @@ doaction:
 			absAddr |= (memGet8(pc++)<<8);
 			indVal += (absAddr&0xFF00);
 			break;
-		case CPU_NULL_READ8_ADDR_ADDX_ZP:
-			absAddr += x;
-			absAddr &= 0xFF;
-			break;
-		case CPU_NULL_READ8_ADDR_ADDY_ZP:
-			absAddr += y;
-			absAddr &= 0xFF;
-			break;
-		case CPU_PCL_FROM_TMP_PCH_READ8_PC:
-			pc = (cpuTmp | (memGet8(pc)<<8));
-			break;
-		case CPU_NULL_READ8_TMP_ADDX:
-			memGet8(pc);
-			cpuTmp += x;
-			break;
 		case CPU_ADDRL_READ8_TMP_INC:
 			absAddr = memGet8(cpuTmp++);
 			break;
@@ -939,6 +1200,10 @@ doaction:
 			break;
 		case CPU_ADDR_READ8:
 			cpuTmp = memGet8(absAddr);
+			break;
+		case CPU_ADDR_READ8_CHK:
+			cpuTmp = memGet8(absAddr);
+			cpuDoAddrIndFix();
 			break;
 		case CPU_ADDR_READ8_ACTION:
 			cpuTmp = memGet8(absAddr);
@@ -962,13 +1227,6 @@ doaction:
 			cpuTmp++; //possibly FF->00 without page increase!
 			absAddr |= cpuTmp; //add back low address bytes
 			pc |= (memGet8(absAddr)<<8); //high pc bytes
-			break;
-		case CPU_ADDR_READ8_CHK:
-			cpuTmp = memGet8(absAddr);
-			cpuDoAddrIndFix();
-			break;
-		case CPU_NULL_READ8_S:
-			memGet8(s);
 			break;
 		case CPU_ADDR_WRITE8:
 			memSet8(absAddr, cpuTmp);
@@ -1040,9 +1298,9 @@ doaction:
 			else memGet8(pc);
 			break;
 		case CPU_CHECK_BPL:
-			memGet8(pc);
 			takeBranch = !(p & P_FLAG_NEGATIVE);
 			if(!cpuBranchCheck()) goto doaction;
+			else memGet8(pc);
 			break;
 		case CPU_CHECK_BMI:
 			takeBranch = !!(p & P_FLAG_NEGATIVE);
@@ -1058,9 +1316,6 @@ doaction:
 			takeBranch = !!(p & P_FLAG_OVERFLOW);
 			if(!cpuBranchCheck()) goto doaction;
 			else memGet8(pc);
-			break;
-		case CPU_STACK_INC:
-			s++;
 			break;
 		case CPU_STACK_GET_A:
 			cpuSetA(memGet8(0x100+s));
@@ -1094,9 +1349,6 @@ doaction:
 			pc &= 0xFF;
 			pc |= memGet8(0x100+s)<<8;
 			break;
-		case CPU_STACK_DEC:
-			s--;
-			break;
 		case CPU_STACK_STORE_A_DEC:
 			memSet8(0x100+s,a);
 			s--;
@@ -1113,10 +1365,6 @@ doaction:
 		case CPU_STACK_STORE_PCL_DEC:
 			memSet8(0x100+s,pc&0xFF);
 			s--;
-			break;
-		case CPU_STACK_DEC_SET_S1_S2_I:
-			s--;
-			p = (P_FLAG_IRQ_DISABLE | P_FLAG_S1 | P_FLAG_S2);
 			break;
 		case CPU_STACK_STORE_P_DEC_SET_I:
 			memSet8(0x100+s,p);

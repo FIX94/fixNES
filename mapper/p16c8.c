@@ -212,7 +212,16 @@ void m71_set8(uint16_t addr, uint8_t val)
 {
 	//printf("p16c8set8 %04x %02x\n", addr, val);
 	if(addr < 0xC000)
+	{
+		if(addr == 0x9000) //Fire Hawk
+		{
+			if((val&0x10) != 0)
+				ppuSetNameTblSingleLower();
+			else if(val == 0)
+				ppuSetNameTblSingleUpper();
+		}
 		return;
+	}
 	p16c8_curPRGBank = ((val & 0xF)<<14)&p16c8_prgROMand;
 }
 

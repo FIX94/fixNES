@@ -12,6 +12,7 @@
 #include "mapperList.h"
 #include "mapper_h/nsf.h"
 #include "mapper_h/fds.h"
+#include "mapper_h/p16c8.h"
 #include "ppu.h"
 
 get8FuncT mapperGet8;
@@ -22,6 +23,7 @@ vramGet8FuncT mapperVramGet8;
 vramSet8FuncT mapperVramSet8;
 cycleFuncT mapperCycle;
 uint8_t mapperChrMode;
+bool mapperUse78A = false;
 
 bool mapperInit(uint8_t mapper, uint8_t *prgROM, uint32_t prgROMsize, uint8_t *prgRAM, uint32_t prgRAMsize, uint8_t *chrROM, uint32_t chrROMsize)
 {
@@ -45,6 +47,12 @@ bool mapperInit(uint8_t mapper, uint8_t *prgROM, uint32_t prgROMsize, uint8_t *p
 		mapperVramSet8 = ppuVRAMSet8;
 	else
 		mapperVramSet8 = mapperList[mapper].vramSet8F;
+	//Holy Diver Hack
+	if(mapper == 78 && mapperUse78A)
+	{
+		printf("Using Holy Diver Variant for Mapper 78\n");
+		mapperSet8 = m78a_set8;
+	}
 	mapperChrMode = 0;
 	return true;
 }
