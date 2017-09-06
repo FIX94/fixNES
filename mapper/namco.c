@@ -197,10 +197,10 @@ void namco_set8(uint16_t addr, uint8_t val)
 						ppuSetNameTblVertical();
 						break;
 					case 2:
-						ppuSetNameTblHorizontal();
+						ppuSetNameTblSingleUpper();
 						break;
 					case 3:
-						ppuSetNameTblSingleUpper();
+						ppuSetNameTblHorizontal();
 						break;
 				}
 			}
