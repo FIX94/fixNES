@@ -41,6 +41,7 @@ static bool nsf_init;
 static uint8_t nsf_vrc7_audioReg;
 static uint8_t nsf_init_timeout;
 static uint8_t nsf_chrRAM[0x2000];
+static uint8_t nsf_MMC5ExRAM[0x400];
 extern bool nesPAL;
 static uint8_t nsf_prevValReads[8];
 
@@ -58,6 +59,7 @@ static void nsfInitPlayback()
 	nsf_init_timeout = 10; //give it a couple frames
 	memset(nsf_prgRAM, 0, nsf_prgRAMsize);
 	memset(nsf_FillRAM, 0, 0x8000);
+	memset(nsf_MMC5ExRAM, 0, 0x400);
 	memcpy(nsf_PRGBank, nsf_InitPRGBank, 8*sizeof(uint32_t));
 	memcpy(nsf_RAMBank, nsf_InitRAMBank, 2*sizeof(uint32_t));
 	cpuInitNSF(nsf_initAddr, nsf_curTrack-1, nesPAL ? 1 : 0);
@@ -194,6 +196,8 @@ uint8_t nsfget8(uint16_t addr, uint8_t val)
 				return (nsf_mmc5_mulRes&0xFF);
 			else if(addr == 0x5206)
 				return (nsf_mmc5_mulRes>>8);
+			else if(addr >= 0x5C00 && addr < 0x5FF6)
+				return nsf_MMC5ExRAM[addr&0x3FF];
 		}
 		/* Init Loop Routine */
 		if(addr == 0x4567)
@@ -250,38 +254,41 @@ uint8_t nsfget8(uint16_t addr, uint8_t val)
 void nsfset8(uint16_t addr, uint8_t val)
 {
 	//printf("nsfset8 %04x %02x\n", addr, val);
-	/* FDS Audio Regs */
-	if(fdsEnabled)
+	if(addr < 0x6000)
 	{
-		if(addr >= 0x4040 && addr <= 0x407F)
-			fdsAudioSetWave(addr&0x3F, val);
-		else if(addr >= 0x4080 && addr <= 0x408A)
-			fdsAudioSet8(addr&0x1F, val);
-	}
-	/* N163 Regs */
-	if(n163enabled)
-	{
-		if(addr >= 0x4800 && addr < 0x5000)
-			n163AudioSet8(addr, val);
-	}
-	/* MMC5 Regs */
-	if(mmc5enabled)
-	{
-		if(addr >= 0x5000 && addr <= 0x5015)
-			mmc5AudioSet8(addr&0x1F, val);
-		else if(addr == 0x5205)
+		/* FDS Audio Regs */
+		if(fdsEnabled)
 		{
-			nsf_mmc5_mul1 = val;
-			nsf_mmc5_mulRes = nsf_mmc5_mul1*nsf_mmc5_mul2;
+			if(addr >= 0x4040 && addr <= 0x407F)
+				fdsAudioSetWave(addr&0x3F, val);
+			else if(addr >= 0x4080 && addr <= 0x408A)
+				fdsAudioSet8(addr&0x1F, val);
 		}
-		else if(addr == 0x5206)
+		/* N163 Regs */
+		if(n163enabled)
 		{
-			nsf_mmc5_mul2 = val;
-			nsf_mmc5_mulRes = nsf_mmc5_mul1*nsf_mmc5_mul2;
+			if(addr >= 0x4800 && addr < 0x5000)
+				n163AudioSet8(addr, val);
 		}
-	}
-	if(addr >= 0x5FF6 && addr < 0x6000)
-	{
+		/* MMC5 Regs */
+		if(mmc5enabled)
+		{
+			if(addr >= 0x5000 && addr <= 0x5015)
+				mmc5AudioSet8(addr&0x1F, val);
+			else if(addr == 0x5205)
+			{
+				nsf_mmc5_mul1 = val;
+				nsf_mmc5_mulRes = nsf_mmc5_mul1*nsf_mmc5_mul2;
+			}
+			else if(addr == 0x5206)
+			{
+				nsf_mmc5_mul2 = val;
+				nsf_mmc5_mulRes = nsf_mmc5_mul1*nsf_mmc5_mul2;
+			}
+			else if(addr >= 0x5C00 && addr < 0x5FF6)
+				nsf_MMC5ExRAM[addr&0x3FF] = val;
+		}
+		/* NSF Bank Regs */
 		if(addr == 0x5FF6)
 			nsf_RAMBank[0] = val<<12;
 		else if(addr == 0x5FF7)
