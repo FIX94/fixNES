@@ -208,7 +208,6 @@ uint8_t m5get8(uint16_t addr, uint8_t val)
 	return val;
 }
 
-extern bool cpuWriteTMP;
 void m5set8(uint16_t addr, uint8_t val)
 {
 	//printf("m5set8 %04x %02x\n", addr, val);

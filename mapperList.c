@@ -31,6 +31,9 @@
 #include "mapper_h/vrc2_4.h"
 #include "mapper_h/vrc6.h"
 #include "mapper_h/vrc7.h"
+#include "mapper_h/s3.h"
+#include "mapper_h/s4.h"
+#include "mapper_h/s5b.h"
 #include "mapper.h"
 #include "mapperList.h"
 
@@ -102,9 +105,9 @@ mapperList_t mapperList[256] = {
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL,	NULL,	NULL },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL,	NULL,	NULL },
 	{ p32c8init,	p32c8get8,		m66_set8,		p32c8chrGet8,	p32c8chrSet8,	NULL,	NULL,	NULL },
-	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL,	NULL,	NULL },
-	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL,	NULL,	NULL },
-	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL,	NULL,	NULL },
+	{ s3init,		s3get8,			s3set8,			s3chrGet8,		s3chrSet8,		NULL,	NULL,	s3cycle },
+	{ s4init,		s4get8,			s4set8,			s4chrGet8,		s4chrSet8,		s4vramGet8, s4vramSet8,	NULL },
+	{ s5Binit,		s5Bget8,		s5Bset8,		s5BchrGet8,		s5BchrSet8,		NULL,	NULL,	s5Bcycle },
 	{ p16c8init,	p16c8get8,		m70_set8,		p16c8chrGet8,	p16c8chrSet8,	NULL,	NULL,	NULL },
 	{ p16c8init,	p16c8get8,		m71_set8,		p16c8chrGet8,	p16c8chrSet8,	NULL,	NULL,	NULL },
 	{ NULL,			NULL,			NULL,			NULL,			NULL,			NULL,	NULL,	NULL },

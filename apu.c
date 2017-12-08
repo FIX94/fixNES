@@ -16,6 +16,7 @@
 #include "audio_vrc6.h"
 #include "audio_vrc7.h"
 #include "audio_n163.h"
+#include "audio_s5b.h"
 #include "audio.h"
 #include "mem.h"
 #include "cpu.h"
@@ -475,6 +476,12 @@ bool apuCycle()
 		curIn += ((float)n163Out)*0.0008f;
 		curIn *= 0.6667f;
 	}
+	if(s5Benabled)
+	{
+		s5BAudioCycle();
+		curIn += ((float)s5BOut)/32768.f;
+		curIn *= 0.6667f;
+	}
 	//amplify input
 	curIn *= 3.0f;
 	float curLPout = lastLPOut+(lpVal*(curIn-lastLPOut));
@@ -512,6 +519,12 @@ bool apuCycle()
 	if(n163enabled)
 	{
 		curIn += n163Out*26;
+		curIn <<= 1; curIn /= 3;
+	}
+	if(s5Benabled)
+	{
+		s5BAudioCycle();
+		curIn += s5BOut;
 		curIn <<= 1; curIn /= 3;
 	}
 	//amplify input

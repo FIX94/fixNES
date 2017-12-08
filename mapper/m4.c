@@ -145,7 +145,6 @@ uint8_t m4get8(uint16_t addr, uint8_t val)
 	return val;
 }
 
-extern bool cpuWriteTMP;
 void m4set8(uint16_t addr, uint8_t val)
 {
 	if(addr >= 0x6000 && addr < 0x8000)
@@ -155,10 +154,6 @@ void m4set8(uint16_t addr, uint8_t val)
 	}
 	else if(addr >= 0x8000)
 	{
-		// mmc1 regs cant be written to
-		// with just 1 cpu cycle delay
-		//if(cpuWriteTMP)
-		//	return;
 		//printf("m4set8 %04x %02x\n", addr, val);
 		if(addr < 0xA000)
 		{
