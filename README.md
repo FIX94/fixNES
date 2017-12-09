@@ -21,7 +21,7 @@ S is select
 Arrow Keys is DPad  
 Keys 1-9 integer-scale the window to number  
 P is Pause  
-Ctrl+R is Soft Reset
+Ctrl+R is Soft Reset  
 B is Disk Switching (for FDS)  
 O is Enable/Disable vertical Overscan  
 If you really want controller support and you are on windows, go grab joy2key, it works just fine with fixNES (and fixGB).    
