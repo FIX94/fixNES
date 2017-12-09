@@ -835,6 +835,7 @@ static bool cpuHandleIrqUpdates()
 	//handle incoming IRQs
 	if(reset)
 	{
+		apuSet8(0x15, 0);
 		cpu_action_arr = cpu_reset_arr;
 		cpu_arr_pos = 0;
 		cpu_action_func = cpuNoAction;
@@ -1501,4 +1502,9 @@ void cpuInitNSF(uint16_t addr, uint8_t newA, uint8_t newX)
 	nsf_startPlayback = false;
 	nsf_endPlayback = false;
 	//printf("Init at %04x\n", addr);
+}
+
+void cpuSoftReset()
+{
+	reset = true;
 }

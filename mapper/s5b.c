@@ -22,7 +22,6 @@ static uint32_t s5B_chrROMsize;
 static uint32_t s5B_prgROMand;
 static uint32_t s5B_prgRAMand;
 static uint32_t s5B_chrROMand;
-static uint8_t s5B_chrRAM[0x2000];
 static uint32_t s5B_lastPRGBank;
 static uint32_t s5B_PRGBank[4];
 static uint32_t s5B_CHRBank[8];
@@ -52,12 +51,7 @@ void s5Binit(uint8_t *prgROMin, uint32_t prgROMsizeIn,
 		s5B_chrROMand = mapperGetAndValue(chrROMsizeIn);
 	}
 	else
-	{
-		s5B_chrROM = s5B_chrRAM;
-		s5B_chrROMsize = 0x2000;
-		s5B_chrROMand = 0x1FFF;
-	}
-	memset(s5B_chrRAM,0,0x2000);
+		printf("S5B???\n");
 	memset(s5B_PRGBank,0,4*sizeof(uint32_t));
 	memset(s5B_CHRBank,0,8*sizeof(uint32_t));
 	s5B_irqCtr = 0;

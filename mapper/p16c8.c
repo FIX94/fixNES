@@ -58,6 +58,23 @@ void p16c8init(uint8_t *prgROMin, uint32_t prgROMsizeIn,
 	printf("16k PRG 8k CHR Mapper inited\n");
 }
 
+static bool m60_ready;
+static uint8_t m60_state;
+static uint32_t m60_prgROMadd;
+static uint32_t m60_chrROMadd;
+
+void m60_init(uint8_t *prgROMin, uint32_t prgROMsizeIn, 
+			uint8_t *prgRAMin, uint32_t prgRAMsizeIn,
+			uint8_t *chrROMin, uint32_t chrROMsizeIn)
+{
+	p16c8init(prgROMin, prgROMsizeIn, prgRAMin, prgRAMsizeIn, chrROMin, chrROMsizeIn);
+	m60_ready = true;
+	m60_state = 0;
+	m60_prgROMadd = 0;
+	m60_chrROMadd = 0;
+}
+
+
 void m174_init(uint8_t *prgROMin, uint32_t prgROMsizeIn, 
 			uint8_t *prgRAMin, uint32_t prgRAMsizeIn,
 			uint8_t *chrROMin, uint32_t chrROMsizeIn)
@@ -83,6 +100,44 @@ uint8_t p1632c8get8(uint16_t addr, uint8_t val)
 	if(p1632_p16)
 		return p16c8_prgROM[((p16c8_curPRGBank&~0x3FFF)+(addr&0x3FFF))&p16c8_prgROMand];
 	return p16c8_prgROM[((p16c8_curPRGBank&~0x7FFF)+(addr&0x7FFF))&p16c8_prgROMand];
+}
+
+uint8_t m60_get8(uint16_t addr, uint8_t val)
+{
+	if(addr < 0x8000)
+		return val;
+	//determine reset by reading reset vector
+	if(addr == 0xFFFC && m60_ready)
+	{
+		m60_ready = false;
+		switch(m60_state)
+		{
+			case 0:
+				m60_prgROMadd = 0;
+				m60_chrROMadd = 0;
+				break;
+			case 1:
+				m60_prgROMadd = 0x4000;
+				m60_chrROMadd = 0x2000;
+				break;
+			case 2:
+				m60_prgROMadd = 0x8000;
+				m60_chrROMadd = 0x4000;
+				break;
+			case 3:
+				m60_prgROMadd = 0xC000;
+				m60_chrROMadd = 0x6000;
+				break;
+			default:
+				break;
+		}
+		m60_state++;
+		m60_state&=3;
+	}
+	//only allow another reset after full reset vector read
+	if(addr == 0xFFFD && !m60_ready)
+		m60_ready = true;
+	return p16c8_prgROM[(addr&0x3FFF)+m60_prgROMadd];
 }
 
 uint8_t m97_get8(uint16_t addr, uint8_t val)
@@ -170,6 +225,12 @@ void m58_set8(uint16_t addr, uint8_t val)
 		ppuSetNameTblHorizontal();
 	else
 		ppuSetNameTblVertical();
+}
+
+void m60_set8(uint16_t addr, uint8_t val)
+{
+	(void)val;
+	(void)addr;
 }
 
 void m61_set8(uint16_t addr, uint8_t val)
@@ -454,3 +515,15 @@ void p16c8chrSet8(uint16_t addr, uint8_t val)
 	if(p16c8_chrROM == p16c8_chrRAM) //Writable
 		p16c8_chrROM[addr&0x1FFF] = val;
 }
+
+uint8_t m60_chrGet8(uint16_t addr)
+{
+	return p16c8_chrROM[(addr&0x1FFF)+m60_chrROMadd];
+}
+
+void m60_chrSet8(uint16_t addr, uint8_t val)
+{
+	(void)addr;
+	(void)val;
+}
+

@@ -12,6 +12,7 @@
 #include "mapperList.h"
 #include "mapper_h/nsf.h"
 #include "mapper_h/fds.h"
+#include "mapper_h/m32.h"
 #include "mapper_h/p16c8.h"
 #include "ppu.h"
 

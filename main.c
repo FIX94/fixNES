@@ -35,7 +35,7 @@
 #define DEBUG_KEY 0
 #define DEBUG_LOAD_INFO 1
 
-static const char *VERSION_STRING = "fixNES Alpha v1.0.3";
+static const char *VERSION_STRING = "fixNES Alpha v1.0.4";
 static char window_title[256];
 static char window_title_pause[256];
 
@@ -82,6 +82,7 @@ static bool inPause = false;
 static bool inOverscanToggle = false;
 static bool inResize = false;
 static bool inDiskSwitch = false;
+static bool inReset = false;
 
 #if WINDOWS_BUILD
 #include <windows.h>
@@ -118,6 +119,8 @@ static uint16_t cpuCycleTimer;
 extern uint8_t inValReads[8];
 //from mapper.c
 extern bool mapperUse78A;
+//from m32.c
+extern bool m32_singlescreen;
 
 int main(int argc, char** argv)
 {
@@ -184,6 +187,13 @@ int main(int argc, char** argv)
 		printf("Used Mapper: %i\n", mapper);
 		printf("PRG: 0x%x bytes PRG RAM: 0x%x bytes CHR: 0x%x bytes\n", prgROMsize, emuPrgRAMsize, chrROMsize);
 		#endif
+		if(mapper == 32)
+		{
+			if(strstr(emuFileName,"Major League") != NULL)
+				m32_singlescreen = true;
+			else
+				m32_singlescreen = false;
+		}
 		if(mapper == 78)
 		{
 			if(strstr(emuFileName,"Holy Diver") != NULL)
@@ -902,6 +912,13 @@ static void nesEmuHandleKeyDown(unsigned char key, int x, int y)
 				doOverscan ^= true;
 			}
 			break;
+		case '\x12': //ctrl-R
+			if(!inReset)
+			{
+				inReset = true;
+				if(!nesEmuNSFPlayback)
+					cpuSoftReset();
+			}
 		default:
 			break;
 	}
@@ -970,6 +987,9 @@ static void nesEmuHandleKeyUp(unsigned char key, int x, int y)
 		case 'o':
 		case 'O':
 			inOverscanToggle = false;
+			break;
+		case '\x12': //ctrl-R
+			inReset = false;
 			break;
 		default:
 			break;

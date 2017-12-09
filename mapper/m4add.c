@@ -76,6 +76,28 @@ void m47_init(uint8_t *prgROMin, uint32_t prgROMsizeIn,
 	printf("Mapper 47 (Mapper 4 Game Select) inited\n");
 }
 
+static uint8_t m49_prgmode;
+static uint8_t m49_prgreg;
+static uint8_t *m49_prgROM;
+
+void m49_init(uint8_t *prgROMin, uint32_t prgROMsizeIn, 
+			uint8_t *prgRAMin, uint32_t prgRAMsizeIn,
+			uint8_t *chrROMin, uint32_t chrROMsizeIn)
+{
+	m4init(prgROMin, prgROMsizeIn, prgRAMin, prgRAMsizeIn, chrROMin, chrROMsizeIn);
+	//start with default config
+	m4_prgROMadd = 0;
+	m4_prgROMand = 0x1FFFF;
+	m4_chrROMadd = 0;
+	m4_chrROMand = 0x1FFFF;
+	m4add_regLock = false;
+	m49_prgmode = 0;
+	m49_prgreg = 0;
+	//for prg mode
+	m49_prgROM = prgROMin;
+	printf("Mapper 49 (Mapper 4 Game Select) inited\n");
+}
+
 void m52_init(uint8_t *prgROMin, uint32_t prgROMsizeIn, 
 			uint8_t *prgRAMin, uint32_t prgRAMsizeIn,
 			uint8_t *chrROMin, uint32_t chrROMsizeIn)
@@ -255,6 +277,53 @@ void m47_set8(uint16_t addr, uint8_t val)
 		m4set8(addr, val);
 }
 
+void m49_set8(uint16_t addr, uint8_t val)
+{
+	if(addr >= 0x6000 && addr < 0x8000)
+	{
+		if(!m4add_regLock)
+		{
+			switch(val>>6)
+			{
+				case 0:
+					m4_prgROMadd = 0;
+					m4_prgROMand = 0x1FFFF;
+					m4_chrROMadd = 0;
+					m4_chrROMand = 0x1FFFF;
+					break;
+				case 1:
+					m4_prgROMadd = 0x20000;
+					m4_prgROMand = 0x1FFFF;
+					m4_chrROMadd = 0x20000;
+					m4_chrROMand = 0x1FFFF;
+					break;
+				case 2:
+					m4_prgROMadd = 0x40000;
+					m4_prgROMand = 0x1FFFF;
+					m4_chrROMadd = 0x40000;
+					m4_chrROMand = 0x1FFFF;
+					break;
+				case 3:
+					m4_prgROMadd = 0x60000;
+					m4_prgROMand = 0x1FFFF;
+					m4_chrROMadd = 0x60000;
+					m4_chrROMand = 0x1FFFF;
+					break;
+				default:
+					break;
+			}
+			m49_prgmode = val&1;
+			m49_prgreg = (val>>4)&3;
+		}
+	}
+	else if(addr >= 0x8000)
+	{
+		if(addr >= 0xA000 && addr < 0xC000 && (addr&1))
+			m4add_regLock = ((val&0x80) == 0);
+		m4set8(addr, val);
+	}
+}
+
 void m52_set8(uint16_t addr, uint8_t val)
 {
 	if(addr < 0x8000 && addr >= 0x6000)
@@ -327,4 +396,16 @@ void m205_set8(uint16_t addr, uint8_t val)
 	}
 	else if(addr >= 0x8000)
 		m4set8(addr, val);
+}
+
+uint8_t m49_get8(uint16_t addr, uint8_t val)
+{
+	if(addr >= 0x8000)
+	{
+		if(m49_prgmode == 0)
+			return m49_prgROM[(addr&0x7FFF)|(m49_prgreg<<15)|m4_prgROMadd];
+		else
+			return m4get8(addr, val);
+	}
+	return val;
 }
