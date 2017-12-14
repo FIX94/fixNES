@@ -323,6 +323,8 @@ void nsfset8(uint16_t addr, uint8_t val)
 			nsf_FillRAM[addr-0x6000] = val;
 		else if(n163enabled && addr >= 0xF800)
 			n163AudioSet8(addr, val);
+		else if(s5Benabled && addr >= 0xC000)
+			s5BAudioSet8(addr, val);
 		else if(vrc6enabled && ((addr >= 0x9000 && addr <= 0x9003) ||
 								(addr >= 0xA000 && addr <= 0xA002) ||
 								(addr >= 0xB000 && addr <= 0xB002)))
@@ -334,8 +336,6 @@ void nsfset8(uint16_t addr, uint8_t val)
 			else if(addr == 0x9030)
 				vrc7AudioSet8(nsf_vrc7_audioReg, val);
 		}
-		if(s5Benabled && addr >= 0xC000)
-			s5BAudioSet8(addr, val);
 	}
 }
 
