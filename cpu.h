@@ -5,7 +5,7 @@
  * of the MIT license.  See the LICENSE file for details.
  */
 
-#ifndef _cpu_c_
+#ifndef _cpu_h_
 #define _cpu_h_
 
 void cpuInit();
