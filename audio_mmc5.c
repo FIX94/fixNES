@@ -103,26 +103,21 @@ void mmc5AudioPCMWrite(uint8_t val)
 	mmc5pcm = val;
 }
 
-static uint8_t mmc5_lastP1Out = 0, mmc5_lastP2Out = 0;
+static uint8_t mmc5_p1Out = 0, mmc5_p2Out = 0;
 
 void mmc5AudioCycle()
 {
-	uint8_t p1Out = mmc5_lastP1Out, p2Out = mmc5_lastP2Out;
 	if(mmc5_p1LengthCtr && (MMC5_IO_Reg[0x15] & P1_ENABLE))
 	{
-		if(mmc5_p1seq[mmc5_p1Cycle] && mmc5_freq1 >= 8 && mmc5_freq1 < 0x7FF)
-			mmc5_lastP1Out = p1Out = (mmc5_p1Env.constant ? mmc5_p1Env.vol : mmc5_p1Env.decay);
-		else
-			p1Out = 0;
+		if(mmc5_freq1 >= 8 && mmc5_freq1 < 0x7FF)
+			mmc5_p1Out = mmc5_p1seq[mmc5_p1Cycle] ? (mmc5_p1Env.constant ? mmc5_p1Env.vol : mmc5_p1Env.decay) : 0;
 	}
 	if(mmc5_p2LengthCtr && (MMC5_IO_Reg[0x15] & P2_ENABLE))
 	{
-		if(mmc5_p2seq[mmc5_p2Cycle] && mmc5_freq2 >= 8 && mmc5_freq2 < 0x7FF)
-			mmc5_lastP2Out = p2Out = (mmc5_p2Env.constant ? mmc5_p2Env.vol : mmc5_p2Env.decay);
-		else
-			p2Out = 0;
+		if(mmc5_freq2 >= 8 && mmc5_freq2 < 0x7FF)
+			mmc5_p2Out = mmc5_p2seq[mmc5_p2Cycle] ? (mmc5_p2Env.constant ? mmc5_p2Env.vol : mmc5_p2Env.decay) : 0;
 	}
-	mmc5Out = p1Out + p2Out;
+	mmc5Out = mmc5_p1Out + mmc5_p2Out;
 }
 
 void mmc5AudioLenCycle()

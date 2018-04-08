@@ -43,29 +43,18 @@ void vrc6AudioInit()
 	//printf("VRC6 Audio Inited!\n");
 }
 
-static uint8_t vrc6_lastP1Out = 0, vrc6_lastP2Out = 0, vrc6_lastSawOut = 0;
+static uint8_t vrc6_p1Out = 0, vrc6_p2Out = 0, vrc6_sawOut = 0;
 
 void vrc6AudioCycle()
 {
-	uint8_t p1Out = vrc6_lastP1Out, p2Out = vrc6_lastP2Out, sawOut = vrc6_lastSawOut;
 	if(vrc6_p1enable)
-	{
-		if(vrc6_p1const || vrc6_p1Cycle <= vrc6_p1Duty)
-			vrc6_lastP1Out = p1Out = vrc6_p1Vol;
-		else
-			p1Out = 0;
-	}
+		vrc6_p1Out = (vrc6_p1const || vrc6_p1Cycle <= vrc6_p1Duty) ? vrc6_p1Vol : 0;
 	if(vrc6_p2enable)
-	{
-		if(vrc6_p2const || vrc6_p2Cycle <= vrc6_p2Duty)
-			vrc6_lastP2Out = p2Out = vrc6_p2Vol;
-		else
-			p2Out = 0;
-	}
+		vrc6_p2Out = (vrc6_p2const || vrc6_p2Cycle <= vrc6_p2Duty) ? vrc6_p2Vol : 0;
 	if(vrc6_sawenable)
-		vrc6_lastSawOut = sawOut = (vrc6_sawVol>>3);
+		vrc6_sawOut = (vrc6_sawVol>>3);
 
-	vrc6Out = p1Out+p2Out+sawOut;
+	vrc6Out = vrc6_p1Out+vrc6_p2Out+vrc6_sawOut;
 }
 
 void vrc6AudioClockTimers()
