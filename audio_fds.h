@@ -16,7 +16,6 @@ void fdsAudioSet8(uint8_t reg, uint8_t val);
 void fdsAudioSetWave(uint8_t pos, uint8_t val);
 uint8_t fdsAudioGet8(uint8_t reg);
 uint8_t fdsAudioGetWave(uint8_t pos);
-void fdsAudioLenCycle();
 
 extern bool fdsEnabled;
 extern uint8_t fdsOut;

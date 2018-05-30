@@ -160,6 +160,9 @@ extern uint16_t cpu_dmc_dma_addr;
 
 #define M_2_PI 6.28318530717958647692
 
+extern bool fdsMasterEnable;
+extern uint32_t vrc7CycleTimer;
+
 extern bool nesPAL;
 void apuInitBufs()
 {
@@ -189,7 +192,9 @@ void apuInitBufs()
 	//convert to 32bit int for calcs later
 	hpVal = (int32_t)((rc / (rc + dt))*32768.0);
 #endif
-	apuBufSize = apuFrequency/60*2;
+	//just have something larger than 1 frame
+	//to hold changing data size
+	apuBufSize = apuFrequency/30*2;
 #if AUDIO_FLOAT
 	apuBufSizeBytes = apuBufSize*sizeof(float);
 	apuOutBuf = (float*)malloc(apuBufSizeBytes);
@@ -298,6 +303,8 @@ static void apuChangeMode()
 		modeCurCtr = nesPAL ? 8315 : 7459;
 }
 
+static uint8_t vrc7Clock = 1;
+
 void apuClockTimers()
 {
 	if(p1freqCtr)
@@ -378,6 +385,19 @@ void apuClockTimers()
 		cpu_dmc_dma_addr = dmcCurAddr;
 		dmcCurLen--;
 	}
+
+	if(fdsEnabled)
+		fdsAudioMasterUpdate();
+	if(vrc7enabled)
+	{
+		if(vrc7Clock == vrc7CycleTimer)
+		{
+			vrc7AudioCycle();
+			vrc7Clock = 1;
+		}
+		else
+			vrc7Clock++;
+	}
 }
 
 #if AUDIO_FLOAT
@@ -391,32 +411,8 @@ extern bool emuSkipVsync, emuSkipFrame;
 
 static float ampVol[7] = { 3.0f, 2.0f, 1.5f, 1.2f, 1.0f, 0.85f, 0.75f };
 
-bool apuCycle()
+void apuCycle()
 {
-	if(curBufPos == apuBufSize)
-	{
-		int updateRes = audioUpdate();
-		if(updateRes == 0)
-		{
-			emuSkipFrame = false;
-			emuSkipVsync = false;
-			return false;
-		}
-		if(updateRes > 6)
-		{
-			emuSkipVsync = true;
-			emuSkipFrame = true;
-		}
-		else
-		{
-			emuSkipFrame = false;
-			if(updateRes > 2)
-				emuSkipVsync = true;
-			else
-				emuSkipVsync = false;
-		}
-		curBufPos = 0;
-	}
 	if(p1LengthCtr && (APU_IO_Reg[0x15] & P1_ENABLE))
 	{
 		if(!p1Sweep.mute && freq1 >= 8 && freq1 < 0x7FF)
@@ -536,7 +532,6 @@ bool apuCycle()
 #endif
 	apuOutBuf[curBufPos+1] = apuOutBuf[curBufPos];
 	curBufPos+=2;
-	return true;
 }
 
 void doEnvelopeLogic(envelope_t *env)
@@ -893,10 +888,39 @@ uint8_t *apuGetBuf()
 
 uint32_t apuGetBufSize()
 {
-	return apuBufSizeBytes;
+#if AUDIO_FLOAT
+	return curBufPos*sizeof(float);
+#else
+	return curBufPos*sizeof(int16_t);
+#endif
 }
 
 uint32_t apuGetFrequency()
 {
 	return apuFrequency;
+}
+
+static bool waitForRefill = false;
+bool apuUpdate()
+{
+	int updateRes = audioUpdate();
+	//printf("%i\n",updateRes);
+	if(updateRes == 0)
+	{
+		emuSkipFrame = false;
+		waitForRefill = false;
+		return false;
+	}
+	if(waitForRefill && updateRes < 2)
+	{
+		waitForRefill = false;
+		emuSkipFrame = false;
+	}
+	else if(!waitForRefill && updateRes > 2)
+	{
+		emuSkipFrame = true;
+		waitForRefill = true;
+	}
+	curBufPos = 0;
+	return true;
 }

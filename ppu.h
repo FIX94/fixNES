@@ -9,7 +9,7 @@
 #define _ppu_h_
 
 void ppuInit();
-bool ppuCycle();
+void ppuCycle();
 bool ppuDrawDone();
 uint8_t ppuGet8(uint8_t reg);
 void ppuSet8(uint8_t reg, uint8_t val);

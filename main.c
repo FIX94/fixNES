@@ -35,7 +35,7 @@
 #define DEBUG_KEY 0
 #define DEBUG_LOAD_INFO 1
 
-static const char *VERSION_STRING = "fixNES Alpha v1.0.6";
+static const char *VERSION_STRING = "fixNES Alpha v1.0.7";
 static char window_title[256];
 static char window_title_pause[256];
 
@@ -63,6 +63,9 @@ static void nesEmuHandleKeyDown(unsigned char key, int x, int y);
 static void nesEmuHandleKeyUp(unsigned char key, int x, int y);
 static void nesEmuHandleSpecialDown(int key, int x, int y);
 static void nesEmuHandleSpecialUp(int key, int x, int y);
+#if WINDOWS_BUILD
+static void nesEmuSetWindowsVSync(int vsync);
+#endif
 static int emuFileType = FTYPE_UNK;
 static char emuFileName[1024];
 static uint8_t *emuNesROM = NULL;
@@ -111,10 +114,10 @@ static const uint32_t visibleImg = VISIBLE_DOTS*VISIBLE_LINES*4;
 static uint8_t scaleFactor = 2;
 static bool emuSaveEnabled = false;
 static bool emuFdsHasSideB = false;
-static uint16_t mainLoopRuns;
-static uint16_t mainLoopPos;
-static uint16_t ppuCycleTimer;
-static uint16_t cpuCycleTimer;
+
+//static uint16_t ppuCycleTimer;
+uint32_t cpuCycleTimer;
+uint32_t vrc7CycleTimer;
 //from input.c
 extern uint8_t inValReads[8];
 //from mapper.c
@@ -399,10 +402,11 @@ int main(int argc, char** argv)
 	#endif
 	#endif
 	cpuCycleTimer = nesPAL ? 16 : 12;
+	vrc7CycleTimer = 432 / cpuCycleTimer;
 	//do one scanline per idle loop
-	ppuCycleTimer = nesPAL ? 5 : 4;
-	mainLoopRuns = nesPAL ? DOTS*ppuCycleTimer : DOTS*ppuCycleTimer;
-	mainLoopPos = mainLoopRuns;
+	//ppuCycleTimer = nesPAL ? 5 : 4;
+	//mainLoopRuns = nesPAL ? DOTS*ppuCycleTimer : DOTS*ppuCycleTimer;
+	//mainLoopPos = mainLoopRuns;
 	glutInit(&argc, argv);
 	glutInitWindowSize(VISIBLE_DOTS*scaleFactor, linesToDraw*scaleFactor);
 	glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGBA);
@@ -418,7 +422,7 @@ int main(int argc, char** argv)
 	#if WINDOWS_BUILD
 	/* Enable OpenGL VSync */
 	wglSwapIntervalEXT = (PFNWGLSWAPINTERVALEXTPROC)wglGetProcAddress("wglSwapIntervalEXT");
-	wglSwapIntervalEXT(1);
+	nesEmuSetWindowsVSync(1);
 	#endif
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 	glTexImage2D(GL_TEXTURE_2D, 0, 4, VISIBLE_DOTS, linesToDraw, 0, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV, textureImage);
@@ -607,6 +611,7 @@ static void nesEmuFileClose()
 }
 
 static volatile bool emuRenderFrame = false;
+static volatile bool emuReadyForFrame = true;
 
 static void nesEmuDeinit(void)
 {
@@ -653,106 +658,74 @@ bool emuSkipVsync = false;
 bool emuSkipFrame = false;
 
 //static uint32_t mCycles = 0;
-static uint16_t mainClock = 1;
-static uint16_t apuClock = 1;
-static uint16_t ppuClock = 1;
-static uint16_t vrc7Clock = 1;
-
+static uint32_t emuApuClock = 0;
 static void nesEmuMainLoop(void)
 {
+	if(emuRenderFrame || nesPause)
+	{
+		#if (WINDOWS_BUILD && DEBUG_MAIN_CALLS)
+		emuMainTimesSkipped++;
+		#endif
+		audioSleep();
+		return;
+	}
+	bool emuFrameDone = false;
+	uint32_t apuClock = emuApuClock;
 	do
 	{
-		if((!emuSkipVsync && emuRenderFrame) || nesPause)
+		//runs every 8th cpu clock
+		if(!(apuClock&7))
+			apuCycle();
+		apuClock++;
+		//runs every cpu cycle
+		apuClockTimers();
+		//main CPU clock
+		if(!cpuCycle())
+			exit(EXIT_SUCCESS);
+		//mapper related irqs
+		mapperCycle();
+		//mCycles++;
+		//channel timer updates
+		apuLenCycle();
+		//run graphics
+		ppuCycle();
+		if(ppuDrawDone())
 		{
-			#if (WINDOWS_BUILD && DEBUG_MAIN_CALLS)
-			emuMainTimesSkipped++;
+			//printf("%i\n",mCycles);
+			//mCycles = 0;
+			emuFrameDone = true;
+			emuRenderFrame = true;
+			#if 0
+			if(fm2playRunning())
+				fm2playUpdate();
 			#endif
-			audioSleep();
-			return;
-		}
-		if(mainClock == cpuCycleTimer)
-		{
-			//runs every 8th cpu clock
-			if(apuClock == 8)
+			#if (WINDOWS_BUILD && DEBUG_HZ)
+			emuTimesCalled++;
+			DWORD end = GetTickCount();
+			emuTotalElapsed += end - emuFrameStart;
+			if(emuTotalElapsed >= 1000)
 			{
-				if(!apuCycle())
-				{
-					#if (WINDOWS_BUILD && DEBUG_MAIN_CALLS)
-					emuMainTimesSkipped++;
-					#endif
-					audioSleep();
-					return;
-				}
-				apuClock = 1;
+				printf("\r%iHz   ", emuTimesCalled);
+				emuTimesCalled = 0;
+				emuTotalElapsed = 0;
 			}
-			else
-				apuClock++;
-			//runs every cpu cycle
-			apuClockTimers();
-			//main CPU clock
-			if(!cpuCycle())
-				exit(EXIT_SUCCESS);
-			//mapper related irqs
-			if(mapperCycle != NULL)
-				mapperCycle();
-			//mCycles++;
-			//channel timer updates
-			apuLenCycle();
-			mainClock = 1;
-		}
-		else
-			mainClock++;
-		if(ppuClock == ppuCycleTimer)
-		{
-			if(!ppuCycle())
-				exit(EXIT_SUCCESS);
-			if(ppuDrawDone())
+			emuFrameStart = end;
+			#endif
+			//update audio before drawing
+			while(!apuUpdate()) audioSleep();
+			glutPostRedisplay();
+			#if 0
+			if(ppuDebugPauseFrame)
 			{
-				//printf("%i\n",mCycles);
-				//mCycles = 0;
-				emuRenderFrame = true;
-				if(fm2playRunning())
-					fm2playUpdate();
-				#if (WINDOWS_BUILD && DEBUG_HZ)
-				emuTimesCalled++;
-				DWORD end = GetTickCount();
-				emuTotalElapsed += end - emuFrameStart;
-				if(emuTotalElapsed >= 1000)
-				{
-					printf("\r%iHz   ", emuTimesCalled);
-					emuTimesCalled = 0;
-					emuTotalElapsed = 0;
-				}
-				emuFrameStart = end;
-				#endif
-				glutPostRedisplay();
-				if(ppuDebugPauseFrame)
-				{
-					ppuDebugPauseFrame = false;
-					nesPause = true;
-				}
-				if(nesEmuNSFPlayback)
-					nsfVsync();
+				ppuDebugPauseFrame = false;
+				nesPause = true;
 			}
-			ppuClock = 1;
-		}
-		else
-			ppuClock++;
-		if(fdsEnabled)
-			fdsAudioMasterUpdate();
-		if(vrc7enabled)
-		{
-			if(vrc7Clock == 432)
-			{
-				vrc7AudioCycle();
-				vrc7Clock = 1;
-			}
-			else
-				vrc7Clock++;
+			#endif
+			if(nesEmuNSFPlayback)
+				nsfVsync();
 		}
 	}
-	while(mainLoopPos--);
-	mainLoopPos = mainLoopRuns;
+	while(emuFrameDone == false) ;
 	#if (WINDOWS_BUILD && DEBUG_MAIN_CALLS)
 	emuMainTimesCalled++;
 	DWORD end = GetTickCount();
@@ -766,6 +739,7 @@ static void nesEmuMainLoop(void)
 	}
 	emuMainFrameStart = end;
 	#endif
+	emuApuClock = apuClock;
 }
 
 extern bool fdsSwitch;
@@ -919,6 +893,7 @@ static void nesEmuHandleKeyDown(unsigned char key, int x, int y)
 				if(!nesEmuNSFPlayback)
 					cpuSoftReset();
 			}
+			break;
 		default:
 			break;
 	}
@@ -1090,36 +1065,48 @@ static void nesEmuDisplayFrame()
 {
 	if(emuRenderFrame)
 	{
+		#if WINDOWS_BUILD
+		//temporarily disable vsync to resync
+		//with audio output
+		if(emuSkipFrame)
+			nesEmuSetWindowsVSync(0);
+		else
+			nesEmuSetWindowsVSync(1);
+		#else
+		//vsync on other systems not in our control,
+		//so if it wants to skip frames to resync
+		//with audio output let it do so
 		if(emuSkipFrame)
 		{
 			emuRenderFrame = false;
 			return;
 		}
+		#endif
 		glTexImage2D(GL_TEXTURE_2D, 0, 4, VISIBLE_DOTS, linesToDraw, 0, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV, textureImage);
 		emuRenderFrame = false;
+
+		glClear(GL_COLOR_BUFFER_BIT);
+
+		glMatrixMode(GL_PROJECTION);
+		glLoadIdentity();
+		glOrtho(0, glutGet(GLUT_WINDOW_WIDTH), 0, glutGet(GLUT_WINDOW_HEIGHT), -1, 1);
+		glMatrixMode(GL_MODELVIEW);
+		glLoadIdentity();
+
+		double upscaleVal = round((((double)glutGet(GLUT_WINDOW_HEIGHT))/((double)linesToDraw))*20.0)/20.0;
+		double windowMiddle = ((double)glutGet(GLUT_WINDOW_WIDTH))/2.0;
+		double drawMiddle = (((double)VISIBLE_DOTS)*upscaleVal)/2.0;
+		double drawHeight = ((double)linesToDraw)*upscaleVal;
+
+		glBegin(GL_QUADS);
+			glTexCoord2f(0,0); glVertex2f(windowMiddle-drawMiddle,drawHeight);
+			glTexCoord2f(1,0); glVertex2f(windowMiddle+drawMiddle,drawHeight);
+			glTexCoord2f(1,1); glVertex2f(windowMiddle+drawMiddle,0);
+			glTexCoord2f(0,1); glVertex2f(windowMiddle-drawMiddle,0);
+		glEnd();
+
+		glutSwapBuffers();
 	}
-
-	glClear(GL_COLOR_BUFFER_BIT);
-
-	glMatrixMode(GL_PROJECTION);
-	glLoadIdentity();
-	glOrtho(0, glutGet(GLUT_WINDOW_WIDTH), 0, glutGet(GLUT_WINDOW_HEIGHT), -1, 1);
-	glMatrixMode(GL_MODELVIEW);
-	glLoadIdentity();
-
-	double upscaleVal = round((((double)glutGet(GLUT_WINDOW_HEIGHT))/((double)linesToDraw))*20.0)/20.0;
-	double windowMiddle = ((double)glutGet(GLUT_WINDOW_WIDTH))/2.0;
-	double drawMiddle = (((double)VISIBLE_DOTS)*upscaleVal)/2.0;
-	double drawHeight = ((double)linesToDraw)*upscaleVal;
-
-	glBegin(GL_QUADS);
-		glTexCoord2f(0,0); glVertex2f(windowMiddle-drawMiddle,drawHeight);
-		glTexCoord2f(1,0); glVertex2f(windowMiddle+drawMiddle,drawHeight);
-		glTexCoord2f(1,1); glVertex2f(windowMiddle+drawMiddle,0);
-		glTexCoord2f(0,1); glVertex2f(windowMiddle-drawMiddle,0);
-	glEnd();
-
-	glutSwapBuffers();
 }
 
 static void nesEmuFdsSetup(uint8_t *src, uint8_t *dst)
@@ -1142,3 +1129,10 @@ static void nesEmuFdsSetup(uint8_t *src, uint8_t *dst)
 	} while(cROMPos < 0xFFDC && cDiskPos < 0xFFFF);
 	printf("%04x -> %04x\n", cROMPos, cDiskPos);
 }
+
+#if WINDOWS_BUILD
+static void nesEmuSetWindowsVSync(int vsync)
+{
+	if(wglSwapIntervalEXT) wglSwapIntervalEXT(vsync);
+}
+#endif

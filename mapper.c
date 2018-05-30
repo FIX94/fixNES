@@ -26,6 +26,8 @@ cycleFuncT mapperCycle;
 uint8_t mapperChrMode;
 bool mapperUse78A = false;
 
+static void mapperNone() { };
+
 bool mapperInit(uint8_t mapper, uint8_t *prgROM, uint32_t prgROMsize, uint8_t *prgRAM, uint32_t prgRAMsize, uint8_t *chrROM, uint32_t chrROMsize)
 {
 	if(mapperList[mapper].initF == NULL)
@@ -38,7 +40,11 @@ bool mapperInit(uint8_t mapper, uint8_t *prgROM, uint32_t prgROMsize, uint8_t *p
 	mapperSet8 = mapperList[mapper].set8F;
 	mapperChrGet8 = mapperList[mapper].chrGet8F;
 	mapperChrSet8 = mapperList[mapper].chrSet8F;
-	mapperCycle = mapperList[mapper].cycleFuncF;
+	//just have something assigned
+	if(mapperList[mapper].cycleFuncF == NULL)
+		mapperCycle = mapperNone;
+	else
+		mapperCycle = mapperList[mapper].cycleFuncF;
 	//some mappers re-route VRAM
 	if(mapperList[mapper].vramGet8F == NULL)
 		mapperVramGet8 = ppuVRAMGet8;

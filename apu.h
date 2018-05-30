@@ -8,12 +8,12 @@
 #ifndef _apu_h_
 #define _apu_h_
 
-#define NUM_BUFFERS 10
+#define NUM_BUFFERS 4
 
 void apuInitBufs();
 void apuDeinitBufs();
 void apuInit();
-bool apuCycle();
+void apuCycle();
 void apuClockTimers();
 void apuWriteDMCBuf(uint8_t val);
 uint8_t *apuGetBuf();
@@ -22,6 +22,7 @@ uint32_t apuGetFrequency();
 void apuSet8(uint8_t reg, uint8_t val);
 uint8_t apuGet8(uint8_t reg);
 void apuLenCycle();
+bool apuUpdate();
 
 
 typedef struct _envelope_t {
