@@ -78,6 +78,10 @@ bool mapperInitNSF(uint8_t *nsfBIN, uint32_t nsfBINsize, uint8_t *prgRAM, uint32
 	return true;
 }
 
+#ifdef __LIBRETRO__
+FILE *doOpenFDSBIOS();
+#endif
+
 static uint8_t fdsBIOS[0x2000];
 bool mapperInitFDS(uint8_t *fdsFile, bool fdsSideB, uint8_t *prgRAM, uint32_t prgRAMsize)
 {
@@ -86,7 +90,11 @@ bool mapperInitFDS(uint8_t *fdsFile, bool fdsSideB, uint8_t *prgRAM, uint32_t pr
 		printf("No FDS loaded!\n");
 		return false;
 	}
+#ifndef __LIBRETRO__
 	FILE *f = fopen("disksys.rom","rb");
+#else
+	FILE *f = doOpenFDSBIOS();
+#endif
 	if(f == NULL)
 	{
 		printf("disksys.rom not found!\n");

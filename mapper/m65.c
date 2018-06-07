@@ -9,6 +9,7 @@
 #include <inttypes.h>
 #include <stdbool.h>
 #include <string.h>
+#include "../cpu.h"
 #include "../ppu.h"
 #include "../mapper.h"
 
@@ -27,7 +28,7 @@ static uint32_t m65_CHRBank[8];
 static uint16_t m65_irqCtr;
 static uint16_t m65_irqReloadCtr;
 static bool m65_irqEnable;
-extern bool mapper_interrupt;
+extern uint8_t interrupt;
 
 void m65init(uint8_t *prgROMin, uint32_t prgROMsizeIn, 
 			uint8_t *prgRAMin, uint32_t prgRAMsizeIn,
@@ -98,11 +99,11 @@ void m65set8(uint16_t addr, uint8_t val)
 					break;
 				case 3:
 					m65_irqEnable = !!(val&0x80);
-					mapper_interrupt = false;
+					interrupt &= ~MAPPER_IRQ;
 					break;
 				case 4:
 					m65_irqCtr = m65_irqReloadCtr;
-					mapper_interrupt = false;
+					interrupt &= ~MAPPER_IRQ;
 					break;
 				case 5:
 					m65_irqReloadCtr = (m65_irqReloadCtr&0xFF) | (val<<8);
@@ -187,6 +188,6 @@ void m65cycle()
 	{
 		m65_irqCtr--;
 		if(m65_irqCtr == 0)
-			mapper_interrupt = true;
+			interrupt |= MAPPER_IRQ;
 	}
 }

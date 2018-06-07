@@ -9,6 +9,8 @@
 #include <inttypes.h>
 #include <stdbool.h>
 #include <string.h>
+#include "../apu.h"
+#include "../cpu.h"
 #include "../ppu.h"
 #include "../mapper.h"
 #include "../audio_n163.h"
@@ -37,7 +39,7 @@ static bool namco_CHRBankIsNT1;
 static uint32_t namco_NTAddr[4];
 static uint16_t namco_irqCtr;
 static bool namco_irqEnable;
-extern bool mapper_interrupt;
+extern uint8_t interrupt;
 static uint8_t namco_type;
 //used externally
 uint32_t namco_prgROMand;
@@ -143,14 +145,14 @@ void namco_set8(uint16_t addr, uint8_t val)
 		{
 			namco_irqCtr &= ~0xFF;
 			namco_irqCtr |= val;
-			mapper_interrupt = false;
+			interrupt &= ~MAPPER_IRQ;
 		}
 		else //if addr < 0x6000
 		{
 			namco_irqCtr &= 0xFF;
 			namco_irqCtr |= (val&0x7F)<<8;
 			namco_irqEnable = (val&0x80)!=0;
-			mapper_interrupt = false;
+			interrupt &= ~MAPPER_IRQ;
 		}
 	}
 	else if(addr >= 0x6000 && addr < 0x8000)
@@ -364,10 +366,10 @@ void namco_vramSet8(uint16_t addr, uint8_t val)
 	else
 		namco_VRAM[addr&0x7FF] = val;
 }
-
+extern uint8_t audioExpansion;
 void namco_cycle()
 {
-	if(n163enabled)
+	if(audioExpansion&EXP_N163)
 		n163AudioClockTimers();
 	if(namco_irqEnable)
 	{
@@ -376,9 +378,9 @@ void namco_cycle()
 		if(namco_irqCtr >= 0x7FFF)
 		{
 			namco_irqEnable = false;
-			if(!mapper_interrupt)
+			if(!(interrupt&MAPPER_IRQ))
 			{
-				mapper_interrupt = true;
+				interrupt |= MAPPER_IRQ;
 				//printf("Namco Interrupt\n");
 			}
 		}

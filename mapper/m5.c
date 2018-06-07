@@ -9,6 +9,7 @@
 #include <inttypes.h>
 #include <stdbool.h>
 #include <string.h>
+#include "../cpu.h"
 #include "../ppu.h"
 #include "../mapper.h"
 #include "../audio_mmc5.h"
@@ -40,7 +41,7 @@ static bool m5_split;
 static bool m5_splitRight;
 static uint8_t m5_splitTile;
 static uint8_t m5_splitBank;
-extern bool mapper_interrupt;
+extern uint8_t interrupt;
 static uint16_t m5_prevAddr;
 static uint8_t m5_mulA, m5_mulB;
 static uint16_t m5_mulRes;
@@ -125,7 +126,7 @@ uint8_t m5get8(uint16_t addr, uint8_t val)
 			case 4:
 				val = (m5_irqPending<<7)|(m5_inFrame<<6);
 				m5_irqPending = false;
-				mapper_interrupt = false;
+				interrupt &= ~MAPPER_IRQ;
 				//printf("%08x\n",val);
 				return val;
 			case 5:
@@ -595,7 +596,7 @@ void m5cycle()
 
 	if(m5_irqPending && m5_irqEnable)
 	{
-		mapper_interrupt = true;
+		interrupt |= MAPPER_IRQ;
 		//printf("Beep\n");
 	}
 }

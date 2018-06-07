@@ -9,13 +9,22 @@
 #define _cpu_h_
 
 void cpuInit();
-void cpuSetupActionArr();
 void cpuInitNSF(uint16_t addr, uint8_t newA, uint8_t newX);
 void cpuStartPlayNSF();
 void cpuEndPlayNSF();
 void cpuSoftReset();
 bool cpuCycle();
-void cpuIncWaitCycles(uint32_t inc);
+void cpuDoOAM_DMA(uint16_t addr);
+void cpuDoDMC_DMA(uint16_t addr);
+bool cpuInDMC_DMA();
 uint16_t cpuGetPc();
+
+#define MAPPER_IRQ (1<<0)
+#define APU_IRQ (1<<1)
+#define DMC_IRQ (1<<2)
+#define FDS_IRQ (1<<3)
+#define FDS_TRANSFER_IRQ (1<<4)
+#define MMC5_DMC_IRQ (1<<5)
+#define IRQ_MASK (MAPPER_IRQ | APU_IRQ | DMC_IRQ | FDS_IRQ | FDS_TRANSFER_IRQ | MMC5_DMC_IRQ)
 
 #endif

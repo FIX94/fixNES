@@ -9,6 +9,7 @@
 #include <inttypes.h>
 #include <stdbool.h>
 #include <string.h>
+#include "../cpu.h"
 #include "../ppu.h"
 #include "../mapper.h"
 
@@ -34,7 +35,7 @@ static bool m4_altirq;
 static bool m4_clear;
 static uint8_t m4_irqReloadVal;
 static uint8_t m4_irqStart;
-extern bool mapper_interrupt;
+extern uint8_t interrupt;
 static uint16_t m4_prevAddr;
 //used externally
 uint32_t m4_prgROMadd;
@@ -233,7 +234,7 @@ void m4set8(uint16_t addr, uint8_t val)
 			if((addr&1) == 0)
 			{
 				m4_irqEnable = false;
-				mapper_interrupt = false;
+				interrupt &= ~MAPPER_IRQ;
 				m4_irqStart = 0;
 				//printf("Interrupt disabled\n");
 			}
@@ -291,7 +292,7 @@ void m4clock(uint16_t addr)
 			//ppuPrintCurLineDot();
 			//printf("MMC3 Tick at %i %i\n", curLine, curDot);
 			//m4_irqStart = 2; //takes a bit before trigger
-			mapper_interrupt = true;
+			interrupt |= MAPPER_IRQ;
 			m4_irqEnable = false;
 		}
 		m4_clear = false;
@@ -449,7 +450,7 @@ void m4cycle()
 {
 	if(m4_irqStart == 1)
 	{
-		mapper_interrupt = true;
+		interrupt |= MAPPER_IRQ;
 		m4_irqStart = 0;
 	}
 	else if(m4_irqStart > 1)

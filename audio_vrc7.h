@@ -9,10 +9,9 @@
 #define _AUDIO_VRC7_H_
 
 void vrc7AudioInit();
-void vrc7AudioCycle();
+__attribute__((noinline)) void vrc7AudioCycle();
 void vrc7AudioSet8(uint8_t addr, uint8_t val);
 
-extern bool vrc7enabled;
 extern int32_t vrc7Out;
 
 #endif

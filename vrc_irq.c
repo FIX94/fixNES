@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <inttypes.h>
+#include "cpu.h"
 
 static uint8_t vrc_irqCtr;
 static uint8_t vrc_irqCurCtr;
@@ -16,7 +17,7 @@ static uint8_t vrc_irq_scanTblPos;
 static bool vrc_irqEnabled;
 static bool vrc_irqEnable_after_ack;
 static bool vrc_irqCyclemode;
-extern bool mapper_interrupt;
+extern uint8_t interrupt;
 
 static uint8_t vrc_irq_scanTbl[3] = { 113, 113, 112 };
 
@@ -48,7 +49,7 @@ void vrc_irq_setlatchHi(uint8_t val)
 
 void vrc_irq_control(uint8_t val)
 {
-	mapper_interrupt = false;
+	interrupt &= ~MAPPER_IRQ;
 	vrc_irqEnable_after_ack = ((val&1) != 0);
 	vrc_irqCyclemode = ((val&4) != 0);
 	if((val&2) != 0)
@@ -68,7 +69,7 @@ void vrc_irq_control(uint8_t val)
 
 void vrc_irq_ack()
 {
-	mapper_interrupt = false;
+	interrupt &= ~MAPPER_IRQ;
 	if(vrc_irqEnable_after_ack)
 	{
 		vrc_irqEnabled = true;
@@ -85,7 +86,7 @@ void vrc_irq_ctrcycle()
 		if(vrc_irqEnabled)
 		{
 			//printf("vrc_irq Cycle Interrupt\n");
-			mapper_interrupt = true;
+			interrupt |= MAPPER_IRQ;
 			vrc_irqEnabled = false;
 		}
 		vrc_irqCurCtr = vrc_irqCtr;

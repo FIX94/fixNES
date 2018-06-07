@@ -14,9 +14,10 @@
 #include "audio.h"
 #include "mem.h"
 #include "cpu.h"
+#include "apu.h"
 
 //used externally
-bool n163enabled = false;
+extern uint8_t audioExpansion;
 int16_t n163Out = 0;
 
 static int8_t n163cOut[8];
@@ -28,7 +29,7 @@ static bool n163_addrInc;
 
 void n163AudioInit()
 {
-	n163enabled = true;
+	audioExpansion |= EXP_N163;
 	n163Out = 0;
 	memset(n163cOut,0,8);
 	memset(n163Buf,0,0x80);

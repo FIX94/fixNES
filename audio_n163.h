@@ -13,7 +13,6 @@ void n163AudioClockTimers();
 void n163AudioSet8(uint16_t addr, uint8_t val);
 uint8_t n163AudioGet8(uint16_t addr, uint8_t val);
 
-extern bool n163enabled;
 extern int16_t n163Out;
 
 #endif

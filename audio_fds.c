@@ -17,191 +17,193 @@
 #include "cpu.h"
 
 //used externally
-bool fdsEnabled;
+extern uint8_t audioExpansion;
 uint8_t fdsOut;
 
-static uint8_t fds_wave[0x40];
-static uint8_t fds_modulation[0x40];
-static uint8_t fdsCurWavePos, fdsCurModPos;
-static uint8_t fdsCurWave;
-static uint8_t fdsEnvSpeed;
-static uint8_t fdsVolEnvSpeed, fdsVolEnvGain, fdsVolEnvMode;
-static uint8_t fdsSweepSpeed, fdsSweepModGain, fdsSweepMode;
-static uint8_t fdsMasterVol;
-static int8_t fdsModCounter;
-static uint16_t fdsFreq, fdsModFreq;
-static int16_t fdsModChange;
-static uint32_t fdsCurMasterClock, fdsCurModClock, fdsCurVolEnvClock, fdsCurSweepClock;
-static uint32_t fdsVolEnvClock, fdsSweepClock;
-static bool fdsMasterEnable;
-static bool fdsVolEnvEnabled;
-static bool fdsEnvMasterEnable;
-static bool fdsSweepEnabled;
-static bool fdsModEnabled;
-static bool fdsWavWrite;
+static struct {
+	uint8_t wave[0x40];
+	uint8_t modulation[0x40];
+	uint8_t curWavePos, curModPos;
+	uint8_t curWave;
+	uint8_t envSpeed;
+	uint8_t volEnvSpeed, volEnvGain, volEnvMode;
+	uint8_t sweepSpeed, sweepModGain, sweepMode;
+	uint8_t masterVol;
+	int8_t modCounter;
+	uint16_t freq, modFreq;
+	int16_t modChange;
+	uint32_t curMasterClock, curModClock, curVolEnvClock, curSweepClock;
+	uint32_t volEnvClock, sweepClock;
+	bool masterEnable;
+	bool volEnvEnabled;
+	bool envMasterEnable;
+	bool sweepEnabled;
+	bool modEnabled;
+	bool wavWrite;
+} fds_apu;
 
 static void fdsUpdateClockRates()
 {
-	fdsVolEnvClock = 8 * fdsEnvSpeed * (fdsVolEnvSpeed + 1);
-	fdsSweepClock = 8 * fdsEnvSpeed * (fdsSweepSpeed + 1);
+	fds_apu.volEnvClock = 8 * fds_apu.envSpeed * (fds_apu.volEnvSpeed + 1);
+	fds_apu.sweepClock = 8 * fds_apu.envSpeed * (fds_apu.sweepSpeed + 1);
 }
 
 void fdsAudioInit()
 {
-	memset(fds_wave, 0, 0x40);
-	memset(fds_modulation, 0, 0x40);
-	fdsEnabled = true;
+	memset(fds_apu.wave, 0, 0x40);
+	memset(fds_apu.modulation, 0, 0x40);
+	audioExpansion |= EXP_FDS;
 	fdsOut = 0;
-	fdsCurWavePos = 0, fdsCurModPos = 0;
-	fdsCurWave = 0;
-	fdsEnvSpeed = 0xE8; //from FDS BIOS
-	fdsVolEnvSpeed = 0, fdsVolEnvGain = 0, fdsVolEnvMode = 0;
-	fdsSweepSpeed = 0, fdsSweepModGain = 0, fdsSweepMode = 0;
+	fds_apu.curWavePos = 0, fds_apu.curModPos = 0;
+	fds_apu.curWave = 0;
+	fds_apu.envSpeed = 0xE8; //from FDS BIOS
+	fds_apu.volEnvSpeed = 0, fds_apu.volEnvGain = 0, fds_apu.volEnvMode = 0;
+	fds_apu.sweepSpeed = 0, fds_apu.sweepModGain = 0, fds_apu.sweepMode = 0;
 	fdsUpdateClockRates();
-	fdsMasterVol = 0;
-	fdsModCounter = 0;
-	fdsFreq = 0, fdsModFreq = 0;
-	fdsModChange = 0;
-	fdsCurMasterClock = 0;
-	fdsCurModClock = 0;
-	fdsCurVolEnvClock = fdsVolEnvClock;
-	fdsCurSweepClock = fdsSweepClock;
-	fdsMasterEnable = false;
-	fdsVolEnvEnabled = false;
-	fdsEnvMasterEnable = false;
-	fdsSweepEnabled = false;
-	fdsModEnabled = false;
-	fdsWavWrite = false;
+	fds_apu.masterVol = 0;
+	fds_apu.modCounter = 0;
+	fds_apu.freq = 0, fds_apu.modFreq = 0;
+	fds_apu.modChange = 0;
+	fds_apu.curMasterClock = 0;
+	fds_apu.curModClock = 0;
+	fds_apu.curVolEnvClock = fds_apu.volEnvClock;
+	fds_apu.curSweepClock = fds_apu.sweepClock;
+	fds_apu.masterEnable = false;
+	fds_apu.volEnvEnabled = false;
+	fds_apu.envMasterEnable = false;
+	fds_apu.sweepEnabled = false;
+	fds_apu.modEnabled = false;
+	fds_apu.wavWrite = false;
 }
 
-void fdsAudioCycle()
+__attribute__ ((noinline)) void fdsAudioCycle()
 {
-	if(fdsWavWrite)
+	if(fds_apu.wavWrite)
 		return;
-	uint8_t fdsCurVol = fdsVolEnvGain;
+	uint8_t fdsCurVol = fds_apu.volEnvGain;
 	if(fdsCurVol > 0x20) //clamp output
 		fdsCurVol = 0x20;
-	uint16_t tmp = (fdsCurWave&0x3F)*fdsCurVol;
-	if(fdsMasterVol == 1)
+	uint16_t tmp = (fds_apu.curWave&0x3F)*fdsCurVol;
+	if(fds_apu.masterVol == 1)
 		tmp = tmp*20/30;
-	else if(fdsMasterVol == 2)
+	else if(fds_apu.masterVol == 2)
 		tmp = tmp*15/30;
-	else if(fdsMasterVol == 3)
+	else if(fds_apu.masterVol == 3)
 		tmp = tmp*12/30;
 	fdsOut = (tmp>>5)&0x3F;
 }
 
 void fdsAudioClockTimers()
 {
-	if(!fdsMasterEnable || !fdsEnvMasterEnable)
+	if(!fds_apu.masterEnable || !fds_apu.envMasterEnable)
 		return;
 
-	if(fdsVolEnvEnabled)
+	if(fds_apu.volEnvEnabled)
 	{
-		if(fdsCurVolEnvClock)
-			fdsCurVolEnvClock--;
+		if(fds_apu.curVolEnvClock)
+			fds_apu.curVolEnvClock--;
 		else
 		{		
-			fdsCurVolEnvClock = fdsVolEnvClock;
+			fds_apu.curVolEnvClock = fds_apu.volEnvClock;
 			//do env stuff
-			if(fdsVolEnvMode == 1)
+			if(fds_apu.volEnvMode == 1)
 			{
-				if(fdsVolEnvGain < 0x20)
-					fdsVolEnvGain++;
+				if(fds_apu.volEnvGain < 0x20)
+					fds_apu.volEnvGain++;
 			}
 			else
 			{
-				if(fdsVolEnvGain > 0)
-					fdsVolEnvGain--;
+				if(fds_apu.volEnvGain > 0)
+					fds_apu.volEnvGain--;
 			}
 		}
 	}
 
-	if(fdsSweepEnabled)
+	if(fds_apu.sweepEnabled)
 	{
-		if(fdsCurSweepClock)
-			fdsCurSweepClock--;
+		if(fds_apu.curSweepClock)
+			fds_apu.curSweepClock--;
 		else
 		{
-			fdsCurSweepClock = fdsSweepClock;
+			fds_apu.curSweepClock = fds_apu.sweepClock;
 			//do sweep stuff
-			if(fdsSweepMode == 1)
+			if(fds_apu.sweepMode == 1)
 			{
-				if(fdsSweepModGain < 0x20)
-					fdsSweepModGain++;
+				if(fds_apu.sweepModGain < 0x20)
+					fds_apu.sweepModGain++;
 			}
 			else
 			{
-				if(fdsSweepModGain > 0)
-					fdsSweepModGain--;
+				if(fds_apu.sweepModGain > 0)
+					fds_apu.sweepModGain--;
 			}
 		}
 	}
 }
 
-void fdsAudioMasterUpdate()
+__attribute__ ((noinline)) void fdsAudioMasterUpdate()
 {
-	if(fdsMasterEnable)
+	if(fds_apu.masterEnable)
 	{
-		fdsCurMasterClock += (fdsFreq + fdsModChange);
-		if(fdsCurMasterClock&(~0xFFFF))
+		fds_apu.curMasterClock += (fds_apu.freq + fds_apu.modChange);
+		if(fds_apu.curMasterClock&(~0xFFFF))
 		{
-			fdsCurMasterClock &= 0xFFFF;
+			fds_apu.curMasterClock &= 0xFFFF;
 			//do master stuff
-			fdsCurWave = fds_wave[fdsCurWavePos];
-			fdsCurWavePos++;
-			if(fdsCurWavePos >= 0x40)
-				fdsCurWavePos = 0;
+			fds_apu.curWave = fds_apu.wave[fds_apu.curWavePos];
+			fds_apu.curWavePos++;
+			if(fds_apu.curWavePos >= 0x40)
+				fds_apu.curWavePos = 0;
 		}
 	}
 
-	if(fdsModEnabled)
+	if(fds_apu.modEnabled)
 	{
-		fdsCurModClock += fdsModFreq;
-		if(fdsCurModClock&(~0xFFFF))
+		fds_apu.curModClock += fds_apu.modFreq;
+		if(fds_apu.curModClock&(~0xFFFF))
 		{
-			fdsCurModClock &= 0xFFFF;
+			fds_apu.curModClock &= 0xFFFF;
 			//do mod stuff
-			switch((fds_modulation[fdsCurModPos]&7))
+			switch((fds_apu.modulation[fds_apu.curModPos]&7))
 			{
 				case 1:
-					fdsModCounter++;
+					fds_apu.modCounter++;
 					break;
 				case 2:
-					fdsModCounter += 2;
+					fds_apu.modCounter += 2;
 					break;
 				case 3:
-					fdsModCounter += 4;
+					fds_apu.modCounter += 4;
 					break;
 				case 4:
-					fdsModCounter = 0;
+					fds_apu.modCounter = 0;
 					break;
 				case 5:
-					fdsModCounter -= 4;
+					fds_apu.modCounter -= 4;
 					break;
 				case 6:
-					fdsModCounter -= 2;
+					fds_apu.modCounter -= 2;
 					break;
 				case 7:
-					fdsModCounter -= 1;
+					fds_apu.modCounter -= 1;
 					break;
 				default:
 					break;
 			}
-			if(fdsModCounter & 0x40) //7-bit signed
-				fdsModCounter |= 0x80;
+			if(fds_apu.modCounter & 0x40) //7-bit signed
+				fds_apu.modCounter |= 0x80;
 			else
-				fdsModCounter &= ~0x80;
+				fds_apu.modCounter &= ~0x80;
 			//move along mod pos
-			fdsCurModPos++; fdsCurModPos &= 0x3F;
+			fds_apu.curModPos++; fds_apu.curModPos &= 0x3F;
 			// from https://forums.nesdev.com/viewtopic.php?f=3&t=10233
 			// 1. multiply counter by gain, lose lowest 4 bits of result but "round" in a strange way
-			int16_t temp = fdsModCounter * fdsSweepModGain;
+			int16_t temp = fds_apu.modCounter * fds_apu.sweepModGain;
 			uint8_t remainder = temp & 0xF;
 			temp >>= 4;
 			if((remainder > 0) && ((temp & 0x80) == 0))
 			{
-				if (fdsModCounter < 0)
+				if (fds_apu.modCounter < 0)
 					temp -= 1;
 				else
 					temp += 2;
@@ -212,13 +214,13 @@ void fdsAudioMasterUpdate()
 			else if(temp < -64)
 				temp += 256;
 			// 3. multiply result by pitch, then round to nearest while dropping 6 bits
-			temp = fdsFreq * temp;
+			temp = fds_apu.freq * temp;
 			remainder = temp & 0x3F;
 			temp >>= 6;
 			if(remainder >= 32)
 				temp += 1;
 			// final mod result is in temp
-			fdsModChange = temp;
+			fds_apu.modChange = temp;
 		}
 	}
 }
@@ -227,89 +229,89 @@ void fdsAudioSet8(uint8_t reg, uint8_t val)
 {
 	if(reg == 0)
 	{
-		fdsVolEnvEnabled = ((val&0x80) == 0);
-		fdsVolEnvMode = ((val&0x40) != 0);
-		fdsVolEnvSpeed = val&0x3F; //always set speed
-		if(!fdsVolEnvEnabled) //only set gain when unit is disabled
-			fdsVolEnvGain = val&0x3F;
+		fds_apu.volEnvEnabled = ((val&0x80) == 0);
+		fds_apu.volEnvMode = ((val&0x40) != 0);
+		fds_apu.volEnvSpeed = val&0x3F; //always set speed
+		if(!fds_apu.volEnvEnabled) //only set gain when unit is disabled
+			fds_apu.volEnvGain = val&0x3F;
 		fdsUpdateClockRates(); //always resets clock
-		fdsCurVolEnvClock = fdsVolEnvClock;
+		fds_apu.curVolEnvClock = fds_apu.volEnvClock;
 	}
 	else if(reg == 2)
-		fdsFreq = ((fdsFreq&~0xFF) | val);
+		fds_apu.freq = ((fds_apu.freq&~0xFF) | val);
 	else if(reg == 3)
 	{
-		fdsMasterEnable = ((val&0x80) == 0);
-		fdsFreq = (fdsFreq&0xFF) | ((val&0xF)<<8);
-		if(fdsFreq == 0)
-			fdsMasterEnable = false;
-		if(!fdsMasterEnable)
+		fds_apu.masterEnable = ((val&0x80) == 0);
+		fds_apu.freq = (fds_apu.freq&0xFF) | ((val&0xF)<<8);
+		if(fds_apu.freq == 0)
+			fds_apu.masterEnable = false;
+		if(!fds_apu.masterEnable)
 		{
 			//disabling resets clock and wave pos
-			fdsCurMasterClock = 0;
-			fdsCurWavePos = 0;
-			fdsCurWave = fds_wave[fdsCurWavePos];
+			fds_apu.curMasterClock = 0;
+			fds_apu.curWavePos = 0;
+			fds_apu.curWave = fds_apu.wave[fds_apu.curWavePos];
 		}
-		fdsEnvMasterEnable = ((val&0x40) == 0);
-		if(!fdsEnvMasterEnable)
+		fds_apu.envMasterEnable = ((val&0x40) == 0);
+		if(!fds_apu.envMasterEnable)
 		{
 			//disabling resets both env clocks
-			fdsCurVolEnvClock = fdsVolEnvClock;
-			fdsCurSweepClock = fdsSweepClock;
+			fds_apu.curVolEnvClock = fds_apu.volEnvClock;
+			fds_apu.curSweepClock = fds_apu.sweepClock;
 		}
 	}
 	else if(reg == 4)
 	{
-		fdsSweepEnabled = ((val&0x80) == 0);
-		fdsSweepMode = ((val&0x40) != 0);
-		fdsSweepSpeed = val&0x3F; //always set speed
-		if(!fdsSweepEnabled) //only set gain when unit is disabled
-			fdsSweepModGain = val&0x3F;
+		fds_apu.sweepEnabled = ((val&0x80) == 0);
+		fds_apu.sweepMode = ((val&0x40) != 0);
+		fds_apu.sweepSpeed = val&0x3F; //always set speed
+		if(!fds_apu.sweepEnabled) //only set gain when unit is disabled
+			fds_apu.sweepModGain = val&0x3F;
 		fdsUpdateClockRates(); //always resets clock
-		fdsCurSweepClock = fdsSweepClock;
+		fds_apu.curSweepClock = fds_apu.sweepClock;
 	}
 	else if(reg == 5)
 	{
-		fdsModCounter = (val&0x7F);
+		fds_apu.modCounter = (val&0x7F);
 		if(val&0x40) //7-bit signed
-			fdsModCounter |= 0x80;
+			fds_apu.modCounter |= 0x80;
 		else
-			fdsModCounter &= ~0x80;
+			fds_apu.modCounter &= ~0x80;
 	}
 	else if(reg == 6)
-		fdsModFreq = ((fdsModFreq&~0xFF) | val);
+		fds_apu.modFreq = ((fds_apu.modFreq&~0xFF) | val);
 	else if(reg == 7)
 	{
-		fdsModEnabled = ((val&0x80) == 0);
-		fdsModFreq = (fdsModFreq&0xFF) | ((val&0xF)<<8);
-		if(fdsModFreq == 0)
-			fdsModEnabled = false;
-		if(!fdsModEnabled)
+		fds_apu.modEnabled = ((val&0x80) == 0);
+		fds_apu.modFreq = (fds_apu.modFreq&0xFF) | ((val&0xF)<<8);
+		if(fds_apu.modFreq == 0)
+			fds_apu.modEnabled = false;
+		if(!fds_apu.modEnabled)
 		{
 			//disabling resets clock 
-			fdsCurModClock = 0;
+			fds_apu.curModClock = 0;
 			//make sure to clear old change too
-			fdsModChange = 0;
+			fds_apu.modChange = 0;
 		}
 	}
 	else if(reg == 8)
 	{
-		if(!fdsModEnabled)
+		if(!fds_apu.modEnabled)
 		{
-			fds_modulation[fdsCurModPos] = val;
-			fdsCurModPos++; fdsCurModPos&=0x3F;
-			fds_modulation[fdsCurModPos] = val;
-			fdsCurModPos++; fdsCurModPos&=0x3F;
+			fds_apu.modulation[fds_apu.curModPos] = val;
+			fds_apu.curModPos++; fds_apu.curModPos&=0x3F;
+			fds_apu.modulation[fds_apu.curModPos] = val;
+			fds_apu.curModPos++; fds_apu.curModPos&=0x3F;
 		}
 	}
 	else if(reg == 9)
 	{
-		fdsWavWrite = ((val&0x80) != 0);
-		fdsMasterVol = val&3;
+		fds_apu.wavWrite = ((val&0x80) != 0);
+		fds_apu.masterVol = val&3;
 	}
 	else if(reg == 0xA)
 	{
-		fdsEnvSpeed = val;
+		fds_apu.envSpeed = val;
 		fdsUpdateClockRates();
 	}
 }
@@ -317,20 +319,20 @@ void fdsAudioSet8(uint8_t reg, uint8_t val)
 uint8_t fdsAudioGet8(uint8_t reg)
 {
 	if(reg == 0)
-		return fdsVolEnvGain|0x40;
+		return fds_apu.volEnvGain|0x40;
 	else if(reg == 2)
-		return fdsSweepModGain|0x40;
+		return fds_apu.sweepModGain|0x40;
 	return 0;
 }
 
 void fdsAudioSetWave(uint8_t pos, uint8_t val)
 {
-	if(!fdsWavWrite)
+	if(!fds_apu.wavWrite)
 		return;
-	fds_wave[pos] = val;
+	fds_apu.wave[pos] = val;
 }
 
 uint8_t fdsAudioGetWave(uint8_t pos)
 {
-	return fds_wave[pos];
+	return fds_apu.wave[pos];
 }

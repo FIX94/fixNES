@@ -15,171 +15,177 @@
 #include "audio.h"
 #include "mem.h"
 #include "cpu.h"
+#include "apu.h"
 
-static uint16_t s5BVolTbl[32];
-//16 shapes, 2x32 steps
-static uint8_t s5BEnvShapeTbl[16][64];
 //repeat values for all 16 shapes
-static const bool s5BEnvRepeatTbl[16] = { 
+static const bool s5b_envRepeatTbl[16] = { 
 	false, false, false, false, false, false, false, false,
 	true,  false, true,  false, true,  false, true,  false,
 };
 
 //used externally
-bool s5Benabled = false;
-uint16_t s5BOut = 0;
+extern uint8_t audioExpansion;
+uint16_t s5BOut;
 
-static uint8_t s5BCurReg;
+static struct {
+	const bool *envRepeatTbl;
+	uint16_t volTbl[32];
+	//16 shapes, 2x32 steps
+	uint8_t envShapeTbl[16][64];
 
-static uint16_t s5Bfreq[3];
-static uint16_t s5BfreqCtr[3];
-static uint16_t s5BVol[3];
-static uint8_t s5BCycle[3];
-static bool s5Bdisable[3];
-static bool s5Bnonoise[3];
-static bool s5BEnv[3];
+	uint8_t curReg;
 
-static uint8_t s5BCtr;
+	uint16_t freq[3];
+	uint16_t freqCtr[3];
+	uint16_t vol[3];
+	uint8_t cycle[3];
+	bool disable[3];
+	bool nonoise[3];
+	bool env[3];
 
-static uint16_t s5BnoiseFreq;
-static uint16_t s5BnoiseFreqCtr;
-static uint32_t s5BnoiseReg;
+	uint8_t ctr;
 
-static uint32_t s5BEnvFreq;
-static uint32_t s5BEnvFreqCtr;
-static uint8_t s5BEnvStep;
-static uint8_t s5BEnvShape;
-static uint16_t s5BEnvVol;
-static bool s5BEnvRepeat;
+	uint16_t noiseFreq;
+	uint16_t noiseFreqCtr;
+	uint32_t noiseReg;
+
+	uint32_t envFreq;
+	uint32_t envFreqCtr;
+	uint8_t envStep;
+	uint8_t envShape;
+	uint16_t envVol;
+	bool envRepeat;
+} s5b_apu;
 
 void s5BAudioInit()
 {
-	s5Benabled = true;
+	audioExpansion |= EXP_S5B;
 	s5BOut = 0;
-	s5BCurReg = 0xE;
+	s5b_apu.curReg = 0xE;
 
 	uint8_t i;
 	for(i = 0; i < 3; i++)
 	{
-		s5Bfreq[i] = 0;
-		s5BfreqCtr[i] = 0;
-		s5BVol[i] = 0;
-		s5BCycle[i] = 0;
-		s5Bdisable[i] = true;
-		s5Bnonoise[i] = true;
-		s5BEnv[i] = false;
+		s5b_apu.freq[i] = 0;
+		s5b_apu.freqCtr[i] = 0;
+		s5b_apu.vol[i] = 0;
+		s5b_apu.cycle[i] = 0;
+		s5b_apu.disable[i] = true;
+		s5b_apu.nonoise[i] = true;
+		s5b_apu.env[i] = false;
 	}
 
-	s5BCtr = 0;
+	s5b_apu.ctr = 0;
 
-	s5BnoiseFreq = 0;
-	s5BnoiseFreqCtr = 0;
-	s5BnoiseReg = 1;
+	s5b_apu.noiseFreq = 0;
+	s5b_apu.noiseFreqCtr = 0;
+	s5b_apu.noiseReg = 1;
 
-	s5BEnvFreq = 0;
-	s5BEnvFreqCtr = 0;
-	s5BEnvStep = 0;
-	s5BEnvShape = 0;
-	s5BEnvVol = 0;
-	s5BEnvRepeat = false;
+	s5b_apu.envFreq = 0;
+	s5b_apu.envFreqCtr = 0;
+	s5b_apu.envStep = 0;
+	s5b_apu.envShape = 0;
+	s5b_apu.envVol = 0;
+	s5b_apu.envRepeatTbl = s5b_envRepeatTbl;
+	s5b_apu.envRepeat = false;
 
 	//printf("s5B Audio Inited!\n");
 	//build volume LUT
-	s5BVolTbl[0] = 0;
+	s5b_apu.volTbl[0] = 0;
 	//set max channel volume to 10922 (1/3rd of 32768)
 	double conv = 10922.0 / pow(10.0, (1.5*31.0) / 20.0);
 	for(i = 1; i < 32; i++)
-		s5BVolTbl[i] = pow(10.0, (1.5*i) / 20.0) * conv;
+		s5b_apu.volTbl[i] = pow(10.0, (1.5*i) / 20.0) * conv;
 	//build envelope LUT
 	for(i = 0; i < 32; i++)
 	{
 		//envelope shapes step 1
-		s5BEnvShapeTbl[0x0][i] = s5BEnvShapeTbl[0x1][i] = 
-		s5BEnvShapeTbl[0x2][i] = s5BEnvShapeTbl[0x3][i] = 
-		s5BEnvShapeTbl[0x8][i] = s5BEnvShapeTbl[0x9][i] = 
-		s5BEnvShapeTbl[0xA][i] = s5BEnvShapeTbl[0xB][i] = 31-i;
-		s5BEnvShapeTbl[0x4][i] = s5BEnvShapeTbl[0x5][i] = 
-		s5BEnvShapeTbl[0x6][i] = s5BEnvShapeTbl[0x7][i] = 
-		s5BEnvShapeTbl[0xC][i] = s5BEnvShapeTbl[0xD][i] = 
-		s5BEnvShapeTbl[0xE][i] = s5BEnvShapeTbl[0xF][i] = i;
+		s5b_apu.envShapeTbl[0x0][i] = s5b_apu.envShapeTbl[0x1][i] = 
+		s5b_apu.envShapeTbl[0x2][i] = s5b_apu.envShapeTbl[0x3][i] = 
+		s5b_apu.envShapeTbl[0x8][i] = s5b_apu.envShapeTbl[0x9][i] = 
+		s5b_apu.envShapeTbl[0xA][i] = s5b_apu.envShapeTbl[0xB][i] = 31-i;
+		s5b_apu.envShapeTbl[0x4][i] = s5b_apu.envShapeTbl[0x5][i] = 
+		s5b_apu.envShapeTbl[0x6][i] = s5b_apu.envShapeTbl[0x7][i] = 
+		s5b_apu.envShapeTbl[0xC][i] = s5b_apu.envShapeTbl[0xD][i] = 
+		s5b_apu.envShapeTbl[0xE][i] = s5b_apu.envShapeTbl[0xF][i] = i;
 		//envelope shapes step 2
-		s5BEnvShapeTbl[0x0][i+32] = s5BEnvShapeTbl[0x1][i+32] = 
-		s5BEnvShapeTbl[0x2][i+32] = s5BEnvShapeTbl[0x3][i+32] = 
-		s5BEnvShapeTbl[0x4][i+32] = s5BEnvShapeTbl[0x5][i+32] = 
-		s5BEnvShapeTbl[0x6][i+32] = s5BEnvShapeTbl[0x7][i+32] =
-		s5BEnvShapeTbl[0x9][i+32] = s5BEnvShapeTbl[0xF][i+32] = 0;
-		s5BEnvShapeTbl[0xB][i+32] = s5BEnvShapeTbl[0xD][i+32] = 31;
-		s5BEnvShapeTbl[0x8][i+32] = s5BEnvShapeTbl[0xE][i+32] = 31-i;
-		s5BEnvShapeTbl[0xA][i+32] = s5BEnvShapeTbl[0xC][i+32] = i;
+		s5b_apu.envShapeTbl[0x0][i+32] = s5b_apu.envShapeTbl[0x1][i+32] = 
+		s5b_apu.envShapeTbl[0x2][i+32] = s5b_apu.envShapeTbl[0x3][i+32] = 
+		s5b_apu.envShapeTbl[0x4][i+32] = s5b_apu.envShapeTbl[0x5][i+32] = 
+		s5b_apu.envShapeTbl[0x6][i+32] = s5b_apu.envShapeTbl[0x7][i+32] =
+		s5b_apu.envShapeTbl[0x9][i+32] = s5b_apu.envShapeTbl[0xF][i+32] = 0;
+		s5b_apu.envShapeTbl[0xB][i+32] = s5b_apu.envShapeTbl[0xD][i+32] = 31;
+		s5b_apu.envShapeTbl[0x8][i+32] = s5b_apu.envShapeTbl[0xE][i+32] = 31-i;
+		s5b_apu.envShapeTbl[0xA][i+32] = s5b_apu.envShapeTbl[0xC][i+32] = i;
 	}
 }
 
 void s5BAudioClockTimers()
 {
 	//every 16 cpu ticks this will be updated
-	if((s5BCtr&0xF) == 0)
+	if((s5b_apu.ctr&0xF) == 0)
 	{
 		uint8_t i;
 		for(i = 0; i < 3; i++)
 		{
-			if(s5BfreqCtr[i])
-				s5BfreqCtr[i]--;
-			if(s5BfreqCtr[i] == 0)
+			if(s5b_apu.freqCtr[i])
+				s5b_apu.freqCtr[i]--;
+			if(s5b_apu.freqCtr[i] == 0)
 			{
-				s5BfreqCtr[i] = s5Bfreq[i];
-				s5BCycle[i]++;
+				s5b_apu.freqCtr[i] = s5b_apu.freq[i];
+				s5b_apu.cycle[i]++;
 			}
 		}
-		if(s5BnoiseFreqCtr)
-			s5BnoiseFreqCtr--;
-		if(s5BnoiseFreqCtr == 0)
+		if(s5b_apu.noiseFreqCtr)
+			s5b_apu.noiseFreqCtr--;
+		if(s5b_apu.noiseFreqCtr == 0)
 		{
-			s5BnoiseFreqCtr = s5BnoiseFreq;
-			if(s5BnoiseReg&1) s5BnoiseReg ^= 0x24000;
-			s5BnoiseReg >>= 1;
+			s5b_apu.noiseFreqCtr = s5b_apu.noiseFreq;
+			if(s5b_apu.noiseReg&1) s5b_apu.noiseReg ^= 0x24000;
+			s5b_apu.noiseReg >>= 1;
 		}
-		if(s5BEnvFreqCtr)
-			s5BEnvFreqCtr--;
-		if(s5BEnvFreqCtr == 0)
+		if(s5b_apu.envFreqCtr)
+			s5b_apu.envFreqCtr--;
+		if(s5b_apu.envFreqCtr == 0)
 		{
-			s5BEnvFreqCtr = s5BEnvFreq;
-			if(s5BEnvStep >= 63)
+			s5b_apu.envFreqCtr = s5b_apu.envFreq;
+			if(s5b_apu.envStep >= 63)
 			{
-				if(s5BEnvRepeat)
-					s5BEnvStep = 0;
+				if(s5b_apu.envRepeat)
+					s5b_apu.envStep = 0;
 			}
 			else
-				s5BEnvStep++;
-			s5BEnvVol = s5BVolTbl[s5BEnvShapeTbl[s5BEnvShape][s5BEnvStep]];
+				s5b_apu.envStep++;
+			s5b_apu.envVol = s5b_apu.volTbl[s5b_apu.envShapeTbl[s5b_apu.envShape][s5b_apu.envStep]];
 		}
 	}
-	s5BCtr++;
+	s5b_apu.ctr++;
 }
 
 static inline void _s5BsetChanFreqLow(uint8_t chan, uint8_t val)
 {
-	s5Bfreq[chan] = ((s5Bfreq[chan]&0xF00) | val);
+	s5b_apu.freq[chan] = ((s5b_apu.freq[chan]&0xF00) | val);
 }
 
 static inline void _s5BsetChanFreqHigh(uint8_t chan, uint8_t val)
 {
-	s5Bfreq[chan] = (s5Bfreq[chan]&0xFF) | ((val&0xF)<<8);
+	s5b_apu.freq[chan] = (s5b_apu.freq[chan]&0xFF) | ((val&0xF)<<8);
 }
 
 static inline void _s5BsetChanVolEnv(uint8_t chan, uint8_t val)
 {
-	s5BVol[chan] = (val&0xF) ? (s5BVolTbl[((val&0xF)<<1)+1]) : 0;
-	s5BEnv[chan] = (val&0x10);
+	s5b_apu.vol[chan] = (val&0xF) ? (s5b_apu.volTbl[((val&0xF)<<1)+1]) : 0;
+	s5b_apu.env[chan] = (val&0x10);
 }
 
 void s5BAudioSet8(uint16_t addr, uint8_t val)
 {
 	//printf("s5BAudioSet8 %04x %02x\n", addr, val);
 	if(addr < 0xE000)
-		s5BCurReg = val&0xF;
+		s5b_apu.curReg = val&0xF;
 	else
 	{
-		switch(s5BCurReg)
+		switch(s5b_apu.curReg)
 		{
 			case 0x0:
 				_s5BsetChanFreqLow(0, val);
@@ -200,15 +206,15 @@ void s5BAudioSet8(uint16_t addr, uint8_t val)
 				_s5BsetChanFreqHigh(2, val);
 				break;
 			case 0x6:
-				s5BnoiseFreq = (val&0x1F)<<1;
+				s5b_apu.noiseFreq = (val&0x1F)<<1;
 				break;
 			case 0x7:
-				s5Bdisable[0] = (val&1);
-				s5Bdisable[1] = (val&2);
-				s5Bdisable[2] = (val&4);
-				s5Bnonoise[0] = (val&0x08);
-				s5Bnonoise[1] = (val&0x10);
-				s5Bnonoise[2] = (val&0x20);
+				s5b_apu.disable[0] = (val&1);
+				s5b_apu.disable[1] = (val&2);
+				s5b_apu.disable[2] = (val&4);
+				s5b_apu.nonoise[0] = (val&0x08);
+				s5b_apu.nonoise[1] = (val&0x10);
+				s5b_apu.nonoise[2] = (val&0x20);
 				break;
 			case 0x8:
 				_s5BsetChanVolEnv(0, val);
@@ -220,15 +226,15 @@ void s5BAudioSet8(uint16_t addr, uint8_t val)
 				_s5BsetChanVolEnv(2, val);
 				break;
 			case 0xB:
-				s5BEnvFreq = (s5BEnvFreq&0xFF00) | val;
+				s5b_apu.envFreq = (s5b_apu.envFreq&0xFF00) | val;
 				break;
 			case 0xC:
-				s5BEnvFreq = (s5BEnvFreq&0xFF) | (val<<8);
+				s5b_apu.envFreq = (s5b_apu.envFreq&0xFF) | (val<<8);
 				break;
 			case 0xD:
-				s5BEnvStep = 0;
-				s5BEnvShape = (val&0xF);
-				s5BEnvRepeat = s5BEnvRepeatTbl[s5BEnvShape];
+				s5b_apu.envStep = 0;
+				s5b_apu.envShape = (val&0xF);
+				s5b_apu.envRepeat = s5b_apu.envRepeatTbl[s5b_apu.envShape];
 				break;
 			default:
 				break;
@@ -236,13 +242,14 @@ void s5BAudioSet8(uint16_t addr, uint8_t val)
 	}
 }
 
-void s5BAudioCycle()
+__attribute__((noinline)) void s5BAudioCycle()
 {
-	s5BOut = 0;
+	uint16_t out = 0;
 	uint8_t i;
 	for(i = 0; i < 3; i++)
 	{
-		if((s5Bdisable[i] || (s5Bfreq[i] && ((s5BCycle[i])&1))) && (s5Bnonoise[i] || (s5BnoiseFreq && (s5BnoiseReg&1))))
-			s5BOut += s5BEnv[i] ? s5BEnvVol : s5BVol[i];
+		if((s5b_apu.disable[i] || (s5b_apu.freq[i] && ((s5b_apu.cycle[i])&1))) && (s5b_apu.nonoise[i] || (s5b_apu.noiseFreq && (s5b_apu.noiseReg&1))))
+			out += s5b_apu.env[i] ? s5b_apu.envVol : s5b_apu.vol[i];
 	}
+	s5BOut = out;
 }

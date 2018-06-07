@@ -9,11 +9,10 @@
 #define _AUDIO_VRC6_H_
 
 void vrc6AudioInit();
-void vrc6AudioCycle();
+__attribute__ ((noinline)) void vrc6AudioCycle();
 void vrc6AudioClockTimers();
 void vrc6AudioSet8(uint16_t addr, uint8_t val);
 
-extern bool vrc6enabled;
 extern uint8_t vrc6Out;
 
 #endif

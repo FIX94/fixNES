@@ -44,6 +44,7 @@ static uint8_t nsf_init_timeout;
 static uint8_t nsf_chrRAM[0x2000];
 static uint8_t nsf_MMC5ExRAM[0x400];
 extern bool nesPAL;
+extern uint8_t audioExpansion;
 static uint8_t nsf_prevValReads[8];
 
 //used externally
@@ -64,17 +65,17 @@ static void nsfInitPlayback()
 	memcpy(nsf_PRGBank, nsf_InitPRGBank, 8*sizeof(uint32_t));
 	memcpy(nsf_RAMBank, nsf_InitRAMBank, 2*sizeof(uint32_t));
 	cpuInitNSF(nsf_initAddr, nsf_curTrack-1, nesPAL ? 1 : 0);
-	if(vrc6enabled)
+	if(audioExpansion & EXP_VRC6)
 		vrc6AudioInit();
-	if(vrc7enabled)
+	if(audioExpansion & EXP_VRC7)
 		vrc7AudioInit();
-	if(fdsEnabled)
+	if(audioExpansion & EXP_FDS)
 		fdsAudioInit();
-	if(mmc5enabled)
+	if(audioExpansion & EXP_MMC5)
 		mmc5AudioInit();
-	if(n163enabled)
+	if(audioExpansion & EXP_N163)
 		n163AudioInit();
-	if(s5Benabled)
+	if(audioExpansion & EXP_S5B)
 		s5BAudioInit();
 }
 
@@ -86,22 +87,23 @@ void nsfinit(uint8_t *nsfBIN, uint32_t nsfBINsize, uint8_t *prgRAMin, uint32_t p
 	nsf_prgROMsize = nsfBINsize-0x80;
 	nsf_prgRAM = prgRAMin;
 	nsf_prgRAMsize = prgRAMsizeIn;
-	nsf_loadAddr = (*(uint16_t*)(nsfBIN+0x8))&0x7FFF;
-	nsf_initAddr = *(uint16_t*)(nsfBIN+0xA);
-	nsf_playAddr = *(uint16_t*)(nsfBIN+0xC);
+	nsf_loadAddr = ((nsfBIN[0x8])|(nsfBIN[0x9]<<8))&0x7FFF;
+	nsf_initAddr = ((nsfBIN[0xA])|(nsfBIN[0xB]<<8));
+	nsf_playAddr = ((nsfBIN[0xC])|(nsfBIN[0xD]<<8));
 	nesPAL = ((nsfBIN[0x7A]&1) != 0);
-	apuInitBufs();
-	if((nsfBIN[0x7B]&1) != 0)
+	apuInitBufs(); //audioExpansion=0
+	//the inits will set audioExpansion
+	if(nsfBIN[0x7B] & EXP_VRC6)
 		vrc6AudioInit();
-	if((nsfBIN[0x7B]&2) != 0)
+	if(nsfBIN[0x7B] & EXP_VRC7)
 		vrc7AudioInit();
-	if((nsfBIN[0x7B]&4) != 0)
+	if(nsfBIN[0x7B] & EXP_FDS)
 		fdsAudioInit();
-	if((nsfBIN[0x7B]&8) != 0)
+	if(nsfBIN[0x7B] & EXP_MMC5)
 		mmc5AudioInit();
-	if((nsfBIN[0x7B]&0x10) != 0)
+	if(nsfBIN[0x7B] & EXP_N163)
 		n163AudioInit();
-	if((nsfBIN[0x7B]&0x20) != 0)
+	if(nsfBIN[0x7B] & EXP_S5B)
 		s5BAudioInit();
 	nsf_bankEnable = false;
 	uint8_t i;
@@ -118,7 +120,8 @@ void nsfinit(uint8_t *nsfBIN, uint32_t nsfBINsize, uint8_t *prgRAMin, uint32_t p
 	nsf_trackTotal = nsfBIN[6];
 	memset(nsf_prevValReads, 0, 8);
 	printf("NSF Player inited in %s Mode (VRC6 %s, VRC7 %s, FDS %s, MMC5 %s, N163 %s, S5B %s) %s banking\n", nesPAL ? "PAL" : "NTSC", 
-		onOff(vrc6enabled), onOff(vrc7enabled), onOff(fdsEnabled), onOff(mmc5enabled), onOff(n163enabled), onOff(s5Benabled), nsf_bankEnable ? "with" : "without");
+		onOff(audioExpansion&EXP_VRC6), onOff(audioExpansion&EXP_VRC7), onOff(audioExpansion&EXP_FDS), onOff(audioExpansion&EXP_MMC5),
+		onOff(audioExpansion&EXP_N163), onOff(audioExpansion&EXP_S5B), nsf_bankEnable ? "with" : "without");
 	if(nsfBIN[0xE] != 0) printf("Playing back %.32s\n", nsfBIN+0xE);
 	//printf("Track %i/%i         ", nsf_curTrack, nsf_trackTotal);
 	ppuDrawNSFTrackNum(nsf_curTrack, nsf_trackTotal);
@@ -175,11 +178,12 @@ static uint16_t nsf_mmc5_mulRes = 0;
 
 uint8_t nsfget8(uint16_t addr, uint8_t val)
 {
+	uint8_t aExp = audioExpansion;
 	//printf("nsfget8 %04x\n", addr);
 	if(addr < 0x6000)
 	{
 		/* FDS Audio Regs */
-		if(fdsEnabled)
+		if(aExp&EXP_FDS)
 		{
 			if(addr >= 0x4040 && addr <= 0x407F)
 				return fdsAudioGetWave(addr&0x3F);
@@ -187,13 +191,13 @@ uint8_t nsfget8(uint16_t addr, uint8_t val)
 				return fdsAudioGet8(addr&3);
 		}
 		/* N163 Regs */
-		if(n163enabled)
+		if(aExp&EXP_N163)
 		{
 			if(addr >= 0x4800 && addr < 0x5000)
 				return n163AudioGet8(addr, val);
 		}
 		/* MMC5 Regs */
-		if(mmc5enabled)
+		if(aExp&EXP_MMC5)
 		{
 			if(addr == 0x5015)
 				return mmc5AudioGet8(0x15);
@@ -233,7 +237,7 @@ uint8_t nsfget8(uint16_t addr, uint8_t val)
 	}
 	else 
 	{
-		if(addr < 0x8000 && (!fdsEnabled || !nsf_bankEnable))
+		if(addr < 0x8000 && (!(aExp&EXP_FDS) || !nsf_bankEnable))
 			val = nsf_prgRAM[addr&0x1FFF];
 		else
 		{
@@ -242,14 +246,14 @@ uint8_t nsfget8(uint16_t addr, uint8_t val)
 			{
 				val = nsf_prgROM[romAddr-nsf_loadAddr];
 				//printf("Ret from ROM %04x with %02x\n", romAddr-nsf_loadAddr, val);
-				if(addr < 0xE000 && fdsEnabled)
+				if(addr < 0xE000 && (aExp&EXP_FDS))
 					nsf_FillRAM[addr-0x6000] = val;
 			}
-			else if(addr < 0xE000 && fdsEnabled)
+			else if(addr < 0xE000 && (aExp&EXP_FDS))
 				val = nsf_FillRAM[addr-0x6000];
 			else //ROM data not available so return 0
 				val = 0;
-			if(mmc5enabled && addr >= 0x8000 && addr < 0xC000 && mmc5_dmcreadmode)
+			if((aExp&EXP_MMC5) && addr >= 0x8000 && addr < 0xC000 && mmc5_dmcreadmode)
 				mmc5AudioPCMWrite(val);
 		}
 	}
@@ -258,11 +262,12 @@ uint8_t nsfget8(uint16_t addr, uint8_t val)
 
 void nsfset8(uint16_t addr, uint8_t val)
 {
+	uint8_t aExp = audioExpansion;
 	//printf("nsfset8 %04x %02x\n", addr, val);
 	if(addr < 0x6000)
 	{
 		/* FDS Audio Regs */
-		if(fdsEnabled)
+		if(aExp&EXP_FDS)
 		{
 			if(addr >= 0x4040 && addr <= 0x407F)
 				fdsAudioSetWave(addr&0x3F, val);
@@ -270,13 +275,13 @@ void nsfset8(uint16_t addr, uint8_t val)
 				fdsAudioSet8(addr&0x1F, val);
 		}
 		/* N163 Regs */
-		if(n163enabled)
+		if(aExp&EXP_N163)
 		{
 			if(addr >= 0x4800 && addr < 0x5000)
 				n163AudioSet8(addr, val);
 		}
 		/* MMC5 Regs */
-		if(mmc5enabled)
+		if(aExp&EXP_MMC5)
 		{
 			if(addr >= 0x5000 && addr <= 0x5015)
 				mmc5AudioSet8(addr&0x1F, val);
@@ -317,19 +322,19 @@ void nsfset8(uint16_t addr, uint8_t val)
 	}
 	else
 	{
-		if(addr < 0x8000 && (!fdsEnabled || !nsf_bankEnable))
+		if(addr < 0x8000 && (!(aExp&EXP_FDS) || !nsf_bankEnable))
 			nsf_prgRAM[addr&0x1FFF] = val;
-		else if(addr < 0xE000 && fdsEnabled)
+		else if(addr < 0xE000 && (aExp&EXP_FDS))
 			nsf_FillRAM[addr-0x6000] = val;
-		else if(n163enabled && addr >= 0xF800)
+		else if((aExp&EXP_N163) && addr >= 0xF800)
 			n163AudioSet8(addr, val);
-		else if(s5Benabled && addr >= 0xC000)
+		else if((aExp&EXP_S5B) && addr >= 0xC000)
 			s5BAudioSet8(addr, val);
-		else if(vrc6enabled && ((addr >= 0x9000 && addr <= 0x9003) ||
-								(addr >= 0xA000 && addr <= 0xA002) ||
-								(addr >= 0xB000 && addr <= 0xB002)))
+		else if((aExp&EXP_VRC6) && ((addr >= 0x9000 && addr <= 0x9003) ||
+											(addr >= 0xA000 && addr <= 0xA002) ||
+											(addr >= 0xB000 && addr <= 0xB002)))
 			vrc6AudioSet8(addr, val);
-		else if(vrc7enabled)
+		else if(aExp&EXP_VRC7)
 		{
 			if(addr == 0x9010)
 				nsf_vrc7_audioReg = (val&0x3F);
@@ -353,15 +358,15 @@ extern uint8_t inValReads[8];
 
 void nsfcycle()
 {
-	if(vrc6enabled)
+	if(audioExpansion&EXP_VRC6)
 		vrc6AudioClockTimers();
-	if(fdsEnabled)
+	if(audioExpansion&EXP_FDS)
 		fdsAudioClockTimers();
-	if(mmc5enabled)
+	if(audioExpansion&EXP_MMC5)
 		mmc5AudioClockTimers();
-	if(n163enabled)
+	if(audioExpansion&EXP_N163)
 		n163AudioClockTimers();
-	if(s5Benabled)
+	if(audioExpansion&EXP_S5B)
 		s5BAudioClockTimers();
 
 	if(inValReads[BUTTON_RIGHT] && !nsf_prevValReads[BUTTON_RIGHT])

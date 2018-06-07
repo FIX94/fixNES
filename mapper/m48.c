@@ -9,6 +9,7 @@
 #include <inttypes.h>
 #include <stdbool.h>
 #include <string.h>
+#include "../cpu.h"
 #include "../ppu.h"
 #include "../mapper.h"
 
@@ -31,7 +32,7 @@ static bool m48_irqEnable;
 static uint8_t m48_irqReloadVal;
 static uint8_t m48_irqCooldown;
 static uint8_t m48_irqStart;
-extern bool mapper_interrupt;
+extern uint8_t interrupt;
 static uint16_t m48_prevAddr;
 //used externally
 uint32_t m48_prgROMadd;
@@ -168,7 +169,7 @@ void m48set8(uint16_t addr, uint8_t val)
 	else if(addr == 0xC003)
 	{
 		m48_irqEnable = false;
-		mapper_interrupt = false;
+		interrupt &= ~MAPPER_IRQ;
 		m48_irqStart = 0;
 		//printf("Interrupt disabled\n");
 	}
@@ -252,7 +253,7 @@ void m48cycle()
 		m48_irqCooldown--;
 	if(m48_irqStart == 1)
 	{
-		mapper_interrupt = true;
+		interrupt |= MAPPER_IRQ;
 		m48_irqStart = 0;
 	}
 	else if(m48_irqStart > 1)

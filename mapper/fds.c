@@ -43,8 +43,7 @@ static uint16_t fds_transfer_timer;
 static uint16_t fds_disk_position;
 static uint32_t fds_disk_ready_timer;
 
-extern bool fds_interrupt;
-extern bool fds_transfer_interrupt;
+extern uint8_t interrupt;
 
 static void fdsLoadDisk(bool req_side_b)
 {
@@ -99,9 +98,9 @@ uint8_t fdsget8(uint16_t addr, uint8_t val)
 		/* FDS Disk Regs */
 		if(addr == 0x4030)
 		{
-			uint8_t ret = (fds_interrupt&1) | ((fds_transfer_done&1)<<1) | (((!fds_disk_active)&1)<<6) | 0x80;
+			uint8_t ret = ((!!(interrupt&FDS_IRQ))&1) | ((fds_transfer_done&1)<<1) | (((!fds_disk_active)&1)<<6) | 0x80;
 			fds_transfer_done = false;
-			fds_interrupt = false;
+			interrupt &= ~FDS_IRQ;
 			return ret;
 		}
 		else if(addr == 0x4031)
@@ -261,7 +260,7 @@ void fdscycle()
 	if(fds_cur_irq_timer == 1)
 	{
 		if(fds_irq_enable)
-			fds_interrupt = true;
+			interrupt |= FDS_IRQ;
 		fds_cur_irq_timer = 0;
 	}
 	else if(fds_cur_irq_timer > 1)
@@ -299,7 +298,7 @@ void fdscycle()
 			fds_switch_delay--;
 		fds_transfer_done = true;
 		fds_transfer_timer = 145;
-		fds_transfer_interrupt = true;
+		interrupt |= FDS_TRANSFER_IRQ;
 		fds_disk_start = false;
 	}
 	else if(fds_transfer_timer > 1)

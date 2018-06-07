@@ -15,13 +15,14 @@
 #include "audio.h"
 #include "mem.h"
 #include "cpu.h"
+#include "apu.h"
 
 //used externally
-bool vrc7enabled = false;
-int32_t vrc7Out = 0;
+extern uint8_t audioExpansion;
+int32_t vrc7Out;
 
 //rainwarrior's VRC7 patches
-static uint8_t vrc7instrument[16][8] = 
+static const uint8_t vrc7instrumentTbl[16][8] = 
 {
 	{ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 }, 
 	{ 0x03, 0x21, 0x05, 0x06, 0xB8, 0x82, 0x42, 0x27 }, 
@@ -41,7 +42,7 @@ static uint8_t vrc7instrument[16][8] =
 	{ 0x21, 0x62, 0x0D, 0x00, 0xB1, 0xA0, 0x54, 0x17 }, 
 };
 
-static const uint8_t vrc7multi[16] = 
+static const uint8_t vrc7multiTbl[16] = 
 {
 	1, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 20, 24, 24, 30, 30
 };
@@ -74,6 +75,13 @@ typedef struct _vrc7chan_t {
 	uint8_t v;
 } vrc7chan_t;
 
+typedef struct _vrc7Ksr_t
+{
+	int32_t K;
+	int32_t RL;
+	int32_t RH;
+} vrc7Ksr_t;
+
 enum
 {
 	vrc7StateIdle = 0,
@@ -83,8 +91,8 @@ enum
 	vrc7StateRelease
 };
 
-static const uint32_t vrc7MaxAtten = (1<<23);
-static const double attenDb = (1<<23) / 48.0;
+#define vrc7MaxAtten (1<<23)
+#define attenDb ((double)(1<<23)) / 48.0
 
 static inline int32_t vrc7FromDb(double in)
 {
@@ -93,57 +101,67 @@ static inline int32_t vrc7FromDb(double in)
 
 // LUTs and a lot of code based on this code from Disch:
 // http://codepad.org/aAQjWXwJ
-static uint32_t vrc7AttackLut[256];
-static uint32_t vrc7AmLut[256];
-static double vrc7FmLut[256];
-static uint32_t vrc7SinLut[1024];
-static int32_t vrc7LinearLut[65536];
-static int32_t vrc7KslLut[0x10];
+static struct {
+	uint8_t instrument[16][8];
+	uint32_t attackLut[256];
+	uint32_t amLut[256];
+	double fmLut[256];
+	uint32_t sinLut[1024];
+	int32_t linearLut[65536];
+	int32_t kslLut[0x10];
+	const uint8_t *multi;
 
-static vrc7chan_t vrc7channel[6];
+	vrc7chan_t channel[6];
+	vrc7Ksr_t ksr;
 
-static uint32_t vrc7amPhase;
-static uint32_t vrc7amOut;
-static uint32_t vrc7fmPhase;
-static double vrc7fmOut;
+	uint32_t amPhase;
+	uint32_t amOut;
+	uint32_t fmPhase;
+	double fmOut;
+} vrc7_apu;
 
 #define M_PI 3.14159265358979323846
 #define M_2PI 6.28318530717958647692
 
 void vrc7AudioInit()
 {
-	vrc7amPhase = 0; vrc7amOut = 0; vrc7fmPhase = 0; vrc7fmOut = 0;
-	vrc7enabled = true;
-	memset(vrc7channel, 0, sizeof(vrc7chan_t)*6);
+	vrc7_apu.amPhase = 0; vrc7_apu.amOut = 0; vrc7_apu.fmPhase = 0; vrc7_apu.fmOut = 0;
+	audioExpansion |= EXP_VRC7;
+	vrc7Out = 0;
+	memset(vrc7_apu.channel, 0, sizeof(vrc7chan_t)*6);
+
+	uint32_t i;
+	for(i = 0; i < 16; i++)
+		memcpy(vrc7_apu.instrument[i], vrc7instrumentTbl[i], 8);
+	vrc7_apu.multi = vrc7multiTbl;
 
 	// Half Sine lut
-	uint32_t i;
 	for(i = 0; i < 1024; ++i)
 	{
 		double sinx = sin(M_PI * i / 1024);
 		if(!sinx)
-			vrc7SinLut[i] = vrc7MaxAtten;
+			vrc7_apu.sinLut[i] = vrc7MaxAtten;
 		else
 		{
 			sinx = -20.0 * log10(sinx) * attenDb;
 			if(sinx > vrc7MaxAtten)
-				vrc7SinLut[i] = vrc7MaxAtten;
+				vrc7_apu.sinLut[i] = vrc7MaxAtten;
 			else
-				vrc7SinLut[i] = (uint32_t)(sinx);
+				vrc7_apu.sinLut[i] = (uint32_t)(sinx);
 		}
 	}
 
 	// Ksl Lut
-	vrc7KslLut[0] = vrc7FromDb(0), vrc7KslLut[1] = vrc7FromDb(18), vrc7KslLut[2] = vrc7FromDb(24), vrc7KslLut[3] = vrc7FromDb(27.75),
-	vrc7KslLut[4] = vrc7FromDb(30), vrc7KslLut[5] = vrc7FromDb(32.25), vrc7KslLut[6] = vrc7FromDb(33.75), vrc7KslLut[7] = vrc7FromDb(35.25),
-	vrc7KslLut[8] = vrc7FromDb(36), vrc7KslLut[9] = vrc7FromDb(37.5), vrc7KslLut[10] = vrc7FromDb(38.25), vrc7KslLut[11] = vrc7FromDb(39),
-	vrc7KslLut[12] = vrc7FromDb(39.75), vrc7KslLut[13] = vrc7FromDb(40.5), vrc7KslLut[14] = vrc7FromDb(41.25), vrc7KslLut[15] = vrc7FromDb(42);
+	vrc7_apu.kslLut[0] = vrc7FromDb(0), vrc7_apu.kslLut[1] = vrc7FromDb(18), vrc7_apu.kslLut[2] = vrc7FromDb(24), vrc7_apu.kslLut[3] = vrc7FromDb(27.75),
+	vrc7_apu.kslLut[4] = vrc7FromDb(30), vrc7_apu.kslLut[5] = vrc7FromDb(32.25), vrc7_apu.kslLut[6] = vrc7FromDb(33.75), vrc7_apu.kslLut[7] = vrc7FromDb(35.25),
+	vrc7_apu.kslLut[8] = vrc7FromDb(36), vrc7_apu.kslLut[9] = vrc7FromDb(37.5), vrc7_apu.kslLut[10] = vrc7FromDb(38.25), vrc7_apu.kslLut[11] = vrc7FromDb(39),
+	vrc7_apu.kslLut[12] = vrc7FromDb(39.75), vrc7_apu.kslLut[13] = vrc7FromDb(40.5), vrc7_apu.kslLut[14] = vrc7FromDb(41.25), vrc7_apu.kslLut[15] = vrc7FromDb(42);
 
 	// Attack Lut
 	for(i = 0; i < 256; ++i)
 	{
 		double baselog = log((double)(vrc7MaxAtten >> 15));
-		vrc7AttackLut[i] = vrc7FromDb(48) - (uint32_t)(vrc7FromDb(48) * log((double)(i)) / baselog);
+		vrc7_apu.attackLut[i] = vrc7FromDb(48) - (uint32_t)(vrc7FromDb(48) * log((double)(i)) / baselog);
 	}
 
 	// Linear Lut
@@ -152,26 +170,17 @@ void vrc7AudioInit()
 		int32_t outscale = (1 << 20);  // channel output is 20 bits wide
 		double inscale = attenDb / (1 << 7);
 		double lin = pow(10.0, (i / -20.0 / inscale));
-		vrc7LinearLut[i] = (int32_t)(lin * outscale);
+		vrc7_apu.linearLut[i] = (int32_t)(lin * outscale);
 	}
 
 	// Am Lut
 	for(i = 0; i < 256; ++i)
-		vrc7AmLut[i] = (uint32_t)((1.0 + sin(M_2PI * i / 256)) * vrc7FromDb(0.6));
+		vrc7_apu.amLut[i] = (uint32_t)((1.0 + sin(M_2PI * i / 256)) * vrc7FromDb(0.6));
 
 	// Fm Lut
 	for(i = 0; i < 256; ++i)
-		vrc7FmLut[i] = pow(2.0, 13.75 / 1200 * sin(M_2PI * i / 256));
+		vrc7_apu.fmLut[i] = pow(2.0, 13.75 / 1200 * sin(M_2PI * i / 256));
 }
-
-typedef struct _vrc7Ksr_t
-{
-	int32_t K;
-	int32_t RL;
-	int32_t RH;
-} vrc7Ksr_t;
-
-static vrc7Ksr_t vrc7Ksr;
 
 void vrc7SetR(vrc7Ksr_t *k, int32_t r)
 {
@@ -185,20 +194,20 @@ void vrc7SetR(vrc7Ksr_t *k, int32_t r)
 static void vrc7CalcSlotVals(vrc7chan_t *chan, vrc7slot_t *slot, uint8_t slotNum)
 {
 	// Phase Change Rate
-	slot->rate = chan->freq * (1 << chan->block) * vrc7multi[(vrc7instrument[chan->instrument][slotNum]&0xF)] / 2;
+	slot->rate = chan->freq * (1 << chan->block) * vrc7_apu.multi[(vrc7_apu.instrument[chan->instrument][slotNum]&0xF)] / 2;
 
 	// Total level
-	slot->levelAtten = slotNum ? (chan->v << 2) : (vrc7instrument[chan->instrument][2] & 0x3F);
+	slot->levelAtten = slotNum ? (chan->v << 2) : (vrc7_apu.instrument[chan->instrument][2] & 0x3F);
 	slot->levelAtten = slot->levelAtten * vrc7FromDb(0.75);
 
 	// Sustain level
-	slot->sustainLevel = vrc7FromDb(3) * (vrc7instrument[chan->instrument][6 | slotNum] >> 4);
+	slot->sustainLevel = vrc7FromDb(3) * (vrc7_apu.instrument[chan->instrument][6 | slotNum] >> 4);
 
 	// Ksl
-	uint8_t kslbits = vrc7instrument[chan->instrument][2 | slotNum] >> 6;
+	uint8_t kslbits = vrc7_apu.instrument[chan->instrument][2 | slotNum] >> 6;
 	if(kslbits)
 	{
-		int32_t a = vrc7KslLut[chan->freq >> 5] - vrc7FromDb(6)*(7 - chan->block);
+		int32_t a = vrc7_apu.kslLut[chan->freq >> 5] - vrc7FromDb(6)*(7 - chan->block);
 		if(a <= 0)
 			slot->kslAtten = 0;
 		else
@@ -207,44 +216,44 @@ static void vrc7CalcSlotVals(vrc7chan_t *chan, vrc7slot_t *slot, uint8_t slotNum
 	else
 		slot->kslAtten = 0;
 
-	vrc7Ksr.K = (chan->block << 1) | (chan->freq >> 8);
-	if(!(vrc7instrument[chan->instrument][slotNum] & 0x10)) // if Ksr is "off"
-		vrc7Ksr.K >>= 2;
+	vrc7_apu.ksr.K = (chan->block << 1) | (chan->freq >> 8);
+	if(!(vrc7_apu.instrument[chan->instrument][slotNum] & 0x10)) // if Ksr is "off"
+		vrc7_apu.ksr.K >>= 2;
 
 	// bits as written to reg
-	slot->attackRate = vrc7instrument[chan->instrument][4 | slotNum] >> 4;
-	slot->decayRate = vrc7instrument[chan->instrument][4 | slotNum] & 0x0F;
-	slot->sustainRate = vrc7instrument[chan->instrument][6 | slotNum] & 0x0F;
+	slot->attackRate = vrc7_apu.instrument[chan->instrument][4 | slotNum] >> 4;
+	slot->decayRate = vrc7_apu.instrument[chan->instrument][4 | slotNum] & 0x0F;
+	slot->sustainRate = vrc7_apu.instrument[chan->instrument][6 | slotNum] & 0x0F;
 	if(chan->s)
 		slot->releaseRate = 5;
-	else if(vrc7instrument[chan->instrument][0 | slotNum] & 0x20)
+	else if(vrc7_apu.instrument[chan->instrument][0 | slotNum] & 0x20)
 		slot->releaseRate = slot->sustainRate;
 	else
 		slot->releaseRate = 7;
 
-	if(vrc7instrument[chan->instrument][0 | slotNum] & 0x20)
+	if(vrc7_apu.instrument[chan->instrument][0 | slotNum] & 0x20)
 		slot->sustainRate = 0;
 
 	// convert
 	if(slot->attackRate)
 	{
-		vrc7SetR(&vrc7Ksr, slot->attackRate);
-		slot->attackRate = (12 * (vrc7Ksr.RL+4)) << vrc7Ksr.RH;
+		vrc7SetR(&vrc7_apu.ksr, slot->attackRate);
+		slot->attackRate = (12 * (vrc7_apu.ksr.RL+4)) << vrc7_apu.ksr.RH;
 	}
 	if(slot->decayRate)
 	{
-		vrc7SetR(&vrc7Ksr, slot->decayRate);
-		slot->decayRate = (vrc7Ksr.RL+4) << (vrc7Ksr.RH-1);
+		vrc7SetR(&vrc7_apu.ksr, slot->decayRate);
+		slot->decayRate = (vrc7_apu.ksr.RL+4) << (vrc7_apu.ksr.RH-1);
 	}
 	if(slot->sustainRate)
 	{
-		vrc7SetR(&vrc7Ksr, slot->sustainRate);
-		slot->sustainRate = (vrc7Ksr.RL+4) << (vrc7Ksr.RH-1);
+		vrc7SetR(&vrc7_apu.ksr, slot->sustainRate);
+		slot->sustainRate = (vrc7_apu.ksr.RL+4) << (vrc7_apu.ksr.RH-1);
 	}
 	if(slot->releaseRate)
 	{
-		vrc7SetR(&vrc7Ksr, slot->releaseRate);
-		slot->releaseRate = (vrc7Ksr.RL+4) << (vrc7Ksr.RH-1);
+		vrc7SetR(&vrc7_apu.ksr, slot->releaseRate);
+		slot->releaseRate = (vrc7_apu.ksr.RL+4) << (vrc7_apu.ksr.RH-1);
 	}
 }
 
@@ -258,7 +267,7 @@ static void vrc7KeyOn(vrc7slot_t *slot)
 static void vrc7KeyOff(vrc7slot_t *slot)
 {
 	if(slot->state == vrc7StateAttack)
-		slot->envPhase = vrc7AttackLut[(slot->envPhase >> 15) & 0xFF];
+		slot->envPhase = vrc7_apu.attackLut[(slot->envPhase >> 15) & 0xFF];
 	slot->state = vrc7StateRelease;
 }
 
@@ -283,7 +292,7 @@ static uint32_t vrc7Env(vrc7chan_t *chan, vrc7slot_t *slot, uint8_t slotNum)
 	switch(slot->state)
 	{
 		case vrc7StateAttack:
-			out = vrc7AttackLut[(slot->envPhase >> 15) & 0xFF];
+			out = vrc7_apu.attackLut[(slot->envPhase >> 15) & 0xFF];
 			slot->envPhase += slot->attackRate;
 			if(slot->envPhase >= vrc7MaxAtten)
 			{
@@ -314,8 +323,8 @@ static uint32_t vrc7Env(vrc7chan_t *chan, vrc7slot_t *slot, uint8_t slotNum)
 			break;
 	}
 
-	if(vrc7instrument[chan->instrument][slotNum] & 0x80)
-		out += vrc7amOut;
+	if(vrc7_apu.instrument[chan->instrument][slotNum] & 0x80)
+		out += vrc7_apu.amOut;
 
 	return out + slot->levelAtten + slot->kslAtten;
 }
@@ -329,23 +338,23 @@ static int32_t vrc7GetOut(vrc7chan_t *chan, vrc7slot_t *slot, uint8_t slotNum, u
 	//mod base
 	if(slotNum == 0)
 	{
-		uint8_t fb = vrc7instrument[chan->instrument][3] & 7;
+		uint8_t fb = vrc7_apu.instrument[chan->instrument][3] & 7;
 		if(fb) inV = (slot->fbOut) >> (8-fb);
 	}
 
 	uint32_t env = vrc7Env(chan, slot, slotNum);
-	if((vrc7instrument[chan->instrument][slotNum]&0x40) != 0)
-		slot->phase += (uint32_t)(slot->rate / 2 * vrc7fmOut);
+	if((vrc7_apu.instrument[chan->instrument][slotNum]&0x40) != 0)
+		slot->phase += (uint32_t)(slot->rate / 2 * vrc7_apu.fmOut);
 	else
 		slot->phase += slot->rate / 2;
 	inV += slot->phase;
-	env += vrc7SinLut[(inV>>7)&0x3FF];
+	env += vrc7_apu.sinLut[(inV>>7)&0x3FF];
 
 	if(env >= vrc7MaxAtten)
 		return 0;
 
-	int32_t output = vrc7LinearLut[env>>7];
-	int32_t Rectify = (vrc7instrument[chan->instrument][3] & (0x8 << slotNum)) ? 0 : -1;
+	int32_t output = vrc7_apu.linearLut[env>>7];
+	int32_t Rectify = (vrc7_apu.instrument[chan->instrument][3] & (0x8 << slotNum)) ? 0 : -1;
 	if(inV & (1<<17))
 		output *= Rectify;
 	slot->out = output;
@@ -353,19 +362,19 @@ static int32_t vrc7GetOut(vrc7chan_t *chan, vrc7slot_t *slot, uint8_t slotNum, u
 	return slot->fbOut;
 }
 
-void vrc7AudioCycle()
+__attribute__((noinline)) void vrc7AudioCycle()
 {
 	vrc7Out = 0;
 	//update am and fm for all chans
-	vrc7amPhase += 78;
-	vrc7amOut = vrc7AmLut[(vrc7amPhase >> 12) & 0xFF];
-	vrc7fmPhase += 105;
-	vrc7fmOut = vrc7FmLut[(vrc7fmPhase >> 12) & 0xFF];
+	vrc7_apu.amPhase += 78;
+	vrc7_apu.amOut = vrc7_apu.amLut[(vrc7_apu.amPhase >> 12) & 0xFF];
+	vrc7_apu.fmPhase += 105;
+	vrc7_apu.fmOut = vrc7_apu.fmLut[(vrc7_apu.fmPhase >> 12) & 0xFF];
 	//go through all chans and get final out
 	uint8_t i;
 	for(i = 0; i < 6; i++)
 	{
-		vrc7chan_t *c = &vrc7channel[i];
+		vrc7chan_t *c = &vrc7_apu.channel[i];
 		uint32_t modOut = vrc7GetOut(c, &c->mod, 0, 0);
 		int32_t carryOut = vrc7GetOut(c, &c->carry, 1, modOut);
 		vrc7Out += carryOut;
@@ -375,10 +384,10 @@ void vrc7AudioCycle()
 void vrc7AudioSet8(uint8_t addr, uint8_t val)
 {
 	if(addr < 8)
-		vrc7instrument[0][addr] = val;
+		vrc7_apu.instrument[0][addr] = val;
 	else if(addr >= 0x10 && addr <= 0x15)
 	{
-		vrc7chan_t *c = &vrc7channel[addr&0xF];
+		vrc7chan_t *c = &vrc7_apu.channel[addr&0xF];
 		c->freq &= ~0xFF;
 		c->freq |= val;
 		vrc7CalcSlotVals(c, &c->mod, 0);
@@ -386,7 +395,7 @@ void vrc7AudioSet8(uint8_t addr, uint8_t val)
 	}
 	else if(addr >= 0x20 && addr <= 0x25)
 	{
-		vrc7chan_t *c = &vrc7channel[addr&0xF];
+		vrc7chan_t *c = &vrc7_apu.channel[addr&0xF];
 		c->freq &= 0xFF;
 		c->freq |= (val&1)<<8;
 		c->block = (val>>1)&7;
@@ -399,7 +408,7 @@ void vrc7AudioSet8(uint8_t addr, uint8_t val)
 	}
 	else if(addr >= 0x30 && addr <= 0x35)
 	{
-		vrc7chan_t *c = &vrc7channel[addr&0xF];
+		vrc7chan_t *c = &vrc7_apu.channel[addr&0xF];
 		c->v = (val&0xF);
 		c->instrument = (val>>4)&0xF;
 		vrc7CalcSlotVals(c, &c->mod, 0);

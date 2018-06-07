@@ -9,6 +9,7 @@
 #include <inttypes.h>
 #include <stdbool.h>
 #include <string.h>
+#include "../cpu.h"
 #include "../ppu.h"
 #include "../mapper.h"
 #include "../audio_s5b.h"
@@ -31,7 +32,7 @@ static bool s5B_lowRAM;
 static bool s5B_enableRAM;
 static bool s5B_irqEnable;
 static bool s5B_irqCtrEnable;
-extern bool mapper_interrupt;
+extern uint8_t interrupt;
 
 void s5Binit(uint8_t *prgROMin, uint32_t prgROMsizeIn, 
 			uint8_t *prgRAMin, uint32_t prgRAMsizeIn,
@@ -162,7 +163,7 @@ void s5Bset8(uint16_t addr, uint8_t val)
 				case 0xD:
 					s5B_irqEnable = !!(val&1);
 					s5B_irqCtrEnable = !!(val&0x80);
-					mapper_interrupt = false;
+					interrupt &= ~MAPPER_IRQ;
 					break;
 				case 0xE:
 					s5B_irqCtr = (s5B_irqCtr&~0xFF) | val;
@@ -210,10 +211,10 @@ void s5BchrSet8(uint16_t addr, uint8_t val)
 void s5Bcycle()
 {
 	s5BAudioClockTimers();
-	if(s5B_irqCtrEnable && !mapper_interrupt)
+	if(s5B_irqCtrEnable && !(interrupt&MAPPER_IRQ))
 	{
 		s5B_irqCtr--;
 		if(s5B_irqCtr == 0xFFFF && s5B_irqEnable)
-			mapper_interrupt = true;
+			interrupt |= MAPPER_IRQ;
 	}
 }

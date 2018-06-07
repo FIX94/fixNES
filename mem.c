@@ -66,8 +66,7 @@ void memSet8(uint16_t addr, uint8_t val)
 		//all other devices
 		if(addr == 0x4014)
 		{
-			cpu_oam_dma = true;
-			cpu_oam_dma_addr = (val<<8);
+			cpuDoOAM_DMA(val<<8);
 			//printf("OAM DMA %02x\n", cpu_oam_dma_addr);
 			//ppuPrintCurLineDot();
 		}

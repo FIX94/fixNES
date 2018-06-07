@@ -11,9 +11,8 @@
 void s5BAudioInit();
 void s5BAudioClockTimers();
 void s5BAudioSet8(uint16_t addr, uint8_t val);
-void s5BAudioCycle();
+__attribute__((noinline)) void s5BAudioCycle();
 
-extern bool s5Benabled;
 extern uint16_t s5BOut;
 
 #endif

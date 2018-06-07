@@ -12,8 +12,10 @@
 #include <malloc.h>
 #include <inttypes.h>
 #include <ctype.h>
+#ifndef __LIBRETRO__
 #include <GL/glut.h>
 #include <GL/glext.h>
+#endif
 #include <time.h>
 #include <math.h>
 #include "mapper.h"
@@ -35,7 +37,7 @@
 #define DEBUG_KEY 0
 #define DEBUG_LOAD_INFO 1
 
-static const char *VERSION_STRING = "fixNES Alpha v1.0.7";
+const char *VERSION_STRING = "fixNES Alpha v1.1";
 static char window_title[256];
 static char window_title_pause[256];
 
@@ -50,13 +52,13 @@ enum {
 #endif
 };
 
-static void nesEmuFileOpen(char *name);
+static void nesEmuFileOpen(const char *name);
 static bool nesEmuFileRead();
 static void nesEmuFileClose();
 
 static void nesEmuDisplayFrame(void);
-static void nesEmuMainLoop(void);
-static void nesEmuDeinit(void);
+void nesEmuMainLoop(void);
+void nesEmuDeinit(void);
 static void nesEmuFdsSetup(uint8_t *src, uint8_t *dst);
 
 static void nesEmuHandleKeyDown(unsigned char key, int x, int y);
@@ -68,19 +70,22 @@ static void nesEmuSetWindowsVSync(int vsync);
 #endif
 static int emuFileType = FTYPE_UNK;
 static char emuFileName[1024];
-static uint8_t *emuNesROM = NULL;
-static uint32_t emuNesROMsize = 0;
+uint8_t *emuNesROM = NULL;
+uint32_t emuNesROMsize = 0;
+#ifndef __LIBRETRO__
 static char emuSaveName[1024];
-static uint8_t *emuPrgRAM = NULL;
-static uint32_t emuPrgRAMsize = 0;
+#endif
+uint8_t *emuPrgRAM = NULL;
+uint32_t emuPrgRAMsize = 0;
 //used externally
-uint32_t textureImage[0xF000];
+uint16_t textureImage[0xF000];
 bool nesPause = false;
 bool ppuDebugPauseFrame = false;
 bool doOverscan = true;
 bool nesPAL = false;
 bool nesEmuNSFPlayback = false;
 
+#ifndef __LIBRETRO__
 static bool inPause = false;
 static bool inOverscanToggle = false;
 static bool inResize = false;
@@ -103,6 +108,7 @@ static DWORD emuMainTimesSkipped = 0;
 static DWORD emuMainTotalElapsed = 0;
 #endif
 #endif
+#endif // __LIBRETRO__
 
 #define DOTS 341
 
@@ -110,10 +116,10 @@ static DWORD emuMainTotalElapsed = 0;
 #define VISIBLE_LINES 240
 
 static uint32_t linesToDraw = VISIBLE_LINES;
-static const uint32_t visibleImg = VISIBLE_DOTS*VISIBLE_LINES*4;
+static const uint32_t visibleImg = VISIBLE_DOTS*VISIBLE_LINES*2;
 static uint8_t scaleFactor = 2;
-static bool emuSaveEnabled = false;
-static bool emuFdsHasSideB = false;
+bool emuSaveEnabled = false;
+bool emuFdsHasSideB = false;
 
 //static uint16_t ppuCycleTimer;
 uint32_t cpuCycleTimer;
@@ -125,14 +131,32 @@ extern bool mapperUse78A;
 //from m32.c
 extern bool m32_singlescreen;
 
+#ifdef __LIBRETRO__
+int nesEmuLoadGame(const char* filename)
+{
+	int argc = 2;
+	const char* argv[] = {"fixNES", filename};
+#else
 int main(int argc, char** argv)
 {
+#endif
 	puts(VERSION_STRING);
 	strcpy(window_title, VERSION_STRING);
 	memset(textureImage,0,visibleImg);
 	emuFileType = FTYPE_UNK;
+	linesToDraw = VISIBLE_LINES;
+	scaleFactor = 2;
+	emuSaveEnabled = false;
+	emuFdsHasSideB = false;
+	nesPause = false;
+	ppuDebugPauseFrame = false;
+	doOverscan = true;
+	nesPAL = false;
+	nesEmuNSFPlayback = false;
 	memset(emuFileName,0,1024);
+#ifndef __LIBRETRO__
 	memset(emuSaveName,0,1024);
+#endif
 	if(argc >= 2)
 		nesEmuFileOpen(argv[1]);
 	if(emuFileType == FTYPE_NES)
@@ -143,7 +167,7 @@ int main(int argc, char** argv)
 			printf("Main: Could not read %s!\n", emuFileName);
 			puts("Press enter to exit");
 			getc(stdin);
-			return EXIT_SUCCESS;
+			return EXIT_FAILURE;
 		}
 		nesEmuFileClose();
 		nesPAL = (strstr(emuFileName,"(E)") != NULL) || (strstr(emuFileName,"(Europe)") != NULL) || (strstr(emuFileName,"(Australia)") != NULL)
@@ -210,13 +234,14 @@ int main(int argc, char** argv)
 			free(emuNesROM);
 			puts("Press enter to exit");
 			getc(stdin);
-			return EXIT_SUCCESS;
+			return EXIT_FAILURE;
 		}
 		#if DEBUG_LOAD_INFO
 		printf("Trainer: %i Saving: %i VRAM Mode: %s\n", trainer, emuSaveEnabled, (emuNesROM[6] & 8) ? "4-Screen" : 
 			((emuNesROM[6] & 1) ? "Vertical" : "Horizontal"));
 		#endif
 		sprintf(window_title, "%s NES - %s\n", nesPAL ? "PAL" : "NTSC", VERSION_STRING);
+#ifndef __LIBRETRO__
 		if(emuSaveEnabled)
 		{
 			memcpy(emuSaveName, emuFileName, 1024);
@@ -229,8 +254,11 @@ int main(int argc, char** argv)
 				fclose(save);
 			}
 		}
+#endif
+		#if 0
 		if(argc == 5 && (strstr(argv[2],".fm2") != NULL || strstr(argv[2],".FM2") != NULL))
 			fm2playInit(argv[2], atoi(argv[3]), !!atoi(argv[4]));
+		#endif
 	}
 	else if(emuFileType == FTYPE_NSF)
 	{
@@ -240,7 +268,7 @@ int main(int argc, char** argv)
 			printf("Main: Could not read %s!\n", emuFileName);
 			puts("Press enter to exit");
 			getc(stdin);
-			return EXIT_SUCCESS;
+			return EXIT_FAILURE;
 		}
 		nesEmuFileClose();
 		emuPrgRAMsize = 0x2000;
@@ -251,7 +279,7 @@ int main(int argc, char** argv)
 			free(emuNesROM);
 			puts("Press enter to exit");
 			getc(stdin);
-			return EXIT_SUCCESS;
+			return EXIT_FAILURE;
 		}
 		if(emuNesROM[0xE] != 0)
 			sprintf(window_title, "%.32s (%s NSF) - %s\n", (char*)(emuNesROM+0xE), nesPAL ? "PAL" : "NTSC", VERSION_STRING);
@@ -261,13 +289,14 @@ int main(int argc, char** argv)
 	}
 	else if(emuFileType == FTYPE_FDS || emuFileType == FTYPE_QD)
 	{
+		bool saveValid = false;
+#ifndef __LIBRETRO__
 		memcpy(emuSaveName, emuFileName, 1024);
 		if(emuFileType == FTYPE_FDS)
 			memcpy(emuSaveName+strlen(emuSaveName)-3,"sav",3);
 		else //.qd has one less character
 			memcpy(emuSaveName+strlen(emuSaveName)-2,"sav",3);
 		printf("Save Path: %s\n",emuSaveName); 
-		bool saveValid = false;
 		FILE *save = fopen(emuSaveName, "rb");
 		if(save)
 		{
@@ -286,6 +315,7 @@ int main(int argc, char** argv)
 				printf("Save file ignored\n");
 			fclose(save);
 		}
+#endif
 		if(saveValid) //can use save as ROM
 			nesEmuFileClose();
 		else //no (valid) save, parse file
@@ -296,7 +326,7 @@ int main(int argc, char** argv)
 				printf("Main: Could not read %s!\n", emuFileName);
 				puts("Press enter to exit");
 				getc(stdin);
-				return EXIT_SUCCESS;
+				return EXIT_FAILURE;
 			}
 			nesEmuFileClose();
 			uint8_t *nesFread = emuNesROM;
@@ -376,7 +406,7 @@ int main(int argc, char** argv)
 				free(emuNesROM);
 				puts("Press enter to exit");
 				getc(stdin);
-				return EXIT_SUCCESS;
+				return EXIT_FAILURE;
 			}
 			sprintf(window_title, "Famicom Disk System - %s\n", VERSION_STRING);
 		}
@@ -390,7 +420,7 @@ int main(int argc, char** argv)
 #endif
 		puts("Press enter to exit");
 		getc(stdin);
-		return EXIT_SUCCESS;
+		return EXIT_FAILURE;
 	}
 	sprintf(window_title_pause, "%s (Pause)", window_title);
 	#if WINDOWS_BUILD
@@ -407,6 +437,7 @@ int main(int argc, char** argv)
 	//ppuCycleTimer = nesPAL ? 5 : 4;
 	//mainLoopRuns = nesPAL ? DOTS*ppuCycleTimer : DOTS*ppuCycleTimer;
 	//mainLoopPos = mainLoopRuns;
+#ifndef __LIBRETRO__
 	glutInit(&argc, argv);
 	glutInitWindowSize(VISIBLE_DOTS*scaleFactor, linesToDraw*scaleFactor);
 	glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGBA);
@@ -425,7 +456,7 @@ int main(int argc, char** argv)
 	nesEmuSetWindowsVSync(1);
 	#endif
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-	glTexImage2D(GL_TEXTURE_2D, 0, 4, VISIBLE_DOTS, linesToDraw, 0, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV, textureImage);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, VISIBLE_DOTS, linesToDraw, 0, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, textureImage);
 	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
 	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
 	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
@@ -434,7 +465,7 @@ int main(int argc, char** argv)
 	glShadeModel(GL_FLAT);
 
 	glutMainLoop();
-
+	#endif // __LIBRETRO__
 	return EXIT_SUCCESS;
 }
 
@@ -446,7 +477,7 @@ static uint32_t nesEmuZipLen = 0;
 static unzFile nesEmuZipObj;
 static unz_file_info nesEmuZipObjInfo;
 #endif
-static int nesEmuGetFileType(char *name)
+static int nesEmuGetFileType(const char *name)
 {
 	int nLen = strlen(name);
 	if(nLen > 4 && name[nLen-4] == '.')
@@ -470,11 +501,13 @@ static int nesEmuGetFileType(char *name)
 	return FTYPE_UNK;
 }
 
-static void nesEmuFileOpen(char *name)
+static void nesEmuFileOpen(const char *name)
 {
 	emuFileType = FTYPE_UNK;
 	memset(emuFileName,0,1024);
+#ifndef __LIBRETRO__
 	memset(emuSaveName,0,1024);
+#endif
 	int baseType = nesEmuGetFileType(name);
 #if ZIPSUPPORT
 	if(baseType == FTYPE_ZIP)
@@ -515,14 +548,14 @@ static void nesEmuFileOpen(char *name)
 					nesEmuFileIsZip = true;
 					if(strchr(name,'/') != NULL || strchr(name,'\\') != NULL)
 					{
-						char *nPath = name;
+						const char *nPath = name;
 						if(strchr(nPath,'/') != NULL)
 							nPath = (strrchr(nPath,'/')+1);
 						if(strchr(nPath,'\\') != NULL)
 							nPath = (strrchr(nPath,'\\')+1);
 						strncpy(emuFileName, name, nPath-name);
 					}
-					char *zName = tmpName;
+					const char *zName = tmpName;
 					if(strchr(zName,'/') != NULL)
 						zName = (strrchr(zName,'/')+1);
 					if(strchr(zName,'\\') != NULL)
@@ -610,18 +643,22 @@ static void nesEmuFileClose()
 	nesEmuFilePointer = NULL;
 }
 
+#ifndef __LIBRETRO__
 static volatile bool emuRenderFrame = false;
-static volatile bool emuReadyForFrame = true;
-
-static void nesEmuDeinit(void)
+#endif
+extern uint8_t audioExpansion;
+void nesEmuDeinit(void)
 {
 	//printf("\n");
+	#ifndef __LIBRETRO__
 	emuRenderFrame = false;
 	audioDeinit();
+	#endif
 	apuDeinitBufs();
 	if(emuNesROM != NULL)
 	{
-		if(!nesEmuNSFPlayback && fdsEnabled)
+#ifndef __LIBRETRO__
+		if(!nesEmuNSFPlayback && (audioExpansion&EXP_FDS))
 		{
 			FILE *save = fopen(emuSaveName, "wb");
 			if(save)
@@ -633,11 +670,16 @@ static void nesEmuDeinit(void)
 				fclose(save);
 			}
 		}
+#endif
 		free(emuNesROM);
 	}
+	audioExpansion = 0;
+	nesEmuNSFPlayback = false;
 	emuNesROM = NULL;
+	emuNesROMsize = 0;
 	if(emuPrgRAM != NULL)
 	{
+#ifndef __LIBRETRO__
 		if(emuSaveEnabled)
 		{
 			FILE *save = fopen(emuSaveName, "wb");
@@ -647,20 +689,25 @@ static void nesEmuDeinit(void)
 				fclose(save);
 			}
 		}
+#endif
 		free(emuPrgRAM);
 	}
+	emuSaveEnabled = false;
 	emuPrgRAM = NULL;
+	emuPrgRAMsize = 0;
 	//printf("Bye!\n");
 }
 
 //used externally
+#ifndef __LIBRETRO__
 bool emuSkipVsync = false;
 bool emuSkipFrame = false;
+#endif
 
 //static uint32_t mCycles = 0;
-static uint32_t emuApuClock = 0;
-static void nesEmuMainLoop(void)
+void nesEmuMainLoop(void)
 {
+#ifndef __LIBRETRO__
 	if(emuRenderFrame || nesPause)
 	{
 		#if (WINDOWS_BUILD && DEBUG_MAIN_CALLS)
@@ -669,31 +716,24 @@ static void nesEmuMainLoop(void)
 		audioSleep();
 		return;
 	}
-	bool emuFrameDone = false;
-	uint32_t apuClock = emuApuClock;
-	do
+#endif
+	while(1)
 	{
-		//runs every 8th cpu clock
-		if(!(apuClock&7))
-			apuCycle();
-		apuClock++;
-		//runs every cpu cycle
-		apuClockTimers();
 		//main CPU clock
 		if(!cpuCycle())
 			exit(EXIT_SUCCESS);
+		//run graphics
+		ppuCycle();
+		//run audio
+		apuCycle();
 		//mapper related irqs
 		mapperCycle();
 		//mCycles++;
-		//channel timer updates
-		apuLenCycle();
-		//run graphics
-		ppuCycle();
 		if(ppuDrawDone())
 		{
 			//printf("%i\n",mCycles);
 			//mCycles = 0;
-			emuFrameDone = true;
+		#ifndef __LIBRETRO__
 			emuRenderFrame = true;
 			#if 0
 			if(fm2playRunning())
@@ -721,11 +761,12 @@ static void nesEmuMainLoop(void)
 				nesPause = true;
 			}
 			#endif
+		#endif
 			if(nesEmuNSFPlayback)
 				nsfVsync();
+			break;
 		}
 	}
-	while(emuFrameDone == false) ;
 	#if (WINDOWS_BUILD && DEBUG_MAIN_CALLS)
 	emuMainTimesCalled++;
 	DWORD end = GetTickCount();
@@ -739,9 +780,9 @@ static void nesEmuMainLoop(void)
 	}
 	emuMainFrameStart = end;
 	#endif
-	emuApuClock = apuClock;
 }
 
+#ifndef __LIBRETRO__
 extern bool fdsSwitch;
 static void nesEmuHandleKeyDown(unsigned char key, int x, int y)
 {
@@ -1082,7 +1123,7 @@ static void nesEmuDisplayFrame()
 			return;
 		}
 		#endif
-		glTexImage2D(GL_TEXTURE_2D, 0, 4, VISIBLE_DOTS, linesToDraw, 0, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV, textureImage);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, VISIBLE_DOTS, linesToDraw, 0, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, textureImage);
 		emuRenderFrame = false;
 
 		glClear(GL_COLOR_BUFFER_BIT);
@@ -1108,6 +1149,7 @@ static void nesEmuDisplayFrame()
 		glutSwapBuffers();
 	}
 }
+#endif
 
 static void nesEmuFdsSetup(uint8_t *src, uint8_t *dst)
 {
@@ -1120,7 +1162,7 @@ static void nesEmuFdsSetup(uint8_t *src, uint8_t *dst)
 		if(src[cROMPos] != 0x03)
 			break;
 		memcpy(dst+cDiskPos, src+cROMPos, 0x10);
-		uint16_t copySize = (*(uint16_t*)(src+cROMPos+0xD))+1;
+		uint16_t copySize = ((src[cROMPos+0xD])|(src[cROMPos+0xE]<<8))+1;
 		cDiskPos+=0x12;
 		cROMPos+=0x10;
 		memcpy(dst+cDiskPos, src+cROMPos, copySize);

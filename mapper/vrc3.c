@@ -9,6 +9,7 @@
 #include <stdbool.h>
 #include <inttypes.h>
 #include <string.h>
+#include "../cpu.h"
 #include "../ppu.h"
 #include "../mapper.h"
 
@@ -28,7 +29,7 @@ static uint16_t vrc3_irqReloadCtr;
 static bool vrc3_irqEnable;
 static bool vrc3_irqEnable_after_ack;
 static bool vrc3_irq8Bit;
-extern bool mapper_interrupt;
+extern uint8_t interrupt;
 
 void vrc3init(uint8_t *prgROMin, uint32_t prgROMsizeIn, 
 			uint8_t *prgRAMin, uint32_t prgRAMsizeIn,
@@ -92,7 +93,7 @@ void vrc3set8(uint16_t addr, uint8_t val)
 		vrc3_irqReloadCtr = (vrc3_irqReloadCtr&0x0FFF)|((val&0xF)<<12);
 	else if(addr < 0xD000)
 	{
-		mapper_interrupt = false;
+		interrupt &= ~MAPPER_IRQ;
 		vrc3_irqEnable_after_ack = !!(val&1);
 		vrc3_irqEnable = !!(val&2);
 		vrc3_irq8Bit = !!(val&4);
@@ -101,7 +102,7 @@ void vrc3set8(uint16_t addr, uint8_t val)
 	}
 	else if(addr < 0xE000)
 	{
-		mapper_interrupt = false;
+		interrupt &= ~MAPPER_IRQ;
 		vrc3_irqEnable = vrc3_irqEnable_after_ack;
 	}
 	else if(addr >= 0xF000)
@@ -131,7 +132,7 @@ void vrc3cycle()
 			if(tmp == 0)
 			{
 				vrc3_irqEnable = false;
-				mapper_interrupt = true;
+				interrupt |= MAPPER_IRQ;
 				vrc3_irqCtr = (vrc3_irqCtr&0xFF00)|(vrc3_irqReloadCtr&0xFF);
 			}
 		}
@@ -141,7 +142,7 @@ void vrc3cycle()
 			if(vrc3_irqCtr == 0)
 			{
 				vrc3_irqEnable = false;
-				mapper_interrupt = true;
+				interrupt |= MAPPER_IRQ;
 				vrc3_irqCtr = vrc3_irqReloadCtr;
 			}
 		}

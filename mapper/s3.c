@@ -9,6 +9,7 @@
 #include <inttypes.h>
 #include <stdbool.h>
 #include <string.h>
+#include "../cpu.h"
 #include "../ppu.h"
 #include "../mapper.h"
 
@@ -27,7 +28,7 @@ static uint16_t s3_irqCtr;
 static bool s3_TmpWrite;
 static bool s3_enableRAM;
 static bool s3_irqCtrEnable;
-extern bool mapper_interrupt;
+extern uint8_t interrupt;
 
 void s3init(uint8_t *prgROMin, uint32_t prgROMsizeIn, 
 			uint8_t *prgRAMin, uint32_t prgRAMsizeIn,
@@ -97,7 +98,7 @@ void s3set8(uint16_t addr, uint8_t val)
 		else if(addr < 0xE000)
 		{
 			s3_TmpWrite = false;
-			mapper_interrupt = false;
+			interrupt &= ~MAPPER_IRQ;
 			s3_irqCtrEnable = !!(val&0x10);
 		}
 		else if(addr < 0xF000)
@@ -153,7 +154,7 @@ void s3cycle()
 		if(s3_irqCtr == 0xFFFF)
 		{
 			s3_irqCtrEnable = false;
-			mapper_interrupt = true;
+			interrupt |= MAPPER_IRQ;
 		}
 	}
 }
