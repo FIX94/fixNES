@@ -122,7 +122,7 @@ void mmc5AudioPCMWrite(uint8_t val)
 
 static uint8_t mmc5_p1Out = 0, mmc5_p2Out = 0;
 
-__attribute__ ((noinline)) void mmc5AudioCycle()
+FIXNES_NOINLINE void mmc5AudioCycle()
 {
 	if(mmc5_apu.p1LengthCtr && (mmc5_apu.reg[0x15] & P1_ENABLE))
 	{
@@ -137,7 +137,7 @@ __attribute__ ((noinline)) void mmc5AudioCycle()
 	mmc5Out = mmc5_p1Out + mmc5_p2Out;
 }
 
-__attribute__ ((noinline)) void mmc5AudioLenCycle()
+FIXNES_NOINLINE void mmc5AudioLenCycle()
 {
 	if(mmc5_apu.modeCurCtr)
 		mmc5_apu.modeCurCtr--;

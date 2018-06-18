@@ -8,8 +8,10 @@
 #ifndef _AUDIO_VRC7_H_
 #define _AUDIO_VRC7_H_
 
+#include "common.h"
+
 void vrc7AudioInit();
-__attribute__((noinline)) void vrc7AudioCycle();
+FIXNES_NOINLINE void vrc7AudioCycle();
 void vrc7AudioSet8(uint8_t addr, uint8_t val);
 
 extern int32_t vrc7Out;

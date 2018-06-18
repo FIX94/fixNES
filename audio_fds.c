@@ -76,7 +76,7 @@ void fdsAudioInit()
 	fds_apu.wavWrite = false;
 }
 
-__attribute__ ((noinline)) void fdsAudioCycle()
+FIXNES_NOINLINE void fdsAudioCycle()
 {
 	if(fds_apu.wavWrite)
 		return;
@@ -141,7 +141,7 @@ void fdsAudioClockTimers()
 	}
 }
 
-__attribute__ ((noinline)) void fdsAudioMasterUpdate()
+FIXNES_NOINLINE void fdsAudioMasterUpdate()
 {
 	if(fds_apu.masterEnable)
 	{

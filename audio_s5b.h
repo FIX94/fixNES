@@ -8,10 +8,12 @@
 #ifndef _AUDIO_s5B_H_
 #define _AUDIO_s5B_H_
 
+#include "common.h"
+
 void s5BAudioInit();
 void s5BAudioClockTimers();
 void s5BAudioSet8(uint16_t addr, uint8_t val);
-__attribute__((noinline)) void s5BAudioCycle();
+FIXNES_NOINLINE void s5BAudioCycle();
 
 extern uint16_t s5BOut;
 

@@ -49,7 +49,7 @@ void vrc6AudioInit()
 	//printf("VRC6 Audio Inited!\n");
 }
 
-__attribute__ ((noinline)) void vrc6AudioCycle()
+FIXNES_NOINLINE void vrc6AudioCycle()
 {
 	if(vrc6_apu.p1enable)
 		vrc6_apu.p1Out = (vrc6_apu.p1const || vrc6_apu.p1Cycle <= vrc6_apu.p1Duty) ? vrc6_apu.p1Vol : 0;

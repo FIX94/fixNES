@@ -8,12 +8,14 @@
 #ifndef _audio_mmc5_h_
 #define _audio_mmc5_h_
 
+#include "common.h"
+
 void mmc5AudioInit();
-__attribute__ ((noinline)) void mmc5AudioCycle();
+FIXNES_NOINLINE void mmc5AudioCycle();
 void mmc5AudioClockTimers();
 void mmc5AudioSet8(uint8_t reg, uint8_t val);
 uint8_t mmc5AudioGet8(uint8_t reg);
-__attribute__ ((noinline)) void mmc5AudioLenCycle();
+FIXNES_NOINLINE void mmc5AudioLenCycle();
 void mmc5AudioPCMWrite(uint8_t val);
 
 extern uint8_t mmc5Out;
