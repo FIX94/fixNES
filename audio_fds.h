@@ -8,10 +8,12 @@
 #ifndef _AUDIO_FDS_H_
 #define _AUDIO_FDS_H_
 
+#include "common.h"
+
 void fdsAudioInit();
-__attribute__ ((noinline)) void fdsAudioCycle();
+FIXNES_NOINLINE void fdsAudioCycle();
 void fdsAudioClockTimers();
-__attribute__ ((noinline)) void fdsAudioMasterUpdate();
+FIXNES_NOINLINE void fdsAudioMasterUpdate();
 void fdsAudioSet8(uint8_t reg, uint8_t val);
 void fdsAudioSetWave(uint8_t pos, uint8_t val);
 uint8_t fdsAudioGet8(uint8_t reg);

@@ -362,7 +362,7 @@ static int32_t vrc7GetOut(vrc7chan_t *chan, vrc7slot_t *slot, uint8_t slotNum, u
 	return slot->fbOut;
 }
 
-__attribute__((noinline)) void vrc7AudioCycle()
+FIXNES_NOINLINE void vrc7AudioCycle()
 {
 	vrc7Out = 0;
 	//update am and fm for all chans

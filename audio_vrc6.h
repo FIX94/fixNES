@@ -8,8 +8,10 @@
 #ifndef _AUDIO_VRC6_H_
 #define _AUDIO_VRC6_H_
 
+#include "common.h"
+
 void vrc6AudioInit();
-__attribute__ ((noinline)) void vrc6AudioCycle();
+FIXNES_NOINLINE void vrc6AudioCycle();
 void vrc6AudioClockTimers();
 void vrc6AudioSet8(uint16_t addr, uint8_t val);
 

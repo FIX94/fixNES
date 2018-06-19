@@ -242,7 +242,7 @@ void s5BAudioSet8(uint16_t addr, uint8_t val)
 	}
 }
 
-__attribute__((noinline)) void s5BAudioCycle()
+FIXNES_NOINLINE void s5BAudioCycle()
 {
 	uint16_t out = 0;
 	uint8_t i;
