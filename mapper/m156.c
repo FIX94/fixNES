@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 FIX94
+ * Copyright (C) 2017 - 2018 FIX94
  *
  * This software may be modified and distributed under the terms
  * of the MIT license.  See the LICENSE file for details.
@@ -11,157 +11,86 @@
 #include <string.h>
 #include "../ppu.h"
 #include "../mapper.h"
+#include "../mem.h"
+#include "../mapper_h/common.h"
 
-static uint8_t *m156_prgROM;
-static uint8_t *m156_prgRAM;
-static uint8_t *m156_chrROM;
-static uint32_t m156_prgROMsize;
-static uint32_t m156_prgRAMsize;
-static uint32_t m156_chrROMsize;
-static uint32_t m156_prgROMand;
-static uint32_t m156_prgRAMand;
-static uint32_t m156_chrROMand;
-static uint32_t m156_curPRGBank;
-static uint32_t m156_lastPRGBank;
 static uint32_t m156_CHRBank[8];
+static bool m156_usesPrgRAM;
 
 void m156init(uint8_t *prgROMin, uint32_t prgROMsizeIn, 
 			uint8_t *prgRAMin, uint32_t prgRAMsizeIn,
 			uint8_t *chrROMin, uint32_t chrROMsizeIn)
 {
-	m156_prgROM = prgROMin;
-	m156_prgROMsize = prgROMsizeIn;
-	m156_prgROMand = mapperGetAndValue(prgROMsizeIn);
-	m156_prgRAM = prgRAMin;
-	m156_prgRAMsize = prgRAMsizeIn;
-	m156_prgRAMand = mapperGetAndValue(prgRAMsizeIn);
-	m156_curPRGBank = 0;
-	m156_lastPRGBank = (prgROMsizeIn - 0x4000);
-	if(chrROMsizeIn > 0)
+	prg16init(prgROMin,prgROMsizeIn);
+	prg16setBank1(prgROMsizeIn - 0x4000);
+	if(prgRAMin && prgRAMsizeIn)
 	{
-		m156_chrROM = chrROMin;
-		m156_chrROMsize = chrROMsizeIn;
-		m156_chrROMand = mapperGetAndValue(chrROMsizeIn);
+		m156_usesPrgRAM = true;
+		prgRAM8init(prgRAMin);
 	}
 	else
-		printf("m156???\n");
+		m156_usesPrgRAM = false;
 	memset(m156_CHRBank,0,8*sizeof(uint32_t));
+	chr1init(chrROMin,chrROMsizeIn);
 	ppuSetNameTblSingleLower(); //seems to be default state?
 	printf("Mapper 156 inited\n");
 }
 
-uint8_t m156get8(uint16_t addr, uint8_t val)
+void m156initGet8(uint16_t addr)
 {
-	if(addr >= 0x6000 && addr < 0x8000)
-		return m156_prgRAM[addr&0x1FFF];
-	else if(addr >= 0x8000)
-	{
-		if(addr < 0xC000)
-			return m156_prgROM[((m156_curPRGBank<<14)+(addr&0x3FFF))&m156_prgROMand];
-		return m156_prgROM[(m156_lastPRGBank+(addr&0x3FFF))&m156_prgROMand];
-	}
-	return val;
+	if(m156_usesPrgRAM)
+		prgRAM8initGet8(addr);
+	prg16initGet8(addr);
 }
 
-void m156set8(uint16_t addr, uint8_t val)
-{
-	if(addr >= 0x6000 && addr < 0x8000)
-	{
-		//printf("m156set8 %04x %02x\n", addr, val);
-		m156_prgRAM[addr&0x1FFF] = val;
-	}
-	else if(addr >= 0xC000 && addr < 0xC020)
-	{
-		switch(addr&0x1F)
-		{
-			case 0x0:
-				m156_CHRBank[0] = (m156_CHRBank[0]&0xFF00)|val;
-				break;
-			case 0x1:
-				m156_CHRBank[1] = (m156_CHRBank[1]&0xFF00)|val;
-				break;
-			case 0x2:
-				m156_CHRBank[2] = (m156_CHRBank[2]&0xFF00)|val;
-				break;
-			case 0x3:
-				m156_CHRBank[3] = (m156_CHRBank[3]&0xFF00)|val;
-				break;
-			case 0x4:
-				m156_CHRBank[0] = (m156_CHRBank[0]&0xFF)|(val<<8);
-				break;
-			case 0x5:
-				m156_CHRBank[1] = (m156_CHRBank[1]&0xFF)|(val<<8);
-				break;
-			case 0x6:
-				m156_CHRBank[2] = (m156_CHRBank[2]&0xFF)|(val<<8);
-				break;
-			case 0x7:
-				m156_CHRBank[3] = (m156_CHRBank[3]&0xFF)|(val<<8);
-				break;
-			case 0x8:
-				m156_CHRBank[4] = (m156_CHRBank[4]&0xFF00)|val;
-				break;
-			case 0x9:
-				m156_CHRBank[5] = (m156_CHRBank[5]&0xFF00)|val;
-				break;
-			case 0xA:
-				m156_CHRBank[6] = (m156_CHRBank[6]&0xFF00)|val;
-				break;
-			case 0xB:
-				m156_CHRBank[7] = (m156_CHRBank[7]&0xFF00)|val;
-				break;
-			case 0xC:
-				m156_CHRBank[4] = (m156_CHRBank[4]&0xFF)|(val<<8);
-				break;
-			case 0xD:
-				m156_CHRBank[5] = (m156_CHRBank[5]&0xFF)|(val<<8);
-				break;
-			case 0xE:
-				m156_CHRBank[6] = (m156_CHRBank[6]&0xFF)|(val<<8);
-				break;
-			case 0xF:
-				m156_CHRBank[7] = (m156_CHRBank[7]&0xFF)|(val<<8);
-				break;
-			case 0x10:
-				m156_curPRGBank = val;
-				break;
-			case 0x14:
-				if(val&1)
-					ppuSetNameTblHorizontal();
-				else
-					ppuSetNameTblVertical();
-				break;
-			default:
-				break;
-		}
-	}
-}
+static void m156setParamsC000(uint16_t addr, uint8_t val) { (void)addr; m156_CHRBank[0] = (m156_CHRBank[0]&0xFF00)|val; chr1setBank0(m156_CHRBank[0]<<10); }
+static void m156setParamsC001(uint16_t addr, uint8_t val) { (void)addr; m156_CHRBank[1] = (m156_CHRBank[1]&0xFF00)|val; chr1setBank1(m156_CHRBank[1]<<10); }
+static void m156setParamsC002(uint16_t addr, uint8_t val) { (void)addr; m156_CHRBank[2] = (m156_CHRBank[2]&0xFF00)|val; chr1setBank2(m156_CHRBank[2]<<10); }
+static void m156setParamsC003(uint16_t addr, uint8_t val) { (void)addr; m156_CHRBank[3] = (m156_CHRBank[3]&0xFF00)|val; chr1setBank3(m156_CHRBank[3]<<10); }
+static void m156setParamsC004(uint16_t addr, uint8_t val) { (void)addr; m156_CHRBank[0] = (m156_CHRBank[0]&0xFF)|(val<<8); chr1setBank0(m156_CHRBank[0]<<10); }
+static void m156setParamsC005(uint16_t addr, uint8_t val) { (void)addr; m156_CHRBank[1] = (m156_CHRBank[1]&0xFF)|(val<<8); chr1setBank1(m156_CHRBank[1]<<10); }
+static void m156setParamsC006(uint16_t addr, uint8_t val) { (void)addr; m156_CHRBank[2] = (m156_CHRBank[2]&0xFF)|(val<<8); chr1setBank2(m156_CHRBank[2]<<10); }
+static void m156setParamsC007(uint16_t addr, uint8_t val) { (void)addr; m156_CHRBank[3] = (m156_CHRBank[3]&0xFF)|(val<<8); chr1setBank3(m156_CHRBank[3]<<10); }
+static void m156setParamsC008(uint16_t addr, uint8_t val) { (void)addr; m156_CHRBank[4] = (m156_CHRBank[4]&0xFF00)|val; chr1setBank4(m156_CHRBank[4]<<10); }
+static void m156setParamsC009(uint16_t addr, uint8_t val) { (void)addr; m156_CHRBank[5] = (m156_CHRBank[5]&0xFF00)|val; chr1setBank5(m156_CHRBank[5]<<10); }
+static void m156setParamsC00A(uint16_t addr, uint8_t val) { (void)addr; m156_CHRBank[6] = (m156_CHRBank[6]&0xFF00)|val; chr1setBank6(m156_CHRBank[6]<<10); }
+static void m156setParamsC00B(uint16_t addr, uint8_t val) { (void)addr; m156_CHRBank[7] = (m156_CHRBank[7]&0xFF00)|val; chr1setBank7(m156_CHRBank[7]<<10); }
+static void m156setParamsC00C(uint16_t addr, uint8_t val) { (void)addr; m156_CHRBank[4] = (m156_CHRBank[4]&0xFF)|(val<<8); chr1setBank4(m156_CHRBank[4]<<10); }
+static void m156setParamsC00D(uint16_t addr, uint8_t val) { (void)addr; m156_CHRBank[5] = (m156_CHRBank[5]&0xFF)|(val<<8); chr1setBank5(m156_CHRBank[5]<<10); }
+static void m156setParamsC00E(uint16_t addr, uint8_t val) { (void)addr; m156_CHRBank[6] = (m156_CHRBank[6]&0xFF)|(val<<8); chr1setBank6(m156_CHRBank[6]<<10); }
+static void m156setParamsC00F(uint16_t addr, uint8_t val) { (void)addr; m156_CHRBank[7] = (m156_CHRBank[7]&0xFF)|(val<<8); chr1setBank7(m156_CHRBank[7]<<10); }
 
-uint8_t m156chrGet8(uint16_t addr)
-{
-	//printf("%04x\n",addr);
-	addr &= 0x1FFF;
-	if(addr < 0x400)
-		return m156_chrROM[((m156_CHRBank[0]<<10)+(addr&0x3FF))&m156_chrROMand];
-	else if(addr < 0x800)
-		return m156_chrROM[((m156_CHRBank[1]<<10)+(addr&0x3FF))&m156_chrROMand];
-	else if(addr < 0xC00)
-		return m156_chrROM[((m156_CHRBank[2]<<10)+(addr&0x3FF))&m156_chrROMand];
-	else if(addr < 0x1000)
-		return m156_chrROM[((m156_CHRBank[3]<<10)+(addr&0x3FF))&m156_chrROMand];
-	else if(addr < 0x1400)
-		return m156_chrROM[((m156_CHRBank[4]<<10)+(addr&0x3FF))&m156_chrROMand];
-	else if(addr < 0x1800)
-		return m156_chrROM[((m156_CHRBank[5]<<10)+(addr&0x3FF))&m156_chrROMand];
-	else if(addr < 0x1C00)
-		return m156_chrROM[((m156_CHRBank[6]<<10)+(addr&0x3FF))&m156_chrROMand];
-	return m156_chrROM[((m156_CHRBank[7]<<10)+(addr&0x3FF))&m156_chrROMand];
-}
+static void m156setParamsC010(uint16_t addr, uint8_t val) { (void)addr; prg16setBank0(val<<14); }
 
-void m156chrSet8(uint16_t addr, uint8_t val)
+static void m156setParamsC014(uint16_t addr, uint8_t val)
 {
-	//printf("m156chrSet8 %04x %02x\n", addr, val);
 	(void)addr;
-	(void)val;
+	if(val&1)
+		ppuSetNameTblHorizontal();
+	else
+		ppuSetNameTblVertical();
 }
 
+void m156initSet8(uint16_t addr)
+{
+	if(m156_usesPrgRAM)
+		prgRAM8initSet8(addr);
+	if(addr == 0xC000) memInitMapperSetPointer(addr, m156setParamsC000);
+	else if(addr == 0xC001) memInitMapperSetPointer(addr, m156setParamsC001);
+	else if(addr == 0xC002) memInitMapperSetPointer(addr, m156setParamsC002);
+	else if(addr == 0xC003) memInitMapperSetPointer(addr, m156setParamsC003);
+	else if(addr == 0xC004) memInitMapperSetPointer(addr, m156setParamsC004);
+	else if(addr == 0xC005) memInitMapperSetPointer(addr, m156setParamsC005);
+	else if(addr == 0xC006) memInitMapperSetPointer(addr, m156setParamsC006);
+	else if(addr == 0xC007) memInitMapperSetPointer(addr, m156setParamsC007);
+	else if(addr == 0xC008) memInitMapperSetPointer(addr, m156setParamsC008);
+	else if(addr == 0xC009) memInitMapperSetPointer(addr, m156setParamsC009);
+	else if(addr == 0xC00A) memInitMapperSetPointer(addr, m156setParamsC00A);
+	else if(addr == 0xC00B) memInitMapperSetPointer(addr, m156setParamsC00B);
+	else if(addr == 0xC00C) memInitMapperSetPointer(addr, m156setParamsC00C);
+	else if(addr == 0xC00D) memInitMapperSetPointer(addr, m156setParamsC00D);
+	else if(addr == 0xC00E) memInitMapperSetPointer(addr, m156setParamsC00E);
+	else if(addr == 0xC00F) memInitMapperSetPointer(addr, m156setParamsC00F);
+	else if(addr == 0xC010) memInitMapperSetPointer(addr, m156setParamsC010);
+	else if(addr == 0xC014) memInitMapperSetPointer(addr, m156setParamsC014);
+}

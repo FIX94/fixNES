@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 FIX94
+ * Copyright (C) 2017 - 2018 FIX94
  *
  * This software may be modified and distributed under the terms
  * of the MIT license.  See the LICENSE file for details.
@@ -11,99 +11,103 @@
 #include <string.h>
 #include "../ppu.h"
 #include "../mapper.h"
+#include "../mem.h"
+#include "../mapper_h/common.h"
 
-static uint8_t *m15_prgROM;
-static uint8_t *m15_prgRAM;
-static uint8_t *m15_chrROM;
-static uint32_t m15_prgROMsize;
-static uint32_t m15_prgROMand;
-static uint32_t m15_prgRAMsize;
-static uint32_t m15_chrROMsize;
-static uint32_t m15_curPRGBank;
-static uint32_t m15_lastPRGBank;
-static uint8_t m15_bankMode;
-static bool m15_upperPRGBank;
+static struct {
+	bool usesPrgRAM;
+	uint32_t curPRGBank;
+	uint32_t upperPRGBank;
+	uint8_t bankMode;
+} m15;
 
-static uint8_t m15_chrRAM[0x2000];
+static void m15SetPrgROMBankPtr()
+{
+	switch(m15.bankMode)
+	{
+		case 0:
+			prg8setBank0(m15.curPRGBank+0x0000);
+			prg8setBank1(m15.curPRGBank+0x2000);
+			prg8setBank2((m15.curPRGBank|0x4000)+0x0000);
+			prg8setBank3((m15.curPRGBank|0x4000)+0x2000);
+			break;
+		case 1:
+			prg8setBank0(m15.curPRGBank+0x0000);
+			prg8setBank1(m15.curPRGBank+0x2000);
+			prg8setBank2((m15.curPRGBank|0x1C000)+0x0000);
+			prg8setBank3((m15.curPRGBank|0x1C000)+0x2000);
+			break;
+		case 2:
+			prg8setBank0((m15.curPRGBank|m15.upperPRGBank)+0x0000);
+			prg8setBank1((m15.curPRGBank|m15.upperPRGBank)+0x0000);
+			prg8setBank2((m15.curPRGBank|m15.upperPRGBank)+0x0000);
+			prg8setBank3((m15.curPRGBank|m15.upperPRGBank)+0x0000);
+			break;
+		default: //case 3
+			prg8setBank0(m15.curPRGBank+0x0000);
+			prg8setBank1(m15.curPRGBank+0x2000);
+			prg8setBank2(m15.curPRGBank+0x0000);
+			prg8setBank3(m15.curPRGBank+0x2000);
+			break;
+	}
+}
 
 void m15init(uint8_t *prgROMin, uint32_t prgROMsizeIn, 
 			uint8_t *prgRAMin, uint32_t prgRAMsizeIn,
 			uint8_t *chrROMin, uint32_t chrROMsizeIn)
 {
-	m15_prgROM = prgROMin;
-	m15_prgROMsize = prgROMsizeIn;
-	m15_prgROMand = mapperGetAndValue(m15_prgROMsize);
-	m15_prgRAM = prgRAMin;
-	m15_prgRAMsize = prgRAMsizeIn;
-	m15_curPRGBank = 0;
-	m15_bankMode = 0;
-	m15_upperPRGBank = false;
-	m15_lastPRGBank = prgROMsizeIn - 0x4000;
-	if(chrROMsizeIn > 0)
+	prg8init(prgROMin, prgROMsizeIn);
+	if(prgRAMin && prgRAMsizeIn)
 	{
-		m15_chrROM = chrROMin;
-		m15_chrROMsize = chrROMsizeIn;
-		printf("m15 ???\n");
+		prgRAM8init(prgRAMin);
+		m15.usesPrgRAM = true;
 	}
-	memset(m15_chrRAM,0,0x2000);
+	else
+		m15.usesPrgRAM = false;
+	m15.curPRGBank = 0;
+	m15.bankMode = 0;
+	m15.upperPRGBank = 0;
+	m15SetPrgROMBankPtr();
+	(void)chrROMin;
+	(void)chrROMsizeIn;
+	chr8init(NULL,0); //RAM only
 	printf("Mapper 15 inited\n");
 }
 
-uint8_t m15get8(uint16_t addr, uint8_t val)
+void m15initGet8(uint16_t addr)
 {
-	if(addr < 0x6000)
-		return val;
-	else if(addr < 0x8000)
-		return m15_prgRAM[addr&0x1FFF];
-	switch(m15_bankMode)
+	if(m15.usesPrgRAM)
+		prgRAM8initGet8(addr);
+	prg8initGet8(addr);
+}
+
+void m15setParams(uint16_t addr, uint8_t val)
+{
+	m15.bankMode = (addr&3);
+	m15.upperPRGBank = ((val&(1<<7))<<6);
+	m15.curPRGBank = ((val&0x3F)<<14);
+	m15SetPrgROMBankPtr();
+	if((val&(1<<6)) == 0)
 	{
-		case 0:
-			if(addr < 0xC000)
-				return m15_prgROM[(m15_curPRGBank&~0x3FFF)+(addr&0x3FFF)];
-			return m15_prgROM[((m15_curPRGBank|0x4000)&~0x3FFF)+(addr&0x3FFF)];
-		case 1:
-			if(addr < 0xC000)
-				return m15_prgROM[(m15_curPRGBank&~0x3FFF)+(addr&0x3FFF)];
-			return m15_prgROM[(m15_lastPRGBank&~0x3FFF)+(addr&0x3FFF)];
-		case 2:
-			if(m15_upperPRGBank == false)
-				return m15_prgROM[(m15_curPRGBank&~0x3FFF)+(addr&0x1FFF)];
-			return m15_prgROM[((m15_curPRGBank&~0x3FFF)|0x2000)+(addr&0x1FFF)];
-		case 3:
-		default:
-			return m15_prgROM[(m15_curPRGBank&~0x3FFF)+(addr&0x3FFF)];
+		//printf("Vertical mode\n");
+		ppuSetNameTblVertical();
+	}
+	else
+	{
+		//printf("Horizontal mode\n");
+		ppuSetNameTblHorizontal();
 	}
 }
 
-void m15set8(uint16_t addr, uint8_t val)
+void m15initSet8(uint16_t addr)
 {
-	//printf("m1set8 %04x %02x\n", addr, val);
-	if(addr >= 0x6000 && addr < 0x8000)
-		m15_prgRAM[addr&0x1FFF] = val;
-	else if(addr >= 0x8000)
-	{
-		m15_bankMode = (addr&3);
-		m15_upperPRGBank = ((val&(1<<7)) != 0);
-		m15_curPRGBank = ((val&0x3F)<<14)&m15_prgROMand;
-		if((val&(1<<6)) == 0)
-		{
-			//printf("Vertical mode\n");
-			ppuSetNameTblVertical();
-		}
-		else
-		{
-			//printf("Horizontal mode\n");
-			ppuSetNameTblHorizontal();
-		}
-	}
+	if(m15.usesPrgRAM)
+		prgRAM8initSet8(addr);
+	if(addr >= 0x8000)
+		memInitMapperSetPointer(addr, m15setParams);
 }
 
-uint8_t m15chrGet8(uint16_t addr)
+void m15reset()
 {
-	return m15_chrRAM[addr&0x1FFF];
-}
-
-void m15chrSet8(uint16_t addr, uint8_t val)
-{
-	m15_chrRAM[addr&0x1FFF] = val;
+	m15setParams(0,0);
 }

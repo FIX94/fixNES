@@ -1,17 +1,19 @@
 # fixNES
 This is yet another NES Emulator which was written so I can learn about the NES, right now it is not in the most "complete" or cleanest state.  
-If you want to check it out for some reason I do include a windows binary in the "Releases" tab, if you want to compile it go check out the "build" files.  
-You will need freeglut as well as openal-soft to compile the project, it should run on most systems since it is fairly generic C code.  
-NTSC and PAL .nes ROMs are supported right now, it also creates .sav files if the chosen game supports saving.  
-Supported Mappers:  
-0,1,2,3,4,5,7,9,10,11,12,13,15,19,21,22,23,24,25,26,32,33,34,36,37,38,41,44,45,46,47,48,49,52,57,58,60,61,62,65,66,67,68,69,70,71,73,75,76,78,79,85,87,88,89,93,94,95,97,99,101,112,113,118,119,133,140,144,145,146,147,148,149,152,154,155,156,174,180,184,185,200,201,202,203,205,206,210,212,225,226,228,232,232,240 and 242.  
-Supported Audio Expansions:  
-VRC6, VRC7, FDS, MMC5, N163, Sunsoft 5B  
-Normal .nes files are supported, if you are starting a PAL NES title then make sure it has (E),(Europe),(Australia),(France),(Germany),(Italy),(Spain) or (Sweden) in the filename to be started in PAL mode.  
+If you want to check it out for some reason I do include a windows binary in the "Releases" tab, if you want to compile it see the compiling infos below.    
+
+Loading Files:  
+NTSC and PAL .nes ROMs are supported, it also creates .sav files if the chosen game supports saving.
+If you are starting a PAL NES title then make sure it has (E),(Europe),(Australia),(France),(Germany),(Italy),(Spain) or (Sweden) in the filename to be started in PAL mode.  
 You can also play FDS titles if you have the FDS BIOS named disksys.rom in the same folder as your .fds/.qd files.  
-You can also listen to .nsf files, changing tracks works by pressing left/right.  
+You can also listen to .nsf music files, changing tracks works by pressing left/right.  
 To start a file, simply drag and drop it into the fixNES Application or call it via command line with the file as argument.  
-You can also use a .zip file, the first found supported file from that .zip will be used.    
+You can also load from a .zip file, the first found supported file from that .zip will be used.    
+
+Supported .nes Mappers:  
+0,1,2,3,4,5,7,9,10,11,12,13,15,19,21,22,23,24,25,26,32,33,34,36,37,38,41,44,45,46,47,48,49,52,57,58,60,61,62,65,66,67,68,69,70,71,73,75,76,78,79,85,87,88,89,93,94,95,97,101,112,113,118,119,133,140,144,145,146,147,148,149,152,154,155,156,174,180,184,185,200,201,202,203,205,206,210,212,225,226,228,232,232,240 and 242.  
+Supported Audio Expansions (for both ROMs and NSF Files):  
+VRC6, VRC7, FDS, MMC5, N163, Sunsoft 5B    
 
 Controls right now are keyboard only and do the following:  
 Y/Z is A  
@@ -26,4 +28,25 @@ B is Disk Switching (for FDS)
 O is Enable/Disable vertical Overscan  
 If you really want controller support and you are on windows, go grab joy2key, it works just fine with fixNES (and fixGB).    
 
-That is all I can say about it right now, who knows if I will write some more on it.  
+Infos on compiling:  
+The easiest you can do is use the build .bat/.sh files to just call up gcc with the full command line to compile the standalone version.  
+For the standalone you will at least need freeglut as well as openal-soft, it should run on most systems since it is fairly generic C code.  
+Also you can use this as a core for retroarch by using the Makefile in the libretro folder.    
+
+There are several defines you can add/remove for different options for both the standalone version and the retroarch core:
+COL_32BIT  
+Changes the output texture to be 32bit per pixel (RGBA8) instead of 16bit (RGB565)  
+COL_BGRA  
+Used in combination with COL_32BIT, this will change the output texture to BGRA8 instead of RGBA8  
+COL_TEX_BSWAP  
+In 32bit per pixel mode, this will change the byte order of the output texture, in 16bit mode this will output in BGR565    
+
+These defines are specific to the standalone version:  
+AUDIO_FLOAT  
+Will output the audio as 32bit float instead of 16bit short  
+COL_GL_BSWAP  
+Switches the byte order used for the drawn opengl texture, does not need to be touched if you dont have performance issues on your system  
+WINDOWS_BUILD  
+Changes some calls to make it easily compilable on windows with something like mingw gcc  
+ZIPSUPPORT  
+Allows you to load roms directly from .zip files if you have a usable zlib installation  

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 FIX94
+ * Copyright (C) 2017 - 2018 FIX94
  *
  * This software may be modified and distributed under the terms
  * of the MIT license.  See the LICENSE file for details.
@@ -13,6 +13,7 @@
 #include "apu.h"
 #include "audio_mmc5.h"
 #include "audio.h"
+#include "mapper.h"
 #include "mem.h"
 #include "cpu.h"
 
@@ -162,85 +163,88 @@ FIXNES_NOINLINE void mmc5AudioLenCycle()
 	}
 }
 
-void mmc5AudioSet8(uint8_t reg, uint8_t val)
+void mmc5AudioSet8(uint16_t addr, uint8_t val)
 {
+	uint8_t reg = addr&0x1F;
 	//printf("%02x %02x %04x\n", reg, val, cpuGetPc());
 	mmc5_apu.reg[reg] = val;
-	if(reg == 0)
+	switch(reg)
 	{
-		mmc5_apu.p1Env.vol = val&0xF;
-		mmc5_apu.p1seq = pulseSeqs[val>>6];
-		mmc5_apu.p1Env.constant = ((val&PULSE_CONST_V) != 0);
-		mmc5_apu.p1Env.loop = mmc5_apu.p1haltloop = ((val&PULSE_HALT_LOOP) != 0);
-	}
-	else if(reg == 2)
-	{
-		//printf("P1 time low %02x\n", val);
-		mmc5_apu.freq1 = ((mmc5_apu.freq1&~0xFF) | val);
-	}
-	else if(reg == 3)
-	{
-		mmc5_apu.p1Cycle = 0;
-		if(mmc5_apu.reg[0x15] & P1_ENABLE)
-			mmc5_apu.p1LengthCtr = lengthLookupTbl[val>>3];
-		mmc5_apu.freq1 = (mmc5_apu.freq1&0xFF) | ((val&7)<<8);
-		//printf("P1 new freq %04x\n", mmc5_apu.freq2);
-		mmc5_apu.p1Env.start = true;
-	}
-	else if(reg == 4)
-	{
-		mmc5_apu.p2Env.vol = val&0xF;
-		mmc5_apu.p2seq = pulseSeqs[val>>6];
-		mmc5_apu.p2Env.constant = ((val&PULSE_CONST_V) != 0);
-		mmc5_apu.p2Env.loop = mmc5_apu.p2haltloop = ((val&PULSE_HALT_LOOP) != 0);
-	}
-	else if(reg == 6)
-	{
-		//printf("P2 time low %02x\n", val);
-		mmc5_apu.freq2 = ((mmc5_apu.freq2&~0xFF) | val);
-	}
-	else if(reg == 7)
-	{
-		mmc5_apu.p2Cycle = 0;
-		if(mmc5_apu.reg[0x15] & P2_ENABLE)
-			mmc5_apu.p2LengthCtr = lengthLookupTbl[val>>3];
-		mmc5_apu.freq2 = (mmc5_apu.freq2&0xFF) | ((val&7)<<8);
-		//printf("P2 new freq %04x\n", mmc5_apu.freq2);
-		mmc5_apu.p2Env.start = true;
-	}
-	else if(reg == 0x10)
-	{
-		mmc5_dmcreadmode = (val&DMC_READ_MODE)!=0;
-		mmc5_apu.dmcirqenable = (val&DMC_IRQ_ENABLE)!=0;
-		if(!mmc5_apu.dmcirqenable)
-			interrupt &= ~MMC5_DMC_IRQ;
-	}
-	else if(reg == 0x11)
-	{
-		if(!mmc5_dmcreadmode)
-			mmc5AudioPCMWrite(val);
-	}
-	else if(reg == 0x15)
-	{
-		//printf("Set 0x15 %02x\n",val);
-		if(!(val & P1_ENABLE))
-			mmc5_apu.p1LengthCtr = 0;
-		if(!(val & P2_ENABLE))
-			mmc5_apu.p2LengthCtr = 0;
+		case 0:
+			mmc5_apu.p1Env.vol = val&0xF;
+			mmc5_apu.p1seq = pulseSeqs[val>>6];
+			mmc5_apu.p1Env.constant = ((val&PULSE_CONST_V) != 0);
+			mmc5_apu.p1Env.loop = mmc5_apu.p1haltloop = ((val&PULSE_HALT_LOOP) != 0);
+			break;
+		case 2:
+			//printf("P1 time low %02x\n", val);
+			mmc5_apu.freq1 = ((mmc5_apu.freq1&~0xFF) | val);
+			break;
+		case 3:
+			mmc5_apu.p1Cycle = 0;
+			if(mmc5_apu.reg[0x15] & P1_ENABLE)
+				mmc5_apu.p1LengthCtr = lengthLookupTbl[val>>3];
+			mmc5_apu.freq1 = (mmc5_apu.freq1&0xFF) | ((val&7)<<8);
+			//printf("P1 new freq %04x\n", mmc5_apu.freq2);
+			mmc5_apu.p1Env.start = true;
+			break;
+		case 4:
+			mmc5_apu.p2Env.vol = val&0xF;
+			mmc5_apu.p2seq = pulseSeqs[val>>6];
+			mmc5_apu.p2Env.constant = ((val&PULSE_CONST_V) != 0);
+			mmc5_apu.p2Env.loop = mmc5_apu.p2haltloop = ((val&PULSE_HALT_LOOP) != 0);
+			break;
+		case 6:
+			//printf("P2 time low %02x\n", val);
+			mmc5_apu.freq2 = ((mmc5_apu.freq2&~0xFF) | val);
+			break;
+		case 7:
+			mmc5_apu.p2Cycle = 0;
+			if(mmc5_apu.reg[0x15] & P2_ENABLE)
+				mmc5_apu.p2LengthCtr = lengthLookupTbl[val>>3];
+			mmc5_apu.freq2 = (mmc5_apu.freq2&0xFF) | ((val&7)<<8);
+			//printf("P2 new freq %04x\n", mmc5_apu.freq2);
+			mmc5_apu.p2Env.start = true;
+			break;
+		case 0x10:
+			mmc5_dmcreadmode = (val&DMC_READ_MODE)!=0;
+			mmc5_apu.dmcirqenable = (val&DMC_IRQ_ENABLE)!=0;
+			if(!mmc5_apu.dmcirqenable)
+				interrupt &= ~MMC5_DMC_IRQ;
+			break;
+		case 0x11:
+			if(!mmc5_dmcreadmode)
+				mmc5AudioPCMWrite(val);
+			break;
+		case 0x15:
+			//printf("Set 0x15 %02x\n",val);
+			if(!(val & P1_ENABLE))
+				mmc5_apu.p1LengthCtr = 0;
+			if(!(val & P2_ENABLE))
+				mmc5_apu.p2LengthCtr = 0;
+			break;
+		default:
+			break;
 	}
 }
 
-uint8_t mmc5AudioGet8(uint8_t reg)
+uint8_t mmc5AudioGet8(uint16_t addr)
 {
-	//printf("%08x\n", reg);
-	if(reg == 0x10)
+	uint8_t ret, reg = addr&0x1F;
+	//printf("%08x\n", reg)
+	switch(reg)
 	{
-		uint8_t intrflag = ((!!(interrupt&MMC5_DMC_IRQ))<<7);
-		//printf("Get 0x10 %02x\n",intrflag);
-		interrupt &= ~MMC5_DMC_IRQ;
-		return intrflag;
+		case 0x10:
+			ret = ((!!(interrupt&MMC5_DMC_IRQ))<<7);
+			//printf("Get 0x10 %02x\n",ret);
+			interrupt &= ~MMC5_DMC_IRQ;
+			break;
+		case 0x15:
+			ret = (mmc5_apu.p1LengthCtr > 0) | ((mmc5_apu.p2LengthCtr > 0)<<1);
+			break;
+		default:
+			ret = mmc5_apu.reg[reg];
+			break;
 	}
-	else if(reg == 0x15)
-		return (mmc5_apu.p1LengthCtr > 0) | ((mmc5_apu.p2LengthCtr > 0)<<1);
-	return mmc5_apu.reg[reg];
+	return ret;
 }

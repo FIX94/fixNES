@@ -1,6 +1,6 @@
 
 /*
- * Copyright (C) 2017 FIX94
+ * Copyright (C) 2017 - 2018 FIX94
  *
  * This software may be modified and distributed under the terms
  * of the MIT license.  See the LICENSE file for details.
@@ -38,7 +38,11 @@ static retro_environment_t environ_cb;
 int nesEmuLoadGame(const char* filename);
 void nesEmuMainLoop(void);
 void nesEmuDeinit(void);
+#ifdef COL_32BIT
+extern uint32_t textureImage[0xF000];
+#else //case COL_16BIT
 extern uint16_t textureImage[0xF000];
+#endif //end COL_32BIT
 extern uint8_t inValReads[8];
 static bool inDiskSwitch = false;
 extern const char *VERSION_STRING;
@@ -108,8 +112,9 @@ void retro_set_controller_port_device(unsigned port, unsigned device) {}
 extern bool nesEmuNSFPlayback;
 void retro_reset()
 {
+   //will be used at the end of a frame
    if(!nesEmuNSFPlayback)
-      cpuSoftReset();
+      ppuSoftReset();
 }
 
 size_t retro_serialize_size(void)
@@ -155,7 +160,15 @@ bool retro_load_game(const struct retro_game_info *info)
       return false;
 
    environ_cb(RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS, desc);
+#ifdef COL_32BIT
+   enum retro_pixel_format fmt = RETRO_PIXEL_FORMAT_XRGB8888;
 
+   if (!environ_cb(RETRO_ENVIRONMENT_SET_PIXEL_FORMAT, &fmt))
+   {
+      log_cb(RETRO_LOG_ERROR, "XRGB8888 is not supported.\n");
+      return false;
+   }
+#else
    enum retro_pixel_format fmt = RETRO_PIXEL_FORMAT_RGB565;
 
    if (!environ_cb(RETRO_ENVIRONMENT_SET_PIXEL_FORMAT, &fmt))
@@ -163,6 +176,7 @@ bool retro_load_game(const struct retro_game_info *info)
       log_cb(RETRO_LOG_ERROR, "RGB565 is not supported.\n");
       return false;
    }
+#endif
 
    inDiskSwitch = false;
 
@@ -293,7 +307,11 @@ void retro_run()
 
    nesEmuMainLoop();
 
+#ifdef COL_32BIT
+   video_cb(textureImage, VISIBLE_DOTS, VISIBLE_LINES, VISIBLE_DOTS * 4);
+#else //case COL_16BIT
    video_cb(textureImage, VISIBLE_DOTS, VISIBLE_LINES, VISIBLE_DOTS * 2);
+#endif //end COL_32BIT
    apuUpdate();
 }
 

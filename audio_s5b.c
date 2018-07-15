@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 FIX94
+ * Copyright (C) 2017 - 2018 FIX94
  *
  * This software may be modified and distributed under the terms
  * of the MIT license.  See the LICENSE file for details.
@@ -13,6 +13,7 @@
 #include <math.h>
 #include "audio_s5b.h"
 #include "audio.h"
+#include "mapper.h"
 #include "mem.h"
 #include "cpu.h"
 #include "apu.h"
@@ -178,67 +179,69 @@ static inline void _s5BsetChanVolEnv(uint8_t chan, uint8_t val)
 	s5b_apu.env[chan] = (val&0x10);
 }
 
-void s5BAudioSet8(uint16_t addr, uint8_t val)
+void s5BAudioSet8_C000(uint16_t addr, uint8_t val)
 {
-	//printf("s5BAudioSet8 %04x %02x\n", addr, val);
-	if(addr < 0xE000)
-		s5b_apu.curReg = val&0xF;
-	else
+	(void)addr;
+	s5b_apu.curReg = val&0xF;
+}
+
+
+void s5BAudioSet8_E000(uint16_t addr, uint8_t val)
+{
+	(void)addr;
+	switch(s5b_apu.curReg)
 	{
-		switch(s5b_apu.curReg)
-		{
-			case 0x0:
-				_s5BsetChanFreqLow(0, val);
-				break;
-			case 0x1:
-				_s5BsetChanFreqHigh(0, val);
-				break;
-			case 0x2:
-				_s5BsetChanFreqLow(1, val);
-				break;
-			case 0x3:
-				_s5BsetChanFreqHigh(1, val);
-				break;
-			case 0x4:
-				_s5BsetChanFreqLow(2, val);
-				break;
-			case 0x5:
-				_s5BsetChanFreqHigh(2, val);
-				break;
-			case 0x6:
-				s5b_apu.noiseFreq = (val&0x1F)<<1;
-				break;
-			case 0x7:
-				s5b_apu.disable[0] = (val&1);
-				s5b_apu.disable[1] = (val&2);
-				s5b_apu.disable[2] = (val&4);
-				s5b_apu.nonoise[0] = (val&0x08);
-				s5b_apu.nonoise[1] = (val&0x10);
-				s5b_apu.nonoise[2] = (val&0x20);
-				break;
-			case 0x8:
-				_s5BsetChanVolEnv(0, val);
-				break;
-			case 0x9:
-				_s5BsetChanVolEnv(1, val);
-				break;
-			case 0xA:
-				_s5BsetChanVolEnv(2, val);
-				break;
-			case 0xB:
-				s5b_apu.envFreq = (s5b_apu.envFreq&0xFF00) | val;
-				break;
-			case 0xC:
-				s5b_apu.envFreq = (s5b_apu.envFreq&0xFF) | (val<<8);
-				break;
-			case 0xD:
-				s5b_apu.envStep = 0;
-				s5b_apu.envShape = (val&0xF);
-				s5b_apu.envRepeat = s5b_apu.envRepeatTbl[s5b_apu.envShape];
-				break;
-			default:
-				break;
-		}
+		case 0x0:
+			_s5BsetChanFreqLow(0, val);
+			break;
+		case 0x1:
+			_s5BsetChanFreqHigh(0, val);
+			break;
+		case 0x2:
+			_s5BsetChanFreqLow(1, val);
+			break;
+		case 0x3:
+			_s5BsetChanFreqHigh(1, val);
+			break;
+		case 0x4:
+			_s5BsetChanFreqLow(2, val);
+			break;
+		case 0x5:
+			_s5BsetChanFreqHigh(2, val);
+			break;
+		case 0x6:
+			s5b_apu.noiseFreq = (val&0x1F)<<1;
+			break;
+		case 0x7:
+			s5b_apu.disable[0] = (val&1);
+			s5b_apu.disable[1] = (val&2);
+			s5b_apu.disable[2] = (val&4);
+			s5b_apu.nonoise[0] = (val&0x08);
+			s5b_apu.nonoise[1] = (val&0x10);
+			s5b_apu.nonoise[2] = (val&0x20);
+			break;
+		case 0x8:
+			_s5BsetChanVolEnv(0, val);
+			break;
+		case 0x9:
+			_s5BsetChanVolEnv(1, val);
+			break;
+		case 0xA:
+			_s5BsetChanVolEnv(2, val);
+			break;
+		case 0xB:
+			s5b_apu.envFreq = (s5b_apu.envFreq&0xFF00) | val;
+			break;
+		case 0xC:
+			s5b_apu.envFreq = (s5b_apu.envFreq&0xFF) | (val<<8);
+			break;
+		case 0xD:
+			s5b_apu.envStep = 0;
+			s5b_apu.envShape = (val&0xF);
+			s5b_apu.envRepeat = s5b_apu.envRepeatTbl[s5b_apu.envShape];
+			break;
+		default:
+			break;
 	}
 }
 

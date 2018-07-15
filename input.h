@@ -18,7 +18,8 @@
 #define BUTTON_RIGHT    7
 
 void inputInit();
-uint8_t inputGet();
-void inputSet(uint8_t in);
+uint8_t inputGetP1(uint16_t addr);
+uint8_t inputGetP2(uint16_t addr);
+void inputSet(uint16_t addr, uint8_t in);
 
 #endif

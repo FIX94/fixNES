@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 FIX94
+ * Copyright (C) 2017 - 2018 FIX94
  *
  * This software may be modified and distributed under the terms
  * of the MIT license.  See the LICENSE file for details.
@@ -30,25 +30,30 @@ void vrc_irq_init()
 	vrc_irqEnable_after_ack = false;
 	vrc_irqCyclemode = false;
 	vrc_irq_scanTblPos = 0;
+	printf("Using Common VRC Mapper IRQ\n");
 }
 
-void vrc_irq_setlatch(uint8_t val)
+void vrc_irq_setlatch(uint16_t addr, uint8_t val)
 {
+	(void)addr;
 	vrc_irqCtr = val;
 }
 
-void vrc_irq_setlatchLo(uint8_t val)
+void vrc_irq_setlatchLo(uint16_t addr, uint8_t val)
 {
+	(void)addr;
 	vrc_irqCtr = (vrc_irqCtr&~0xF) | (val&0xF);
 }
 
-void vrc_irq_setlatchHi(uint8_t val)
+void vrc_irq_setlatchHi(uint16_t addr, uint8_t val)
 {
+	(void)addr;
 	vrc_irqCtr = (vrc_irqCtr&0xF) | ((val&0xF)<<4);
 }
 
-void vrc_irq_control(uint8_t val)
+void vrc_irq_control(uint16_t addr, uint8_t val)
 {
+	(void)addr;
 	interrupt &= ~MAPPER_IRQ;
 	vrc_irqEnable_after_ack = ((val&1) != 0);
 	vrc_irqCyclemode = ((val&4) != 0);
@@ -67,28 +72,21 @@ void vrc_irq_control(uint8_t val)
 	}
 }
 
-void vrc_irq_ack()
+void vrc_irq_ack(uint16_t addr, uint8_t val)
 {
+	(void)addr; (void)val;
 	interrupt &= ~MAPPER_IRQ;
-	if(vrc_irqEnable_after_ack)
-	{
-		vrc_irqEnabled = true;
-		//printf("vrc_irq ACK IRQ Reload\n");
-	}
-	//else
-	//	printf("vrc_irq ACK No Reload\n");
+	vrc_irqEnabled = vrc_irqEnable_after_ack;
+	//printf("vrc_irq ACK IRQ Reload\n");
 }
 
 void vrc_irq_ctrcycle()
 {
 	if(vrc_irqCurCtr == 0xFF)
 	{
-		if(vrc_irqEnabled)
-		{
-			//printf("vrc_irq Cycle Interrupt\n");
-			interrupt |= MAPPER_IRQ;
-			vrc_irqEnabled = false;
-		}
+		//printf("vrc_irq Cycle Interrupt\n");
+		interrupt |= MAPPER_IRQ;
+		//vrc_irqEnabled = false;
 		vrc_irqCurCtr = vrc_irqCtr;
 	}
 	else
@@ -97,19 +95,22 @@ void vrc_irq_ctrcycle()
 
 void vrc_irq_cycle()
 {
-	if(vrc_irqCyclemode)
-		vrc_irq_ctrcycle();
-	else
+	if(vrc_irqEnabled)
 	{
-		if(vrc_irqPrescaler >= vrc_irq_scanTbl[vrc_irq_scanTblPos])
-		{
+		if(vrc_irqCyclemode)
 			vrc_irq_ctrcycle();
-			vrc_irq_scanTblPos++;
-			if(vrc_irq_scanTblPos >= 3)
-				vrc_irq_scanTblPos = 0;
-			vrc_irqPrescaler = 0;
-		}
 		else
-			vrc_irqPrescaler++;
+		{
+			if(vrc_irqPrescaler >= vrc_irq_scanTbl[vrc_irq_scanTblPos])
+			{
+				vrc_irq_ctrcycle();
+				vrc_irq_scanTblPos++;
+				if(vrc_irq_scanTblPos >= 3)
+					vrc_irq_scanTblPos = 0;
+				vrc_irqPrescaler = 0;
+			}
+			else
+				vrc_irqPrescaler++;
+		}
 	}
 }

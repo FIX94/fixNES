@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 FIX94
+ * Copyright (C) 2017 - 2018 FIX94
  *
  * This software may be modified and distributed under the terms
  * of the MIT license.  See the LICENSE file for details.
@@ -11,69 +11,92 @@
 #include <string.h>
 #include "../ppu.h"
 #include "../mapper.h"
-
-static uint8_t *p16c8_prgROM;
-static uint8_t *p16c8_chrROM;
-static uint32_t p16c8_prgROMsize;
-static uint32_t p16c8_prgROMand;
-static uint32_t p16c8_chrROMsize;
-static uint32_t p16c8_chrROMand;
-static uint32_t p16c8_firstPRGBank;
-static uint32_t p16c8_curPRGBank;
-static uint32_t p16c8_curCHRBank;
-static uint32_t p16c8_lastPRGBank;
-static bool p1632_p16;
-static uint8_t m57_regA, m57_regB;
-
-static uint8_t p16c8_chrRAM[0x2000];
+#include "../mem.h"
+#include "../mapper_h/common.h"
+#include "../mapper_h/p16c8.h"
 
 void p16c8init(uint8_t *prgROMin, uint32_t prgROMsizeIn, 
 			uint8_t *prgRAMin, uint32_t prgRAMsizeIn,
 			uint8_t *chrROMin, uint32_t chrROMsizeIn)
 {
-	p16c8_prgROM = prgROMin;
-	p16c8_prgROMsize = prgROMsizeIn;
-	p16c8_prgROMand = mapperGetAndValue(p16c8_prgROMsize);
+	prg16init(prgROMin,prgROMsizeIn);
+	prg16setBank1(prgROMsizeIn - 0x4000);
 	(void)prgRAMin;
 	(void)prgRAMsizeIn;
-	p16c8_firstPRGBank = 0;
-	p16c8_curPRGBank = p16c8_firstPRGBank;
-	p16c8_lastPRGBank = prgROMsizeIn - 0x4000;
-	if(chrROMsizeIn > 0)
-	{
-		p16c8_chrROM = chrROMin;
-		p16c8_chrROMsize = chrROMsizeIn;
-		p16c8_chrROMand = mapperGetAndValue(p16c8_chrROMsize);
-	}
-	else
-	{
-		p16c8_chrROM = p16c8_chrRAM;
-		p16c8_chrROMsize = 0x2000;
-		p16c8_chrROMand = 0x1FFF;
-		memset(p16c8_chrRAM,0,0x2000);
-	}
-	p16c8_curCHRBank = 0;
-	p1632_p16 = false;
-	m57_regA = 0, m57_regB = 0;
+	chr8init(chrROMin,chrROMsizeIn);
 	printf("16k PRG 8k CHR Mapper inited\n");
 }
 
-static bool m60_ready;
-static uint8_t m60_state;
-static uint32_t m60_prgROMadd;
-static uint32_t m60_chrROMadd;
+static bool p1632_p16;
+static uint32_t p1632_curPRGBank;
+static void p1632c8SetPrgROMBank()
+{
+	if(p1632_p16)
+	{
+		prg16setBank0(p1632_curPRGBank);
+		prg16setBank1(p1632_curPRGBank);
+	}
+	else
+	{
+		prg16setBank0((p1632_curPRGBank&~0x7FFF)+0x0000);
+		prg16setBank1((p1632_curPRGBank&~0x7FFF)+0x4000);
+	}
+}
 
+static uint8_t m57_regA, m57_regB;
+void m57_init(uint8_t *prgROMin, uint32_t prgROMsizeIn, 
+			uint8_t *prgRAMin, uint32_t prgRAMsizeIn,
+			uint8_t *chrROMin, uint32_t chrROMsizeIn)
+{
+	p16c8init(prgROMin, prgROMsizeIn, prgRAMin, prgRAMsizeIn, chrROMin, chrROMsizeIn);
+	//init extra regs used by mapper 57
+	m57_regA = 0, m57_regB = 0;
+	//sets special prg bank layout
+	p1632_p16 = true;
+	p1632_curPRGBank = 0;
+	p1632c8SetPrgROMBank();
+}
+
+static uint8_t m60_state;
 void m60_init(uint8_t *prgROMin, uint32_t prgROMsizeIn, 
 			uint8_t *prgRAMin, uint32_t prgRAMsizeIn,
 			uint8_t *chrROMin, uint32_t chrROMsizeIn)
 {
 	p16c8init(prgROMin, prgROMsizeIn, prgRAMin, prgRAMsizeIn, chrROMin, chrROMsizeIn);
-	m60_ready = true;
+	//init extra regs used by mapper 60
 	m60_state = 0;
-	m60_prgROMadd = 0;
-	m60_chrROMadd = 0;
+	//sets special prg bank layout
+	m60_reset();
 }
 
+void m62_init(uint8_t *prgROMin, uint32_t prgROMsizeIn, 
+			uint8_t *prgRAMin, uint32_t prgRAMsizeIn,
+			uint8_t *chrROMin, uint32_t chrROMsizeIn)
+{
+	p16c8init(prgROMin, prgROMsizeIn, prgRAMin, prgRAMsizeIn, chrROMin, chrROMsizeIn);
+	//sets special prg bank layout
+	m62_reset();
+}
+
+void p1632c8init(uint8_t *prgROMin, uint32_t prgROMsizeIn, 
+			uint8_t *prgRAMin, uint32_t prgRAMsizeIn,
+			uint8_t *chrROMin, uint32_t chrROMsizeIn)
+{
+	p16c8init(prgROMin, prgROMsizeIn, prgRAMin, prgRAMsizeIn, chrROMin, chrROMsizeIn);
+	p1632_p16 = false;
+	p1632_curPRGBank = 0;
+	p1632c8SetPrgROMBank();
+}
+
+void m97_init(uint8_t *prgROMin, uint32_t prgROMsizeIn, 
+			uint8_t *prgRAMin, uint32_t prgRAMsizeIn,
+			uint8_t *chrROMin, uint32_t chrROMsizeIn)
+{
+	p16c8init(prgROMin, prgROMsizeIn, prgRAMin, prgRAMsizeIn, chrROMin, chrROMsizeIn);
+	//reversed prg bank layout
+	prg16setBank0(prgROMsizeIn - 0x4000);
+	prg16setBank1(0);
+}
 
 void m174_init(uint8_t *prgROMin, uint32_t prgROMsizeIn, 
 			uint8_t *prgRAMin, uint32_t prgRAMsizeIn,
@@ -82,271 +105,249 @@ void m174_init(uint8_t *prgROMin, uint32_t prgROMsizeIn,
 	p16c8init(prgROMin, prgROMsizeIn, prgRAMin, prgRAMsizeIn, chrROMin, chrROMsizeIn);
 	//reversed compared to other mappers using this...
 	p1632_p16 = true;
+	p1632_curPRGBank = 0;
+	p1632c8SetPrgROMBank();
 }
 
-uint8_t p16c8get8(uint16_t addr, uint8_t val)
+void m180_init(uint8_t *prgROMin, uint32_t prgROMsizeIn, 
+			uint8_t *prgRAMin, uint32_t prgRAMsizeIn,
+			uint8_t *chrROMin, uint32_t chrROMsizeIn)
 {
-	if(addr < 0x8000)
-		return val;
-	if(addr < 0xC000)
-		return p16c8_prgROM[((p16c8_curPRGBank&~0x3FFF)+(addr&0x3FFF))&p16c8_prgROMand];
-	return p16c8_prgROM[((p16c8_lastPRGBank&~0x3FFF)+(addr&0x3FFF))&p16c8_prgROMand];
+	p16c8init(prgROMin, prgROMsizeIn, prgRAMin, prgRAMsizeIn, chrROMin, chrROMsizeIn);
+	prg16setBank0(0); //fixed first bank
+	prg16setBank1(0); //swappable bank
 }
 
-uint8_t p1632c8get8(uint16_t addr, uint8_t val)
+static void m200SetPrgROMBank(uint32_t bank)
 {
-	if(addr < 0x8000)
-		return val;
-	if(p1632_p16)
-		return p16c8_prgROM[((p16c8_curPRGBank&~0x3FFF)+(addr&0x3FFF))&p16c8_prgROMand];
-	return p16c8_prgROM[((p16c8_curPRGBank&~0x7FFF)+(addr&0x7FFF))&p16c8_prgROMand];
+	prg16setBank0(bank); prg16setBank1(bank);
 }
 
-uint8_t m60_get8(uint16_t addr, uint8_t val)
+void m200_init(uint8_t *prgROMin, uint32_t prgROMsizeIn, 
+			uint8_t *prgRAMin, uint32_t prgRAMsizeIn,
+			uint8_t *chrROMin, uint32_t chrROMsizeIn)
 {
-	if(addr < 0x8000)
-		return val;
-	//determine reset by reading reset vector
-	if(addr == 0xFFFC && m60_ready)
-	{
-		m60_ready = false;
-		switch(m60_state)
-		{
-			case 0:
-				m60_prgROMadd = 0;
-				m60_chrROMadd = 0;
-				break;
-			case 1:
-				m60_prgROMadd = 0x4000;
-				m60_chrROMadd = 0x2000;
-				break;
-			case 2:
-				m60_prgROMadd = 0x8000;
-				m60_chrROMadd = 0x4000;
-				break;
-			case 3:
-				m60_prgROMadd = 0xC000;
-				m60_chrROMadd = 0x6000;
-				break;
-			default:
-				break;
-		}
-		m60_state++;
-		m60_state&=3;
-	}
-	//only allow another reset after full reset vector read
-	if(addr == 0xFFFD && !m60_ready)
-		m60_ready = true;
-	return p16c8_prgROM[(addr&0x3FFF)+m60_prgROMadd];
+	p16c8init(prgROMin, prgROMsizeIn, prgRAMin, prgRAMsizeIn, chrROMin, chrROMsizeIn);
+	//both the same swappable bank
+	m200SetPrgROMBank(0);
 }
 
-uint8_t m97_get8(uint16_t addr, uint8_t val)
+static void m231SetPrgROMBank(uint32_t bank)
 {
-	if(addr < 0x8000)
-		return val;
-	if(addr < 0xC000)
-		return p16c8_prgROM[((p16c8_lastPRGBank&~0x3FFF)+(addr&0x3FFF))&p16c8_prgROMand];
-	return p16c8_prgROM[((p16c8_curPRGBank&~0x3FFF)+(addr&0x3FFF))&p16c8_prgROMand];
+	prg16setBank0(bank&~0x7FFF); prg16setBank1(bank);
 }
 
-uint8_t m180_get8(uint16_t addr, uint8_t val)
+void m231_init(uint8_t *prgROMin, uint32_t prgROMsizeIn, 
+			uint8_t *prgRAMin, uint32_t prgRAMsizeIn,
+			uint8_t *chrROMin, uint32_t chrROMsizeIn)
 {
-	if(addr < 0x8000)
-		return val;
-	if(addr < 0xC000)
-		return p16c8_prgROM[((p16c8_firstPRGBank&~0x3FFF)+(addr&0x3FFF))&p16c8_prgROMand];
-	return p16c8_prgROM[((p16c8_curPRGBank&~0x3FFF)+(addr&0x3FFF))&p16c8_prgROMand];
+	p16c8init(prgROMin, prgROMsizeIn, prgRAMin, prgRAMsizeIn, chrROMin, chrROMsizeIn);
+	//special prg bank layout
+	m231SetPrgROMBank(0);
 }
 
-uint8_t m200_get8(uint16_t addr, uint8_t val)
+static uint32_t m232_curPRGBank;
+static void m232SetPrgROMBank()
 {
-	if(addr < 0x8000)
-		return val;
-	return p16c8_prgROM[((p16c8_curPRGBank&~0x3FFF)+(addr&0x3FFF))&p16c8_prgROMand];
+	prg16setBank0(m232_curPRGBank);
+	prg16setBank1((m232_curPRGBank&~0xFFFF)|0xC000);
 }
 
-uint8_t m231_get8(uint16_t addr, uint8_t val)
+void m232_init(uint8_t *prgROMin, uint32_t prgROMsizeIn, 
+			uint8_t *prgRAMin, uint32_t prgRAMsizeIn,
+			uint8_t *chrROMin, uint32_t chrROMsizeIn)
 {
-	if(addr < 0x8000)
-		return val;
-	if(addr < 0xC000)
-		return p16c8_prgROM[((p16c8_curPRGBank&~0x7FFF)+(addr&0x3FFF))&p16c8_prgROMand];
-	return p16c8_prgROM[((p16c8_curPRGBank&~0x3FFF)+(addr&0x3FFF))&p16c8_prgROMand];
+	p16c8init(prgROMin, prgROMsizeIn, prgRAMin, prgRAMsizeIn, chrROMin, chrROMsizeIn);
+	//special prg bank layout
+	m232_curPRGBank = 0;
+	m232SetPrgROMBank();
 }
 
-uint8_t m232_get8(uint16_t addr, uint8_t val)
+static void m2_setParams(uint16_t addr, uint8_t val) { (void)addr; prg16setBank0((val & 0xF)<<14); }
+void m2_initSet8(uint16_t addr)
 {
-	if(addr < 0x8000)
-		return val;
-	if(addr < 0xC000)
-		return p16c8_prgROM[((p16c8_curPRGBank&~0x3FFF)+(addr&0x3FFF))&p16c8_prgROMand];
-	return p16c8_prgROM[((p16c8_curPRGBank&~0xFFFF)+addr)&p16c8_prgROMand];
+	if(addr < 0x8000) return;
+	memInitMapperSetPointer(addr, m2_setParams);
 }
 
-void m2_set8(uint16_t addr, uint8_t val)
+static void m57_setParams80XX(uint16_t addr, uint8_t val)
 {
-	//printf("p16c8set8 %04x %02x\n", addr, val);
-	if(addr < 0x8000)
-		return;
-	p16c8_curPRGBank = ((val & 0xF)<<14)&p16c8_prgROMand;
+	(void)addr;
+	m57_regA = (val&7)|((val>>3)&8);
+	chr8setBank0((m57_regA|m57_regB)<<13);
 }
-
-void m57_set8(uint16_t addr, uint8_t val)
+static void m57_setParams88XX(uint16_t addr, uint8_t val)
 {
-	if(addr < 0x8000)
-		return;
-	if((addr&0x800) == 0)
-	{
-		m57_regA = (val&7)|((val>>3)&8);
-		p16c8_curCHRBank = ((m57_regA|m57_regB)<<13)&p16c8_chrROMand;
-	}
+	(void)addr;
+	p1632_p16 = ((val&0x10) == 0);
+	p1632_curPRGBank = ((val>>5)&7)<<14;
+	p1632c8SetPrgROMBank();
+	m57_regB = val&7;
+	chr8setBank0((m57_regA|m57_regB)<<13);
+	if((val&8) != 0)
+		ppuSetNameTblHorizontal();
 	else
-	{
-		m57_regB = val&7;
-		p16c8_curPRGBank = (((val>>5)&7)<<14)&p16c8_prgROMand;
-		p16c8_curCHRBank = ((m57_regA|m57_regB)<<13)&p16c8_chrROMand;
-		p1632_p16 = ((val&0x10) == 0);
-		if((val&8) != 0)
-			ppuSetNameTblHorizontal();
-		else
-			ppuSetNameTblVertical();
-	}
+		ppuSetNameTblVertical();
+}
+void m57_initSet8(uint16_t ori_addr)
+{
+	uint16_t proc_addr = ori_addr&0x8800;
+	if(proc_addr == 0x8000)
+		memInitMapperSetPointer(ori_addr, m57_setParams80XX);
+	else if(proc_addr == 0x8800)
+		memInitMapperSetPointer(ori_addr, m57_setParams88XX);
 }
 
-void m58_set8(uint16_t addr, uint8_t val)
+static void m58_setParams(uint16_t addr, uint8_t val)
 {
 	(void)val;
-	if(addr < 0x8000)
-		return;
-	p16c8_curPRGBank = ((addr&7)<<14)&p16c8_prgROMand;
-	p16c8_curCHRBank = (((addr>>3)&7)<<13)&p16c8_chrROMand;
 	p1632_p16 = ((addr&0x40) != 0);
+	p1632_curPRGBank = (addr&7)<<14;
+	p1632c8SetPrgROMBank();
+	chr8setBank0(((addr>>3)&7)<<13);
 	if((addr&0x80) != 0)
 		ppuSetNameTblHorizontal();
 	else
 		ppuSetNameTblVertical();
 }
-
-void m60_set8(uint16_t addr, uint8_t val)
+void m58_initSet8(uint16_t addr)
 {
-	(void)val;
+	if(addr < 0x8000) return;
+	memInitMapperSetPointer(addr, m58_setParams);
+}
+
+void m60_initSet8(uint16_t addr)
+{
 	(void)addr;
 }
 
-void m61_set8(uint16_t addr, uint8_t val)
+static void m61_setParams(uint16_t addr, uint8_t val)
 {
 	(void)val;
-	if(addr < 0x8000)
-		return;
-	p16c8_curPRGBank = ((((addr & 0xF)<<1)|((addr&0x20)>>5))<<14)&p16c8_prgROMand;;
 	p1632_p16 = ((addr&0x10) != 0);
+	p1632_curPRGBank = (((addr & 0xF)<<1)|((addr&0x20)>>5))<<14;
+	p1632c8SetPrgROMBank();
 	if((addr&0x80) != 0)
 		ppuSetNameTblHorizontal();
 	else
 		ppuSetNameTblVertical();
 }
-
-void m62_set8(uint16_t addr, uint8_t val)
+void m61_initSet8(uint16_t addr)
 {
-	if(addr < 0x8000)
-		return;
-	//printf("p16c8set8 %04x %02x\n", addr, val);
-	p16c8_curPRGBank = (((addr&0x40)|((addr>>8)&0x3F))<<14)&p16c8_prgROMand;
-	p16c8_curCHRBank = ((((addr&0x1F)<<2)|(val&3))<<13)&p16c8_chrROMand;
+	if(addr < 0x8000) return;
+	memInitMapperSetPointer(addr, m61_setParams);
+}
+
+static void m62_setParams(uint16_t addr, uint8_t val)
+{
 	p1632_p16 = ((addr&0x20) != 0);
+	p1632_curPRGBank = ((addr&0x40)|((addr>>8)&0x3F))<<14;
+	p1632c8SetPrgROMBank();
+	chr8setBank0((((addr&0x1F)<<2)|(val&3))<<13);
 	if((addr&0x80) != 0)
 		ppuSetNameTblHorizontal();
 	else
 		ppuSetNameTblVertical();
 }
-
-void m70_set8(uint16_t addr, uint8_t val)
+void m62_initSet8(uint16_t addr)
 {
-	//printf("p16c8set8 %04x %02x\n", addr, val);
-	if(addr < 0x8000)
-		return;
-	p16c8_curPRGBank = ((val >> 4)<<14)&p16c8_prgROMand;
-	p16c8_curCHRBank = ((val & 0xF)<<13)&p16c8_chrROMand;
+	if(addr < 0x8000) return;
+	memInitMapperSetPointer(addr, m62_setParams);
 }
 
-void m71_set8(uint16_t addr, uint8_t val)
+static void m70_setParams(uint16_t addr, uint8_t val)
 {
-	//printf("p16c8set8 %04x %02x\n", addr, val);
-	if(addr < 0xC000)
-	{
-		if(addr == 0x9000) //Fire Hawk
-		{
-			if((val&0x10) != 0)
-				ppuSetNameTblSingleLower();
-			else if(val == 0)
-				ppuSetNameTblSingleUpper();
-		}
-		return;
-	}
-	p16c8_curPRGBank = ((val & 0xF)<<14)&p16c8_prgROMand;
+	(void)addr;
+	prg16setBank0((val >> 4)<<14);
+	chr8setBank0((val & 0xF)<<13);
+}
+void m70_initSet8(uint16_t addr)
+{
+	if(addr < 0x8000) return;
+	memInitMapperSetPointer(addr, m70_setParams);
 }
 
-void m78a_set8(uint16_t addr, uint8_t val)
+static void m71_setParams9000(uint16_t addr, uint8_t val)
 {
-	//printf("p16c8set8 %04x %02x\n", addr, val);
-	if(addr < 0x8000)
-		return;
-	p16c8_curPRGBank = ((val & 7)<<14)&p16c8_prgROMand;
-	p16c8_curCHRBank = (((val>>4) & 0xF)<<13)&p16c8_chrROMand;
+	(void)addr;
+	//For Fire Hawk
+	if((val&0x10) != 0)
+		ppuSetNameTblSingleLower();
+	else if(val == 0)
+		ppuSetNameTblSingleUpper();
+}
+static void m71_setParamsCXXX(uint16_t addr, uint8_t val) { (void)addr; prg16setBank0((val & 0xF)<<14); }
+void m71_initSet8(uint16_t addr)
+{
+	if(addr == 0x9000) memInitMapperSetPointer(addr, m71_setParams9000);
+	else if(addr >= 0xC000) memInitMapperSetPointer(addr, m71_setParamsCXXX);
+}
+
+static void m78a_setParams8XXX(uint16_t addr, uint8_t val)
+{
+	(void)addr;
+	prg16setBank0((val & 7)<<14);
+	chr8setBank0(((val>>4) & 0xF)<<13);
 	if((val&0x8) == 0)
 		ppuSetNameTblHorizontal();
 	else
 		ppuSetNameTblVertical();
 }
-
-void m78b_set8(uint16_t addr, uint8_t val)
+static void m78b_setParams8XXX(uint16_t addr, uint8_t val)
 {
-	//printf("p16c8set8 %04x %02x\n", addr, val);
-	if(addr < 0x8000)
-		return;
-	p16c8_curPRGBank = ((val & 7)<<14)&p16c8_prgROMand;
-	p16c8_curCHRBank = (((val>>4) & 0xF)<<13)&p16c8_chrROMand;
+	(void)addr;
+	prg16setBank0((val & 7)<<14);
+	chr8setBank0(((val>>4) & 0xF)<<13);
 	if((val&0x8) == 0)
 		ppuSetNameTblSingleLower();
 	else
 		ppuSetNameTblSingleUpper();
 }
-
-void m89_set8(uint16_t addr, uint8_t val)
+bool m78_m78a;
+void m78_initSet8(uint16_t addr)
 {
-	//printf("p16c8set8 %04x %02x\n", addr, val);
-	if(addr < 0x8000)
-		return;
-	p16c8_curPRGBank = (((val>>4) & 7)<<14)&p16c8_prgROMand;
-	p16c8_curCHRBank = ((((val&0x80)>>4)|(val & 7))<<13)&p16c8_chrROMand;
+	if(addr < 0x8000) return;
+	if(m78_m78a) //set externally in main.c
+		memInitMapperSetPointer(addr, m78a_setParams8XXX);
+	else
+		memInitMapperSetPointer(addr, m78b_setParams8XXX);
+}
+
+void m89_setParams(uint16_t addr, uint8_t val)
+{
+	(void)addr;
+	prg16setBank0(((val>>4) & 7)<<14);
+	chr8setBank0((((val&0x80)>>4)|(val & 7))<<13);
 	if((val&0x8) == 0)
 		ppuSetNameTblSingleLower();
 	else
 		ppuSetNameTblSingleUpper();
 }
-
-void m93_set8(uint16_t addr, uint8_t val)
+void m89_initSet8(uint16_t addr)
 {
-	//printf("p16c8set8 %04x %02x\n", addr, val);
-	if(addr < 0x8000)
-		return;
-	p16c8_curPRGBank = (((val>>4) & 7)<<14)&p16c8_prgROMand;
+	if(addr < 0x8000) return;
+	memInitMapperSetPointer(addr, m89_setParams);
 }
 
-void m94_set8(uint16_t addr, uint8_t val)
+void m93_setParams(uint16_t addr, uint8_t val) { (void)addr; prg16setBank0(((val>>4) & 7)<<14); }
+void m93_initSet8(uint16_t addr)
 {
-	//printf("p16c8set8 %04x %02x\n", addr, val);
-	if(addr < 0x8000)
-		return;
-	p16c8_curPRGBank = (((val>>2) & 0xF)<<14)&p16c8_prgROMand;
+	if(addr < 0x8000) return;
+	memInitMapperSetPointer(addr, m93_setParams);
 }
 
-void m97_set8(uint16_t addr, uint8_t val)
+void m94_setParams(uint16_t addr, uint8_t val) { (void)addr; prg16setBank0(((val>>2) & 0xF)<<14); }
+void m94_initSet8(uint16_t addr)
 {
-	//printf("p16c8set8 %04x %02x\n", addr, val);
-	if(addr < 0x8000)
-		return;
-	p16c8_curPRGBank = ((val & 0xF)<<14)&p16c8_prgROMand;
+	if(addr < 0x8000) return;
+	memInitMapperSetPointer(addr, m94_setParams);
+}
+
+static void m97_setParams(uint16_t addr, uint8_t val)
+{
+	(void)addr;
+	//reversed prg bank layout
+	prg16setBank1((val & 0xF)<<14);
 	switch(val>>6)
 	{
 		case 0:
@@ -363,167 +364,210 @@ void m97_set8(uint16_t addr, uint8_t val)
 			break;
 	}
 }
-
-void m152_set8(uint16_t addr, uint8_t val)
+void m97_initSet8(uint16_t addr)
 {
-	//printf("p16c8set8 %04x %02x\n", addr, val);
-	if(addr < 0x8000)
-		return;
-	p16c8_curPRGBank = (((val >> 4)&7)<<14)&p16c8_prgROMand;
-	p16c8_curCHRBank = ((val & 0xF)<<13)&p16c8_chrROMand;
+	if(addr < 0x8000) return;
+	memInitMapperSetPointer(addr, m97_setParams);
+}
+
+static void m152_setParams(uint16_t addr, uint8_t val)
+{
+	(void)addr;
+	prg16setBank0(((val >> 4)&7)<<14);
+	chr8setBank0((val & 0xF)<<13);
 	if((val&0x80) == 0)
 		ppuSetNameTblSingleLower();
 	else
 		ppuSetNameTblSingleUpper();
 }
+void m152_initSet8(uint16_t addr)
+{
+	if(addr < 0x8000) return;
+	memInitMapperSetPointer(addr, m152_setParams);
+}
 
-void m174_set8(uint16_t addr, uint8_t val)
+static void m174_setParams(uint16_t addr, uint8_t val)
 {
 	(void)val;
-	if(addr < 0x8000)
-		return;
-	//printf("p16c8set8 %04x %02x\n", addr, val);
-	p16c8_curPRGBank = (((addr>>4)&7)<<14)&p16c8_prgROMand;
-	p16c8_curCHRBank = (((addr>>1)&7)<<13)&p16c8_chrROMand;
 	p1632_p16 = ((addr&0x80) == 0);
+	p1632_curPRGBank = ((addr>>4)&7)<<14;
+	p1632c8SetPrgROMBank();
+	chr8setBank0(((addr>>1)&7)<<13);
 	if((addr&1) != 0)
 		ppuSetNameTblHorizontal();
 	else
 		ppuSetNameTblVertical();
 }
-
-void m180_set8(uint16_t addr, uint8_t val)
+void m174_initSet8(uint16_t addr)
 {
-	//printf("p16c8set8 %04x %02x\n", addr, val);
-	if(addr < 0x8000)
-		return;
-	p16c8_curPRGBank = ((val & 0xF)<<14)&p16c8_prgROMand;
+	if(addr < 0x8000) return;
+	memInitMapperSetPointer(addr, m174_setParams);
 }
 
-void m200_set8(uint16_t addr, uint8_t val)
+static void m180_setParams(uint16_t addr, uint8_t val) { (void)addr; prg16setBank1((val & 0xF)<<14); }
+void m180_initSet8(uint16_t addr)
+{
+	if(addr < 0x8000) return;
+	memInitMapperSetPointer(addr, m180_setParams);
+}
+
+static void m200_setParams(uint16_t addr, uint8_t val)
 {
 	(void)val;
-	//printf("p16c8set8 %04x %02x\n", addr, val);
-	if(addr < 0x8000)
-		return;
-	p16c8_curPRGBank = ((addr&7)<<14)&p16c8_prgROMand;
-	p16c8_curCHRBank = ((addr&7)<<13)&p16c8_chrROMand;
+	m200SetPrgROMBank((addr&7)<<14);
+	chr8setBank0((addr&7)<<13);
 	if((addr&8) != 0)
 		ppuSetNameTblHorizontal();
 	else
 		ppuSetNameTblVertical();
 }
+void m200_initSet8(uint16_t addr)
+{
+	if(addr < 0x8000) return;
+	memInitMapperSetPointer(addr, m200_setParams);
+}
 
-void m202_set8(uint16_t addr, uint8_t val)
+static void m202_setParams(uint16_t addr, uint8_t val)
 {
 	(void)val;
-	if(addr < 0x8000)
-		return;
-	//printf("p16c8set8 %04x %02x\n", addr, val);
-	p16c8_curPRGBank = (((addr>>1)&7)<<14)&p16c8_prgROMand;
-	p16c8_curCHRBank = (((addr>>1)&7)<<13)&p16c8_chrROMand;
 	p1632_p16 = ((addr&9) != 9);
+	p1632_curPRGBank = ((addr>>1)&7)<<14;
+	p1632c8SetPrgROMBank();
+	chr8setBank0(((addr>>1)&7)<<13);
 	if((addr&1) != 0)
 		ppuSetNameTblHorizontal();
 	else
 		ppuSetNameTblVertical();
 }
-
-void m203_set8(uint16_t addr, uint8_t val)
+void m202_initSet8(uint16_t addr)
 {
-	if(addr < 0x8000)
-		return;
-	//printf("p16c8set8 %04x %02x\n", addr, val);
-	p16c8_curPRGBank = ((val>>2)<<14)&p16c8_prgROMand;
-	p16c8_curCHRBank = ((val&3)<<13)&p16c8_chrROMand;
+	if(addr < 0x8000) return;
+	memInitMapperSetPointer(addr, m202_setParams);
 }
 
-void m212_set8(uint16_t addr, uint8_t val)
+static void m203_setParams(uint16_t addr, uint8_t val)
+{
+	(void)addr;
+	m200SetPrgROMBank((val>>2)<<14);
+	chr8setBank0((val&3)<<13);
+}
+void m203_initSet8(uint16_t addr)
+{
+	if(addr < 0x8000) return;
+	memInitMapperSetPointer(addr, m203_setParams);
+}
+
+static void m212_setParams(uint16_t addr, uint8_t val)
 {
 	(void)val;
-	if(addr < 0x8000)
-		return;
-	//printf("p16c8set8 %04x %02x\n", addr, val);
-	p16c8_curPRGBank = ((addr&7)<<14)&p16c8_prgROMand;
-	p16c8_curCHRBank = ((addr&7)<<13)&p16c8_chrROMand;
 	p1632_p16 = ((addr&0x4000) == 0);
+	p1632_curPRGBank = (addr&7)<<14;
+	p1632c8SetPrgROMBank();
+	chr8setBank0((addr&7)<<13);
 	if((addr&8) != 0)
 		ppuSetNameTblHorizontal();
 	else
 		ppuSetNameTblVertical();
 }
-
-void m226_set8(uint16_t addr, uint8_t val)
+void m212_initSet8(uint16_t addr)
 {
-	if(addr < 0x8000)
-		return;
-	//printf("p16c8set8 %04x %02x\n", addr, val);
-	if((addr&1)==0)
-	{
-		p16c8_curPRGBank &= ~0xFFFFF;
-		p16c8_curPRGBank |= (((val&0x1F)|((val&0x80)>>2))<<14)&p16c8_prgROMand;
-		p1632_p16 = ((val&0x20) != 0);
-		if((val&0x40) == 0)
-			ppuSetNameTblHorizontal();
-		else
-			ppuSetNameTblVertical();
-	}
-	else
-	{
-		p16c8_curPRGBank &= 0xFFFFF;
-		p16c8_curPRGBank |= ((val&1)<<20)&p16c8_prgROMand;
-	}
+	if(addr < 0x8000) return;
+	memInitMapperSetPointer(addr, m212_setParams);
 }
 
-void m231_set8(uint16_t addr, uint8_t val)
+static void m226_setParams8XX0(uint16_t addr, uint8_t val)
+{
+	(void)addr;
+	p1632_p16 = ((val&0x20) != 0);
+	p1632_curPRGBank &= ~0xFFFFF;
+	p1632_curPRGBank |= ((val&0x1F)|((val&0x80)>>2))<<14;
+	if((val&0x40) == 0)
+		ppuSetNameTblHorizontal();
+	else
+		ppuSetNameTblVertical();
+	p1632c8SetPrgROMBank();
+}
+static void m226_setParams8XX1(uint16_t addr, uint8_t val)
+{
+	(void)addr;
+	p1632_curPRGBank &= 0xFFFFF;
+	p1632_curPRGBank |= (val&1)<<20;
+	p1632c8SetPrgROMBank();
+}
+void m226_initSet8(uint16_t addr)
+{
+	if(addr < 0x8000) return;
+	if((addr&1) == 0) memInitMapperSetPointer(addr, m226_setParams8XX0);
+	else memInitMapperSetPointer(addr, m226_setParams8XX1);
+}
+
+static void m231_setParams(uint16_t addr, uint8_t val)
 {
 	(void)val;
-	if(addr < 0x8000)
-		return;
-	//printf("p16c8set8 %04x %02x\n", addr, val);
-	p16c8_curPRGBank = (((addr&0x1E)|((addr>>5)&1))<<14)&p16c8_prgROMand;
+	m231SetPrgROMBank(((addr&0x1E)|((addr>>5)&1))<<14);
 	if((addr&0x80) != 0)
 		ppuSetNameTblHorizontal();
 	else
 		ppuSetNameTblVertical();
 }
-
-void m232_set8(uint16_t addr, uint8_t val)
+void m231_initSet8(uint16_t addr)
 {
-	//printf("p16c8set8 %04x %02x\n", addr, val);
-	if(addr >= 0xC000)
-	{
-		p16c8_curPRGBank &= ~0xFFFF;
-		p16c8_curPRGBank |= ((val & 3)<<14)&p16c8_prgROMand;
-	}
-	else if(addr >= 0x8000)
-	{
-		p16c8_curPRGBank &= 0xFFFF;
-		p16c8_curPRGBank |= ((val & 0x18)<<13)&p16c8_prgROMand;
-	}
+	if(addr < 0x8000) return;
+	memInitMapperSetPointer(addr, m231_setParams);
 }
 
-uint8_t p16c8chrGet8(uint16_t addr)
-{
-	if(p16c8_chrROM == p16c8_chrRAM) //Writable
-		return p16c8_chrROM[addr&0x1FFF];
-	return p16c8_chrROM[((p16c8_curCHRBank&~0x1FFF)+(addr&0x1FFF))&p16c8_chrROMand];
-}
-
-void p16c8chrSet8(uint16_t addr, uint8_t val)
-{
-	if(p16c8_chrROM == p16c8_chrRAM) //Writable
-		p16c8_chrROM[addr&0x1FFF] = val;
-}
-
-uint8_t m60_chrGet8(uint16_t addr)
-{
-	return p16c8_chrROM[(addr&0x1FFF)+m60_chrROMadd];
-}
-
-void m60_chrSet8(uint16_t addr, uint8_t val)
+static void m232_setParams8XXX(uint16_t addr, uint8_t val)
 {
 	(void)addr;
-	(void)val;
+	m232_curPRGBank &= 0xFFFF;
+	m232_curPRGBank |= (val & 0x18)<<13;
+	m232SetPrgROMBank();
+}
+static void m232_setParamsCXXX(uint16_t addr, uint8_t val)
+{
+	(void)addr;
+	m232_curPRGBank &= ~0xFFFF;
+	m232_curPRGBank |= (val & 3)<<14;
+	m232SetPrgROMBank();
+}
+void m232_initSet8(uint16_t addr)
+{
+	if(addr < 0x8000) return;
+	if(addr < 0xC000) memInitMapperSetPointer(addr, m232_setParams8XXX);
+	else memInitMapperSetPointer(addr, m232_setParamsCXXX);
 }
 
+void m60_reset()
+{
+	switch(m60_state)
+	{
+		case 0:
+			m200SetPrgROMBank(0);
+			chr8setBank0(0);
+			break;
+		case 1:
+			m200SetPrgROMBank(0x4000);
+			chr8setBank0(0x2000);
+			break;
+		case 2:
+			m200SetPrgROMBank(0x8000);
+			chr8setBank0(0x4000);
+			break;
+		case 3:
+			m200SetPrgROMBank(0xC000);
+			chr8setBank0(0x6000);
+			break;
+		default:
+			break;
+	}
+	m60_state++;
+	m60_state&=3;
+}
+
+void m62_reset()
+{
+	p1632_p16 = false;
+	p1632_curPRGBank = 0;
+	p1632c8SetPrgROMBank();
+	chr8setBank0(0);
+}

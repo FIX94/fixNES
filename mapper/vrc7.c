@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 FIX94
+ * Copyright (C) 2017 - 2018 FIX94
  *
  * This software may be modified and distributed under the terms
  * of the MIT license.  See the LICENSE file for details.
@@ -11,181 +11,104 @@
 #include <string.h>
 #include "../ppu.h"
 #include "../mapper.h"
+#include "../mem.h"
 #include "../audio_vrc7.h"
 #include "../vrc_irq.h"
+#include "../mapper_h/common.h"
 
-static uint8_t *vrc7_prgROM;
-static uint8_t *vrc7_prgRAM;
-static uint8_t *vrc7_chrROM;
-static uint8_t vrc7_chrRAM[0x2000];
-static uint32_t vrc7_prgROMsize;
-static uint32_t vrc7_prgRAMsize;
-static uint32_t vrc7_chrROMsize;
-static uint32_t vrc7_curPRGBank0;
-static uint32_t vrc7_curPRGBank1;
-static uint32_t vrc7_curPRGBank2;
-static uint32_t vrc7_lastPRGBank;
-static uint32_t vrc7_CHRBank[8];
-static uint32_t vrc7_prgROMand;
-static uint32_t vrc7_chrROMand;
-static uint8_t vrc7_audioReg;
-
+static bool vrc7_usesPrgRAM;
 void vrc7init(uint8_t *prgROMin, uint32_t prgROMsizeIn, 
 			uint8_t *prgRAMin, uint32_t prgRAMsizeIn,
 			uint8_t *chrROMin, uint32_t chrROMsizeIn)
 {
-	vrc7_prgROM = prgROMin;
-	vrc7_prgROMsize = prgROMsizeIn;
-	vrc7_prgRAM = prgRAMin;
-	vrc7_prgRAMsize = prgRAMsizeIn;
-	vrc7_curPRGBank0 = 0;
-	vrc7_curPRGBank1 = 0x2000;
-	vrc7_curPRGBank2 = 0x4000;
-	vrc7_lastPRGBank = (prgROMsizeIn - 0x2000);
-	vrc7_prgROMand = mapperGetAndValue(prgROMsizeIn);
-	if(chrROMin && chrROMsizeIn)
+	prg8init(prgROMin,prgROMsizeIn);
+	prg8setBank3(prgROMsizeIn - 0x2000);
+	if(prgRAMin && prgRAMsizeIn)
 	{
-		vrc7_chrROM = chrROMin;
-		vrc7_chrROMsize = chrROMsizeIn;
-		vrc7_chrROMand = mapperGetAndValue(chrROMsizeIn);
+		prgRAM8init(prgRAMin);
+		vrc7_usesPrgRAM = true;
 	}
 	else
-	{
-		vrc7_chrROM = vrc7_chrRAM;
-		vrc7_chrROMsize = 0x2000;
-		vrc7_chrROMand = 0x1FFF;
-	}
-	memset(vrc7_CHRBank, 0, 8*sizeof(uint32_t));
+		vrc7_usesPrgRAM = false;
+	chr1init(chrROMin,chrROMsizeIn);
 	vrc7AudioInit();
-	vrc7_audioReg = 0;
 	vrc_irq_init();
-	printf("vrc7 Mapper inited\n");
+	printf("VRC7 inited\n");
 }
 
-uint8_t vrc7get8(uint16_t addr, uint8_t val)
+void vrc7initGet8(uint16_t addr)
 {
-	if(addr >= 0x6000 && addr < 0x8000)
-		return vrc7_prgRAM[addr&0x1FFF];
-	else if(addr >= 0x8000)
-	{
-		if(addr < 0xA000)
-			return vrc7_prgROM[(((vrc7_curPRGBank0<<13)+(addr&0x1FFF))&vrc7_prgROMand)];
-		if(addr < 0xC000)
-			return vrc7_prgROM[(((vrc7_curPRGBank1<<13)+(addr&0x1FFF))&vrc7_prgROMand)];
-		else if(addr < 0xE000)
-			return vrc7_prgROM[(((vrc7_curPRGBank2<<13)+(addr&0x1FFF))&vrc7_prgROMand)];
-		return vrc7_prgROM[((vrc7_lastPRGBank+(addr&0x1FFF))&vrc7_prgROMand)];
-	}
-	return val;
+	if(vrc7_usesPrgRAM)
+		prgRAM8initGet8(addr);
+	prg8initGet8(addr);
 }
 
-void vrc7set8(uint16_t addr, uint8_t val)
+static void vrc7setParams8000(uint16_t addr, uint8_t val) { (void)addr; prg8setBank0((val&0x3F)<<13); }
+static void vrc7setParams8010(uint16_t addr, uint8_t val) { (void)addr; prg8setBank1((val&0x3F)<<13); }
+static void vrc7setParams9000(uint16_t addr, uint8_t val) { (void)addr; prg8setBank2((val&0x3F)<<13); }
+
+static void vrc7setParamsA000(uint16_t addr, uint8_t val) { (void)addr; chr1setBank0(val<<10); }
+static void vrc7setParamsA010(uint16_t addr, uint8_t val) { (void)addr; chr1setBank1(val<<10); }
+static void vrc7setParamsB000(uint16_t addr, uint8_t val) { (void)addr; chr1setBank2(val<<10); }
+static void vrc7setParamsB010(uint16_t addr, uint8_t val) { (void)addr; chr1setBank3(val<<10); }
+static void vrc7setParamsC000(uint16_t addr, uint8_t val) { (void)addr; chr1setBank4(val<<10); }
+static void vrc7setParamsC010(uint16_t addr, uint8_t val) { (void)addr; chr1setBank5(val<<10); }
+static void vrc7setParamsD000(uint16_t addr, uint8_t val) { (void)addr; chr1setBank6(val<<10); }
+static void vrc7setParamsD010(uint16_t addr, uint8_t val) { (void)addr; chr1setBank7(val<<10); }
+
+static void vrc7setParamsE000(uint16_t addr, uint8_t val)
 {
-	if(addr < 0x6000)
-		return;
-	if(addr < 0x8000)
+	(void)addr;
+	if(!ppu4Screen)
 	{
-		vrc7_prgRAM[addr&0x1FFF] = val;
-		return;
-	}
-	uint16_t addrHigh = (addr & 0xF000);
-	uint8_t addrLow = (addr & 0x18);
-	switch(addrHigh)
-	{
-		case 0x8000:
-			if(addrLow == 0)
-				vrc7_curPRGBank0 = (val&0x3F);
-			else //0x8 or 0x10
-				vrc7_curPRGBank1 = (val&0x3F);
-			break;
-		case 0x9000:
-			if(addrLow == 0)
-				vrc7_curPRGBank2 = (val&0x3F);
-			else if(addr == 0x9010)
-				vrc7_audioReg = (val&0x3F);
-			else if(addr == 0x9030)
-				vrc7AudioSet8(vrc7_audioReg, val);
-			break;
-		case 0xA000:
-			if(addrLow == 0)
-				vrc7_CHRBank[0] = val;
-			else //0x8 or 0x10
-				vrc7_CHRBank[1] = val;
-			break;
-		case 0xB000:
-			if(addrLow == 0)
-				vrc7_CHRBank[2] = val;
-			else //0x8 or 0x10
-				vrc7_CHRBank[3] = val;
-			break;
-		case 0xC000:
-			if(addrLow == 0)
-				vrc7_CHRBank[4] = val;
-			else //0x8 or 0x10
-				vrc7_CHRBank[5] = val;
-			break;
-		case 0xD000:
-			if(addrLow == 0)
-				vrc7_CHRBank[6] = val;
-			else //0x8 or 0x10
-				vrc7_CHRBank[7] = val;
-			break;
-		case 0xE000:
-			if(addrLow == 0)
-			{
-				if(!ppu4Screen)
-				{
-					if((val & 0x3) == 0)
-						ppuSetNameTblVertical();
-					else if((val & 0x3) == 1)
-						ppuSetNameTblHorizontal();
-					else if((val & 0x3) == 2)
-						ppuSetNameTblSingleLower();
-					else //if((val & 0x3) == 3)
-						ppuSetNameTblSingleUpper();
-				}
-			}
-			else //0x8 or 0x10
-				vrc_irq_setlatch(val);
-			break;
-		case 0xF000:
-			if(addrLow == 0)
-				vrc_irq_control(val);
-			else //0x8 or 0x10
-				vrc_irq_ack();
-			break;
-		default: //should never happen
-			break;
+		if((val & 0x3) == 0)
+			ppuSetNameTblVertical();
+		else if((val & 0x3) == 1)
+			ppuSetNameTblHorizontal();
+		else if((val & 0x3) == 2)
+			ppuSetNameTblSingleLower();
+		else //if((val & 0x3) == 3)
+			ppuSetNameTblSingleUpper();
 	}
 }
 
-uint8_t vrc7chrGet8(uint16_t addr)
+void vrc7initSet8(uint16_t ori_addr)
 {
-	if(addr < 0x400)
-		return vrc7_chrROM[(((vrc7_CHRBank[0]<<10)+(addr&0x3FF))&vrc7_chrROMand)];
-	else if(addr < 0x800)
-		return vrc7_chrROM[(((vrc7_CHRBank[1]<<10)+(addr&0x3FF))&vrc7_chrROMand)];
-	else if(addr < 0xC00)
-		return vrc7_chrROM[(((vrc7_CHRBank[2]<<10)+(addr&0x3FF))&vrc7_chrROMand)];
-	else if(addr < 0x1000)
-		return vrc7_chrROM[(((vrc7_CHRBank[3]<<10)+(addr&0x3FF))&vrc7_chrROMand)];
-	else if(addr < 0x1400)
-		return vrc7_chrROM[(((vrc7_CHRBank[4]<<10)+(addr&0x3FF))&vrc7_chrROMand)];
-	else if(addr < 0x1800)
-		return vrc7_chrROM[(((vrc7_CHRBank[5]<<10)+(addr&0x3FF))&vrc7_chrROMand)];
-	else if(addr < 0x1C00)
-		return vrc7_chrROM[(((vrc7_CHRBank[6]<<10)+(addr&0x3FF))&vrc7_chrROMand)];
-	else // < 0x2000
-		return vrc7_chrROM[(((vrc7_CHRBank[7]<<10)+(addr&0x3FF))&vrc7_chrROMand)];
-}
-
-void vrc7chrSet8(uint16_t addr, uint8_t val)
-{
-	if(vrc7_chrROM == vrc7_chrRAM)
-		vrc7_chrRAM[addr&0x1FFF] = val;
-}
-
-void vrc7cycle()
-{
-	vrc_irq_cycle();
+	if(vrc7_usesPrgRAM)
+		prgRAM8initSet8(ori_addr);
+	uint16_t proc_addr = ori_addr&0xF038;
+	if(proc_addr == 0x8000)
+		memInitMapperSetPointer(ori_addr, vrc7setParams8000);
+	else if(proc_addr == 0x8010 || proc_addr == 0x8008)
+		memInitMapperSetPointer(ori_addr, vrc7setParams8010);
+	else if(proc_addr == 0x9000)
+		memInitMapperSetPointer(ori_addr, vrc7setParams9000);
+	else if(proc_addr == 0x9010 || proc_addr == 0x9008)
+		memInitMapperSetPointer(ori_addr, vrc7AudioSet9010);
+	else if(proc_addr == 0x9030 || proc_addr == 0x9028)
+		memInitMapperSetPointer(ori_addr, vrc7AudioSet9030);
+	else if(proc_addr == 0xA000)
+		memInitMapperSetPointer(ori_addr, vrc7setParamsA000);
+	else if(proc_addr == 0xA010 || proc_addr == 0xA008)
+		memInitMapperSetPointer(ori_addr, vrc7setParamsA010);
+	else if(proc_addr == 0xB000)
+		memInitMapperSetPointer(ori_addr, vrc7setParamsB000);
+	else if(proc_addr == 0xB010 || proc_addr == 0xB008)
+		memInitMapperSetPointer(ori_addr, vrc7setParamsB010);
+	else if(proc_addr == 0xC000)
+		memInitMapperSetPointer(ori_addr, vrc7setParamsC000);
+	else if(proc_addr == 0xC010 || proc_addr == 0xC008)
+		memInitMapperSetPointer(ori_addr, vrc7setParamsC010);
+	else if(proc_addr == 0xD000)
+		memInitMapperSetPointer(ori_addr, vrc7setParamsD000);
+	else if(proc_addr == 0xD010 || proc_addr == 0xD008)
+		memInitMapperSetPointer(ori_addr, vrc7setParamsD010);
+	else if(proc_addr == 0xE000)
+		memInitMapperSetPointer(ori_addr, vrc7setParamsE000);
+	else if(proc_addr == 0xE010 || proc_addr == 0xE008)
+		memInitMapperSetPointer(ori_addr, vrc_irq_setlatch);
+	else if(proc_addr == 0xF000)
+		memInitMapperSetPointer(ori_addr, vrc_irq_control);
+	else if(proc_addr == 0xF010 || proc_addr == 0xF008)
+		memInitMapperSetPointer(ori_addr, vrc_irq_ack);
 }

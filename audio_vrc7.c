@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 FIX94
+ * Copyright (C) 2017 - 2018 FIX94
  *
  * This software may be modified and distributed under the terms
  * of the MIT license.  See the LICENSE file for details.
@@ -13,6 +13,7 @@
 #include <math.h>
 #include "audio_vrc7.h"
 #include "audio.h"
+#include "mapper.h"
 #include "mem.h"
 #include "cpu.h"
 #include "apu.h"
@@ -118,6 +119,7 @@ static struct {
 	uint32_t amOut;
 	uint32_t fmPhase;
 	double fmOut;
+	uint8_t reg;
 } vrc7_apu;
 
 #define M_PI 3.14159265358979323846
@@ -125,7 +127,7 @@ static struct {
 
 void vrc7AudioInit()
 {
-	vrc7_apu.amPhase = 0; vrc7_apu.amOut = 0; vrc7_apu.fmPhase = 0; vrc7_apu.fmOut = 0;
+	vrc7_apu.amPhase = 0; vrc7_apu.amOut = 0; vrc7_apu.fmPhase = 0; vrc7_apu.fmOut = 0; vrc7_apu.reg = 0;
 	audioExpansion |= EXP_VRC7;
 	vrc7Out = 0;
 	memset(vrc7_apu.channel, 0, sizeof(vrc7chan_t)*6);
@@ -381,21 +383,28 @@ FIXNES_NOINLINE void vrc7AudioCycle()
 	}
 }
 
-void vrc7AudioSet8(uint8_t addr, uint8_t val)
+void vrc7AudioSet9010(uint16_t addr, uint8_t val)
 {
-	if(addr < 8)
-		vrc7_apu.instrument[0][addr] = val;
-	else if(addr >= 0x10 && addr <= 0x15)
+	(void)addr;
+	vrc7_apu.reg = (val&0x3F);
+}
+
+void vrc7AudioSet9030(uint16_t addr, uint8_t val)
+{
+	(void)addr;
+	if(vrc7_apu.reg < 8)
+		vrc7_apu.instrument[0][vrc7_apu.reg] = val;
+	else if(vrc7_apu.reg >= 0x10 && vrc7_apu.reg <= 0x15)
 	{
-		vrc7chan_t *c = &vrc7_apu.channel[addr&0xF];
+		vrc7chan_t *c = &vrc7_apu.channel[vrc7_apu.reg&0xF];
 		c->freq &= ~0xFF;
 		c->freq |= val;
 		vrc7CalcSlotVals(c, &c->mod, 0);
 		vrc7CalcSlotVals(c, &c->carry, 1);
 	}
-	else if(addr >= 0x20 && addr <= 0x25)
+	else if(vrc7_apu.reg >= 0x20 && vrc7_apu.reg <= 0x25)
 	{
-		vrc7chan_t *c = &vrc7_apu.channel[addr&0xF];
+		vrc7chan_t *c = &vrc7_apu.channel[vrc7_apu.reg&0xF];
 		c->freq &= 0xFF;
 		c->freq |= (val&1)<<8;
 		c->block = (val>>1)&7;
@@ -406,9 +415,9 @@ void vrc7AudioSet8(uint8_t addr, uint8_t val)
 		vrc7CalcSlotVals(c, &c->mod, 0);
 		vrc7CalcSlotVals(c, &c->carry, 1);
 	}
-	else if(addr >= 0x30 && addr <= 0x35)
+	else if(vrc7_apu.reg >= 0x30 && vrc7_apu.reg <= 0x35)
 	{
-		vrc7chan_t *c = &vrc7_apu.channel[addr&0xF];
+		vrc7chan_t *c = &vrc7_apu.channel[vrc7_apu.reg&0xF];
 		c->v = (val&0xF);
 		c->instrument = (val>>4)&0xF;
 		vrc7CalcSlotVals(c, &c->mod, 0);

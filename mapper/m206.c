@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 FIX94
+ * Copyright (C) 2017 - 2018 FIX94
  *
  * This software may be modified and distributed under the terms
  * of the MIT license.  See the LICENSE file for details.
@@ -11,232 +11,314 @@
 #include <string.h>
 #include "../ppu.h"
 #include "../mapper.h"
+#include "../mem.h"
+#include "../mapper_h/common.h"
 
-static uint8_t *m206prgROM;
-static uint8_t *m206prgRAM;
 static uint8_t *m206chrROM;
-static uint32_t m206prgROMsize;
-static uint32_t m206prgRAMsize;
-static uint32_t m206chrROMsize;
-static uint32_t m206curPRGBank0;
-static uint32_t m206curPRGBank1;
-static uint32_t m206lastPRGBank;
-static uint32_t m206lastM1PRGBank;
-static uint8_t m206BankSelect;
-static uint32_t m206CHRBank[6];
-static uint32_t m206prgROMand;
-static uint32_t m206prgRAMand;
 static uint32_t m206chrROMand;
-static uint16_t m95nt0;
-static uint16_t m95nt1;
+static uint8_t m206Register;
+static uint8_t *m206CHRBank0Ptr, *m206CHRBank1Ptr,
+				*m206CHRBank2Ptr, *m206CHRBank3Ptr,
+				*m206CHRBank4Ptr, *m206CHRBank5Ptr;
 
 void m206init(uint8_t *prgROMin, uint32_t prgROMsizeIn, 
 			uint8_t *prgRAMin, uint32_t prgRAMsizeIn,
 			uint8_t *chrROMin, uint32_t chrROMsizeIn)
 {
-	m206prgROM = prgROMin;
-	m206prgROMsize = prgROMsizeIn;
-	m206prgROMand = mapperGetAndValue(prgROMsizeIn);
-	m206curPRGBank0 = 0;
-	m206curPRGBank1 = 0x2000;
-	m206lastPRGBank = (prgROMsizeIn - 0x2000);
-	m206lastM1PRGBank = m206lastPRGBank - 0x2000;
-	m206prgRAM = prgRAMin;
-	m206prgRAMsize = prgRAMsizeIn;
-	m206prgRAMand = mapperGetAndValue(prgRAMsizeIn);
-	memset(m206prgRAM,0,m206prgRAMsize);
-	m206chrROM = chrROMin;
-	m206chrROMsize = chrROMsizeIn;
-	m206chrROMand = mapperGetAndValue(chrROMsizeIn);
-	memset(m206CHRBank,0,6*sizeof(uint32_t));
-	m206BankSelect = 0;
-	m95nt0 = 0;
-	m95nt1 = 0;
+	prg8init(prgROMin,prgROMsizeIn);
+	prg8setBank2(prgROMsizeIn - 0x4000);
+	prg8setBank3(prgROMsizeIn - 0x2000);
+	(void)prgRAMin; (void)prgRAMsizeIn;
+	if(chrROMin && chrROMsizeIn)
+	{
+		m206chrROM = chrROMin;
+		m206chrROMand = mapperGetAndValue(chrROMsizeIn);
+	}
+	else
+		printf("s206 missing chr rom??? this will crash\n");
+	m206CHRBank0Ptr = m206CHRBank1Ptr = m206CHRBank2Ptr =
+		m206CHRBank3Ptr = m206CHRBank4Ptr = m206CHRBank5Ptr = chrROMin;
+	m206Register = 0;
 	printf("Mapper 206 (and Variants) inited\n");
 }
 
-uint8_t m206get8(uint16_t addr, uint8_t val)
+static uint16_t m95nt0, m95nt1;
+void m95init(uint8_t *prgROMin, uint32_t prgROMsizeIn, 
+			uint8_t *prgRAMin, uint32_t prgRAMsizeIn,
+			uint8_t *chrROMin, uint32_t chrROMsizeIn)
 {
-	if(addr >= 0x8000)
-	{
-		if(addr < 0xA000)
-			return m206prgROM[((m206curPRGBank0<<13)|(addr&0x1FFF))&m206prgROMand];
-		else if(addr < 0xC000)
-			return m206prgROM[((m206curPRGBank1<<13)|(addr&0x1FFF))&m206prgROMand];
-		else if(addr < 0xE000)
-			return m206prgROM[(m206lastM1PRGBank+(addr&0x1FFF))&m206prgROMand];
-		return m206prgROM[(m206lastPRGBank+(addr&0x1FFF))&m206prgROMand];
-	}
-	return val;
+	m206init(prgROMin,prgROMsizeIn,prgRAMin,prgRAMsizeIn,chrROMin,chrROMsizeIn);
+	//some extra regs
+	m95nt0 = 0, m95nt1 = 0;
+	ppuSetNameTblCustom(m95nt0,m95nt0,m95nt1,m95nt1);
 }
 
-uint8_t m112get8(uint16_t addr, uint8_t val)
+//"Huang Di" appears to require PRG RAM, see when booting up the game in the
+//top right it will have an X without PRG RAM and the game will not function
+//correctly, with PRG RAM however it will display "OK" and actually work
+static bool m112_usesPrgRAM;
+void m112init(uint8_t *prgROMin, uint32_t prgROMsizeIn, 
+			uint8_t *prgRAMin, uint32_t prgRAMsizeIn,
+			uint8_t *chrROMin, uint32_t chrROMsizeIn)
 {
-	if(addr >= 0x6000 && addr < 0x8000)
-		return m206prgRAM[addr&0x1FFF];
-	return m206get8(addr, val);
-}
-
-void m206set8(uint16_t addr, uint8_t val)
-{
-	//printf("m206set8 %04x %02x\n", addr, val);
-	if(addr >= 0x8000 && addr < 0xA000)
+	m206init(prgROMin,prgROMsizeIn,prgRAMin,prgRAMsizeIn,chrROMin,chrROMsizeIn);
+	if(prgRAMin && prgRAMsizeIn)
 	{
-		if((addr&1) == 0)
-			m206BankSelect = val&7;
-		else
-		{
-			switch(m206BankSelect)
-			{
-				case 0:
-					m206CHRBank[0] = val;
-					break;
-				case 1:
-					m206CHRBank[1] = val;
-					break;
-				case 2:
-					m206CHRBank[2] = val;
-					break;
-				case 3:
-					m206CHRBank[3] = val;
-					break;
-				case 4:
-					m206CHRBank[4] = val;
-					break;
-				case 5:
-					m206CHRBank[5] = val;
-					break;
-				case 6:
-					m206curPRGBank0 = val;
-					break;
-				case 7:
-					m206curPRGBank1 = val;
-					break;
-			}
-		}
+		prgRAM8init(prgRAMin);
+		m112_usesPrgRAM = true;
 	}
 }
 
-void m154set8(uint16_t addr, uint8_t val)
+void m112initGet8(uint16_t addr)
 {
-	m206set8(addr,val);
-	if(addr >= 0x8000)
+	if(m112_usesPrgRAM)
+		prgRAM8initGet8(addr);
+	prg8initGet8(addr);
+}
+
+static void m206setParams8000(uint16_t addr, uint8_t val)
+{
+	(void)addr;
+	m206Register = val&7;
+}
+
+static void m76setParams8001(uint16_t addr, uint8_t val)
+{
+	(void)addr;
+	switch(m206Register)
 	{
-		if((val&0x40)==0)
-			ppuSetNameTblSingleLower();
-		else
-			ppuSetNameTblSingleUpper();
+		case 2:
+			m206CHRBank2Ptr = m206chrROM+((val<<11)&m206chrROMand);
+			break;
+		case 3:
+			m206CHRBank3Ptr = m206chrROM+((val<<11)&m206chrROMand);
+			break;
+		case 4:
+			m206CHRBank4Ptr = m206chrROM+((val<<11)&m206chrROMand);
+			break;
+		case 5:
+			m206CHRBank5Ptr = m206chrROM+((val<<11)&m206chrROMand);
+			break;
+		case 6:
+			prg8setBank0(val<<13);
+			break;
+		case 7:
+			prg8setBank1(val<<13);
+			break;
+		default:
+			break;
+	}
+}
+static void m88setParams8001(uint16_t addr, uint8_t val)
+{
+	(void)addr;
+	switch(m206Register)
+	{
+		case 0:
+			m206CHRBank0Ptr = m206chrROM+(((val&0x3E)<<10)&m206chrROMand);
+			break;
+		case 1:
+			m206CHRBank1Ptr = m206chrROM+(((val&0x3E)<<10)&m206chrROMand);
+			break;
+		case 2:
+			m206CHRBank2Ptr = m206chrROM+(((val|0x40)<<10)&m206chrROMand);
+			break;
+		case 3:
+			m206CHRBank3Ptr = m206chrROM+(((val|0x40)<<10)&m206chrROMand);
+			break;
+		case 4:
+			m206CHRBank4Ptr = m206chrROM+(((val|0x40)<<10)&m206chrROMand);
+			break;
+		case 5:
+			m206CHRBank5Ptr = m206chrROM+(((val|0x40)<<10)&m206chrROMand);
+			break;
+		case 6:
+			prg8setBank0(val<<13);
+			break;
+		case 7:
+			prg8setBank1(val<<13);
+			break;
+	}
+}
+static void m112setParamsA000(uint16_t addr, uint8_t val)
+{
+	(void)addr;
+	switch(m206Register)
+	{
+		case 0:
+			prg8setBank0(val<<13);
+			break;
+		case 1:
+			prg8setBank1(val<<13);
+			break;
+		case 2:
+			m206CHRBank0Ptr = m206chrROM+(((val&~1)<<10)&m206chrROMand);
+			break;
+		case 3:
+			m206CHRBank1Ptr = m206chrROM+(((val&~1)<<10)&m206chrROMand);
+			break;
+		case 4:
+			m206CHRBank2Ptr = m206chrROM+((val<<10)&m206chrROMand);
+			break;
+		case 5:
+			m206CHRBank3Ptr = m206chrROM+((val<<10)&m206chrROMand);
+			break;
+		case 6:
+			m206CHRBank4Ptr = m206chrROM+((val<<10)&m206chrROMand);
+			break;
+		case 7:
+			m206CHRBank5Ptr = m206chrROM+((val<<10)&m206chrROMand);
+			break;
+	}
+}
+static void m206setParams8001(uint16_t addr, uint8_t val)
+{
+	(void)addr;
+	switch(m206Register)
+	{
+		case 0:
+			m206CHRBank0Ptr = m206chrROM+(((val&~1)<<10)&m206chrROMand);
+			break;
+		case 1:
+			m206CHRBank1Ptr = m206chrROM+(((val&~1)<<10)&m206chrROMand);
+			break;
+		case 2:
+			m206CHRBank2Ptr = m206chrROM+((val<<10)&m206chrROMand);
+			break;
+		case 3:
+			m206CHRBank3Ptr = m206chrROM+((val<<10)&m206chrROMand);
+			break;
+		case 4:
+			m206CHRBank4Ptr = m206chrROM+((val<<10)&m206chrROMand);
+			break;
+		case 5:
+			m206CHRBank5Ptr = m206chrROM+((val<<10)&m206chrROMand);
+			break;
+		case 6:
+			prg8setBank0(val<<13);
+			break;
+		case 7:
+			prg8setBank1(val<<13);
+			break;
 	}
 }
 
-void m95set8(uint16_t addr, uint8_t val)
+static void m95setParams8001(uint16_t addr, uint8_t val)
 {
-	m206set8(addr,val);
-	if(addr >= 0x8000 && addr < 0xA000 && (addr&1))
+	m206setParams8001(addr,val);
+	//some extra regs
+	if(m206Register == 0)
 	{
-		m95nt0 = (m206CHRBank[0]&0x20) ? 0x400 : 0;
-		m95nt1 = (m206CHRBank[1]&0x20) ? 0x400 : 0;
+		m95nt0 = (val&0x20) ? 0x400 : 0;
+		ppuSetNameTblCustom(m95nt0,m95nt0,m95nt1,m95nt1);
+	}
+	else if(m206Register == 1)
+	{
+		m95nt1 = (val&0x20) ? 0x400 : 0;
 		ppuSetNameTblCustom(m95nt0,m95nt0,m95nt1,m95nt1);
 	}
 }
 
-void m112set8(uint16_t addr, uint8_t val)
+static void m112setParamsE000(uint16_t addr, uint8_t val)
 {
-	if(addr >= 0x6000 && addr < 0x8000)
-	{
-		m206prgRAM[addr&0x1FFF] = val;
-		return;
-	}
-	//printf("m112set8 %04x %02x\n", addr, val);
-	addr &= 0xE001;
-	if(addr == 0x8000)
-		m206BankSelect = val&7;
-	else if(addr == 0xA000)
-	{
-		switch(m206BankSelect)
-		{
-			case 0:
-				m206curPRGBank0 = val;
-				break;
-			case 1:
-				m206curPRGBank1 = val;
-				break;
-			case 2:
-				m206CHRBank[0] = val;
-				break;
-			case 3:
-				m206CHRBank[1] = val;
-				break;
-			case 4:
-				m206CHRBank[2] = val;
-				break;
-			case 5:
-				m206CHRBank[3] = val;
-				break;
-			case 6:
-				m206CHRBank[4] = val;
-				break;
-			case 7:
-				m206CHRBank[5] = val;
-				break;
-		}
-	}
-	else if(addr == 0xE000)
-	{
-		if((val&1)==0)
-			ppuSetNameTblVertical();
-		else
-			ppuSetNameTblHorizontal();
-	}
-}
-
-uint8_t m76chrGet8(uint16_t addr)
-{
-	//printf("%04x\n",addr);
-	if(addr < 0x800)
-		return m206chrROM[((m206CHRBank[2]<<11)|(addr&0x7FF))&m206chrROMand];
-	else if(addr < 0x1000)
-		return m206chrROM[((m206CHRBank[3]<<11)|(addr&0x7FF))&m206chrROMand];
-	else if(addr < 0x1800)
-		return m206chrROM[((m206CHRBank[4]<<11)|(addr&0x7FF))&m206chrROMand];
-	return m206chrROM[((m206CHRBank[5]<<11)|(addr&0x7FF))&m206chrROMand];
-}
-
-uint8_t m88chrGet8(uint16_t addr)
-{
-	//printf("%04x\n",addr);
-	if(addr < 0x800)
-		return m206chrROM[((((m206CHRBank[0]&~1)<<10)|(addr&0x7FF))&0xFFFF)&m206chrROMand];
-	else if(addr < 0x1000)
-		return m206chrROM[((((m206CHRBank[1]&~1)<<10)|(addr&0x7FF))&0xFFFF)&m206chrROMand];
-	else if(addr < 0x1400)
-		return m206chrROM[(((m206CHRBank[2]<<10)|(addr&0x3FF))|0x10000)&m206chrROMand];
-	else if(addr < 0x1800)
-		return m206chrROM[(((m206CHRBank[3]<<10)|(addr&0x3FF))|0x10000)&m206chrROMand];
-	else if(addr < 0x1C00)
-		return m206chrROM[(((m206CHRBank[4]<<10)|(addr&0x3FF))|0x10000)&m206chrROMand];
-	return m206chrROM[(((m206CHRBank[5]<<10)|(addr&0x3FF))|0x10000)&m206chrROMand];
-}
-
-uint8_t m206chrGet8(uint16_t addr)
-{
-	//printf("%04x\n",addr);
-	if(addr < 0x800)
-		return m206chrROM[(((m206CHRBank[0]&~1)<<10)|(addr&0x7FF))&m206chrROMand];
-	else if(addr < 0x1000)
-		return m206chrROM[(((m206CHRBank[1]&~1)<<10)|(addr&0x7FF))&m206chrROMand];
-	else if(addr < 0x1400)
-		return m206chrROM[((m206CHRBank[2]<<10)|(addr&0x3FF))&m206chrROMand];
-	else if(addr < 0x1800)
-		return m206chrROM[((m206CHRBank[3]<<10)|(addr&0x3FF))&m206chrROMand];
-	else if(addr < 0x1C00)
-		return m206chrROM[((m206CHRBank[4]<<10)|(addr&0x3FF))&m206chrROMand];
-	return m206chrROM[((m206CHRBank[5]<<10)|(addr&0x3FF))&m206chrROMand];
-}
-
-void m206chrSet8(uint16_t addr, uint8_t val)
-{
-	//printf("m206chrSet8 %04x %02x\n", addr, val);
 	(void)addr;
-	(void)val;
+	if((val&1)==0)
+		ppuSetNameTblVertical();
+	else
+		ppuSetNameTblHorizontal();
+}
+
+static void m154setParamsMirror(uint16_t addr, uint8_t val)
+{
+	(void)addr;
+	if((val&0x40)==0)
+		ppuSetNameTblSingleLower();
+	else
+		ppuSetNameTblSingleUpper();
+}
+static void m154setParams8000(uint16_t addr, uint8_t val)
+{
+	m206setParams8000(addr,val);
+	m154setParamsMirror(addr,val);
+}
+static void m154setParams8001(uint16_t addr, uint8_t val)
+{
+	m88setParams8001(addr,val);
+	m154setParamsMirror(addr,val);
+}
+
+void m76initSet8(uint16_t ori_addr)
+{
+	uint16_t proc_addr = ori_addr&0xE001;
+	if(proc_addr == 0x8000) memInitMapperSetPointer(ori_addr, m206setParams8000);
+	else if(proc_addr == 0x8001) memInitMapperSetPointer(ori_addr, m76setParams8001);
+}
+void m88initSet8(uint16_t ori_addr)
+{
+	uint16_t proc_addr = ori_addr&0xE001;
+	if(proc_addr == 0x8000) memInitMapperSetPointer(ori_addr, m206setParams8000);
+	else if(proc_addr == 0x8001) memInitMapperSetPointer(ori_addr, m88setParams8001);
+}
+void m95initSet8(uint16_t ori_addr)
+{
+	uint16_t proc_addr = ori_addr&0xE001;
+	if(proc_addr == 0x8000) memInitMapperSetPointer(ori_addr, m206setParams8000);
+	else if(proc_addr == 0x8001) memInitMapperSetPointer(ori_addr, m95setParams8001);
+}
+void m112initSet8(uint16_t ori_addr)
+{
+	if(m112_usesPrgRAM)
+		prgRAM8initSet8(ori_addr);
+	uint16_t proc_addr = ori_addr&0xE001;
+	if(proc_addr == 0x8000) memInitMapperSetPointer(ori_addr, m206setParams8000);
+	else if(proc_addr == 0xA000) memInitMapperSetPointer(ori_addr, m112setParamsA000);
+	else if(proc_addr == 0xE000) memInitMapperSetPointer(ori_addr, m112setParamsE000);
+}
+void m154initSet8(uint16_t ori_addr)
+{
+	uint16_t proc_addr = ori_addr&0xE001;
+	if(proc_addr == 0x8000) memInitMapperSetPointer(ori_addr, m154setParams8000);
+	else if(proc_addr == 0x8001) memInitMapperSetPointer(ori_addr, m154setParams8001);
+	else if(ori_addr >= 0x8000) memInitMapperSetPointer(ori_addr, m154setParamsMirror);
+}
+void m206initSet8(uint16_t ori_addr)
+{
+	uint16_t proc_addr = ori_addr&0xE001;
+	if(proc_addr == 0x8000) memInitMapperSetPointer(ori_addr, m206setParams8000);
+	else if(proc_addr == 0x8001) memInitMapperSetPointer(ori_addr, m206setParams8001);
+}
+
+static uint8_t m76getCHRBank2(uint16_t addr) { return m206CHRBank2Ptr[addr&0x7FF]; }
+static uint8_t m76getCHRBank3(uint16_t addr) { return m206CHRBank3Ptr[addr&0x7FF]; }
+static uint8_t m76getCHRBank4(uint16_t addr) { return m206CHRBank4Ptr[addr&0x7FF]; }
+static uint8_t m76getCHRBank5(uint16_t addr) { return m206CHRBank5Ptr[addr&0x7FF]; }
+
+void m76initChrGet8(uint16_t addr)
+{
+	if(addr < 0x800) memInitMapperPPUGetPointer(addr, m76getCHRBank2);
+	else if(addr < 0x1000) memInitMapperPPUGetPointer(addr, m76getCHRBank3);
+	else if(addr < 0x1800) memInitMapperPPUGetPointer(addr, m76getCHRBank4);
+	else if(addr < 0x2000) memInitMapperPPUGetPointer(addr, m76getCHRBank5);
+}
+
+static uint8_t m206getCHRBank0(uint16_t addr) { return m206CHRBank0Ptr[addr&0x7FF]; }
+static uint8_t m206getCHRBank1(uint16_t addr) { return m206CHRBank1Ptr[addr&0x7FF]; }
+static uint8_t m206getCHRBank2(uint16_t addr) { return m206CHRBank2Ptr[addr&0x3FF]; }
+static uint8_t m206getCHRBank3(uint16_t addr) { return m206CHRBank3Ptr[addr&0x3FF]; }
+static uint8_t m206getCHRBank4(uint16_t addr) { return m206CHRBank4Ptr[addr&0x3FF]; }
+static uint8_t m206getCHRBank5(uint16_t addr) { return m206CHRBank5Ptr[addr&0x3FF]; }
+
+void m206initChrGet8(uint16_t addr)
+{
+	if(addr < 0x800) memInitMapperPPUGetPointer(addr, m206getCHRBank0);
+	else if(addr < 0x1000) memInitMapperPPUGetPointer(addr, m206getCHRBank1);
+	else if(addr < 0x1400) memInitMapperPPUGetPointer(addr, m206getCHRBank2);
+	else if(addr < 0x1800) memInitMapperPPUGetPointer(addr, m206getCHRBank3);
+	else if(addr < 0x1C00) memInitMapperPPUGetPointer(addr, m206getCHRBank4);
+	else if(addr < 0x2000) memInitMapperPPUGetPointer(addr, m206getCHRBank5);
+}
+
+void m206initChrSet8(uint16_t addr)
+{
+	(void)addr;
 }

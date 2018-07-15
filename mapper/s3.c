@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 FIX94
+ * Copyright (C) 2017 - 2018 FIX94
  *
  * This software may be modified and distributed under the terms
  * of the MIT license.  See the LICENSE file for details.
@@ -12,148 +12,109 @@
 #include "../cpu.h"
 #include "../ppu.h"
 #include "../mapper.h"
+#include "../mem.h"
+#include "../mapper_h/common.h"
 
-static uint8_t *s3_prgROM;
-static uint8_t *s3_prgRAM;
-static uint8_t *s3_chrROM;
-static uint32_t s3_prgROMsize;
-static uint32_t s3_prgRAMsize;
-static uint32_t s3_chrROMsize;
-static uint32_t s3_prgROMand;
-static uint32_t s3_chrROMand;
-static uint32_t s3_curPRGBank;
-static uint32_t s3_lastPRGBank;
-static uint32_t s3_CHRBank[4];
-static uint16_t s3_irqCtr;
-static bool s3_TmpWrite;
-static bool s3_enableRAM;
-static bool s3_irqCtrEnable;
+static struct {
+	uint16_t irqCtr;
+	bool TmpWrite;
+	bool irqCtrEnable;
+} s3;
+
 extern uint8_t interrupt;
 
 void s3init(uint8_t *prgROMin, uint32_t prgROMsizeIn, 
 			uint8_t *prgRAMin, uint32_t prgRAMsizeIn,
 			uint8_t *chrROMin, uint32_t chrROMsizeIn)
 {
-	s3_prgROM = prgROMin;
-	s3_prgROMsize = prgROMsizeIn;
-	s3_prgROMand = mapperGetAndValue(prgROMsizeIn);
-	s3_prgRAM = prgRAMin;
-	s3_prgRAMsize = prgRAMsizeIn;
-	s3_curPRGBank = 0;
-	s3_lastPRGBank = (prgROMsizeIn - 0x4000);
-	if(chrROMsizeIn > 0)
+	prg16init(prgROMin,prgROMsizeIn);
+	prg16setBank1(prgROMsizeIn - 0x4000);
+	(void)prgRAMin;
+	(void)prgRAMsizeIn;
+	chr2init(chrROMin,chrROMsizeIn);
+	s3.irqCtr = 0;
+	s3.TmpWrite = false;
+	s3.irqCtrEnable = false;
+	printf("Sunsoft-3 inited\n");
+}
+
+static void s3setParams8800(uint16_t addr, uint8_t val) { (void)addr; chr2setBank0(val<<11); }
+static void s3setParams9800(uint16_t addr, uint8_t val) { (void)addr; chr2setBank1(val<<11); }
+static void s3setParamsA800(uint16_t addr, uint8_t val) { (void)addr; chr2setBank2(val<<11); }
+static void s3setParamsB800(uint16_t addr, uint8_t val) { (void)addr; chr2setBank3(val<<11); }
+
+static void s3setParamsC800(uint16_t addr, uint8_t val)
+{
+	(void)addr;
+	if(!s3.TmpWrite)
 	{
-		s3_chrROM = chrROMin;
-		s3_chrROMsize = chrROMsizeIn;
-		s3_chrROMand = mapperGetAndValue(chrROMsizeIn);
+		s3.TmpWrite = true;
+		s3.irqCtr &= 0xFF;
+		s3.irqCtr |= (val<<8);
 	}
 	else
-		printf("s3???\n");
-	memset(s3_CHRBank,0,4*sizeof(uint32_t));
-	s3_irqCtr = 0;
-	s3_TmpWrite = false;
-	s3_enableRAM = false;
-	s3_irqCtrEnable = false;
-	printf("Sunsoft 3 Mapper inited\n");
-}
-
-uint8_t s3get8(uint16_t addr, uint8_t val)
-{
-	if(addr >= 0x8000)
 	{
-		if(addr < 0xC000)
-			return s3_prgROM[((s3_curPRGBank<<14)+(addr&0x3FFF))&s3_prgROMand];
-		return s3_prgROM[(s3_lastPRGBank+(addr&0x3FFF))&s3_prgROMand];
-	}
-	return val;
-}
-
-void s3set8(uint16_t addr, uint8_t val)
-{
-	if(addr >= 0x8000)
-	{
-		if(addr < 0x9000)
-			s3_CHRBank[0] = val;
-		else if(addr < 0xA000)
-			s3_CHRBank[1] = val;
-		else if(addr < 0xB000)
-			s3_CHRBank[2] = val;
-		else if(addr < 0xC000)
-			s3_CHRBank[3] = val;
-		else if(addr < 0xD000)
-		{
-			if(!s3_TmpWrite)
-			{
-				s3_TmpWrite = true;
-				s3_irqCtr &= 0xFF;
-				s3_irqCtr |= (val<<8);
-			}
-			else
-			{
-				s3_TmpWrite = false;
-				s3_irqCtr &= ~0xFF;
-				s3_irqCtr |= val;
-			}
-		}
-		else if(addr < 0xE000)
-		{
-			s3_TmpWrite = false;
-			interrupt &= ~MAPPER_IRQ;
-			s3_irqCtrEnable = !!(val&0x10);
-		}
-		else if(addr < 0xF000)
-		{
-			switch(val&3)
-			{
-				case 0:
-					ppuSetNameTblVertical();
-					break;
-				case 1:
-					ppuSetNameTblHorizontal();
-					break;
-				case 2:
-					ppuSetNameTblSingleLower();
-					break;
-				case 3:
-					ppuSetNameTblSingleUpper();
-					break;
-				default:
-					break;
-			}
-		}
-		else
-			s3_curPRGBank = val;
+		s3.TmpWrite = false;
+		s3.irqCtr &= ~0xFF;
+		s3.irqCtr |= val;
 	}
 }
 
-uint8_t s3chrGet8(uint16_t addr)
+static void s3setParamsD800(uint16_t addr, uint8_t val)
 {
-	//printf("%04x\n",addr);
-	addr &= 0x1FFF;
-	if(addr < 0x800)
-		return s3_chrROM[((s3_CHRBank[0]<<11)+(addr&0x7FF))&s3_chrROMand];
-	else if(addr < 0x1000)
-		return s3_chrROM[((s3_CHRBank[1]<<11)+(addr&0x7FF))&s3_chrROMand];
-	else if(addr < 0x1800)
-		return s3_chrROM[((s3_CHRBank[2]<<11)+(addr&0x7FF))&s3_chrROMand];
-	return s3_chrROM[((s3_CHRBank[3]<<11)+(addr&0x7FF))&s3_chrROMand];
-}
-
-void s3chrSet8(uint16_t addr, uint8_t val)
-{
-	//printf("s3chrSet8 %04x %02x\n", addr, val);
 	(void)addr;
-	(void)val;
+	s3.TmpWrite = false;
+	interrupt &= ~MAPPER_IRQ;
+	s3.irqCtrEnable = !!(val&0x10);
+}
+
+static void s3setParamsE800(uint16_t addr, uint8_t val)
+{
+	(void)addr;
+	switch(val&3)
+	{
+		case 0:
+			ppuSetNameTblVertical();
+			break;
+		case 1:
+			ppuSetNameTblHorizontal();
+			break;
+		case 2:
+			ppuSetNameTblSingleLower();
+			break;
+		case 3:
+			ppuSetNameTblSingleUpper();
+			break;
+	}
+}
+
+static void s3setParamsF800(uint16_t addr, uint8_t val)
+{
+	(void)addr;
+	prg16setBank0(val<<14);
+}
+
+void s3initSet8(uint16_t ori_addr)
+{
+	uint16_t proc_addr = ori_addr&0xF800;
+	if(proc_addr == 0x8800) memInitMapperSetPointer(ori_addr, s3setParams8800);
+	else if(proc_addr == 0x9800) memInitMapperSetPointer(ori_addr, s3setParams9800);
+	else if(proc_addr == 0xA800) memInitMapperSetPointer(ori_addr, s3setParamsA800);
+	else if(proc_addr == 0xB800) memInitMapperSetPointer(ori_addr, s3setParamsB800);
+	else if(proc_addr == 0xC800) memInitMapperSetPointer(ori_addr, s3setParamsC800);
+	else if(proc_addr == 0xD800) memInitMapperSetPointer(ori_addr, s3setParamsD800);
+	else if(proc_addr == 0xE800) memInitMapperSetPointer(ori_addr, s3setParamsE800);
+	else if(proc_addr == 0xF800) memInitMapperSetPointer(ori_addr, s3setParamsF800);
 }
 
 void s3cycle()
 {
-	if(s3_irqCtrEnable)
+	if(s3.irqCtrEnable)
 	{
-		s3_irqCtr--;
-		if(s3_irqCtr == 0xFFFF)
+		s3.irqCtr--;
+		if(s3.irqCtr == 0xFFFF)
 		{
-			s3_irqCtrEnable = false;
+			s3.irqCtrEnable = false;
 			interrupt |= MAPPER_IRQ;
 		}
 	}

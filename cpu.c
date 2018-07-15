@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 FIX94
+ * Copyright (C) 2017 - 2018 FIX94
  *
  * This software may be modified and distributed under the terms
  * of the MIT license.  See the LICENSE file for details.
@@ -9,6 +9,7 @@
 #include <stdbool.h>
 #include <inttypes.h>
 #include <string.h>
+#include "mapper.h"
 #include "mem.h"
 #include "ppu.h"
 #include "apu.h"
@@ -38,11 +39,12 @@ static struct {
 	uint8_t p_irq_req;
 	uint8_t arr_pos;
 	uint8_t instr;
+	uint8_t irq;
+	uint8_t irqMask;
+	bool boot;
 	bool reset;
 	bool needsIndFix;
-	bool interrupt_req;
-	bool ppu_nmi_handler_req;
-
+	bool allow_update_irq;
 	bool oam_dma;
 	bool dmc_dma;
 	bool currently_dma;
@@ -63,9 +65,9 @@ static void cpuSetStartArray();
 void cpuInit()
 {
 	cpuSetStartArray();
+	cpu.boot = true; //sets up P
 	cpu.reset = true;
-	cpu.interrupt_req = false;
-	cpu.ppu_nmi_handler_req = false;
+	cpu.allow_update_irq = false;
 	cpu.needsIndFix = false;
 	cpu.tmp = 0;
 	cpu.absAddr = 0;
@@ -80,7 +82,8 @@ void cpuInit()
 	cpu.s = 0;
 	cpu.p_irq_req = 0;
 	cpu.instr = 0;
-
+	cpu.irq = 0;
+	cpu.irqMask = 0;
 	cpu.oam_dma = false;
 	cpu.dmc_dma = false;
 	cpu.currently_dma = false;
@@ -403,6 +406,7 @@ enum {
 	CPU_NULL_READ8_PC_STACK_INC,
 	CPU_NULL_READ8_PC_STACK_DEC,
 	CPU_NULL_READ8_PC_STACK_DEC_SET_S1_S2_I,
+	CPU_NULL_READ8_PC_STACK_DEC_SET_I,
 	CPU_TMP_READ8_PC_INC,
 	CPU_TMP_READ8_PC_INC_ACTION,
 	CPU_TMP_READ8_PC_INC_CHECK_BCC,
@@ -447,15 +451,12 @@ enum {
 	CPU_STACK_STORE_P_DEC,
 	CPU_STACK_STORE_PCH_DEC,
 	CPU_STACK_STORE_PCL_DEC,
-	CPU_STACK_STORE_P_DEC_SET_I,
 	CPU_STACK_SET_S1_S2_STORE_P_DEC_SET_I,
 	CPU_STACK_CLEAR_S1_SET_S2_STORE_P_DEC_SET_I,
-	CPU_READ_NMIVEC_PCL,
-	CPU_READ_NMIVEC_PCH,
 	CPU_READ_RESETVEC_PCL,
 	CPU_READ_RESETVEC_PCH,
-	CPU_READ_IRQVEC_PCL,
-	CPU_READ_IRQVEC_PCH,
+	CPU_READ_NMI_IRQ_VEC_PCL,
+	CPU_READ_NMI_IRQ_VEC_PCH,
 	CPU_STATE_END,
 };
 
@@ -464,12 +465,10 @@ enum {
 	CPU_READ_CPUTMP,
 	CPU_READ_ABSADDR,
 	CPU_READ_STACK,
-	CPU_READ_NMIVECL,
-	CPU_READ_NMIVECH,
 	CPU_READ_RESETVECL,
 	CPU_READ_RESETVECH,
-	CPU_READ_IRQVECL,
-	CPU_READ_IRQVECH,
+	CPU_READ_NMI_IRQ_VECL,
+	CPU_READ_NMI_IRQ_VECH,
 	CPU_WRITE_ADDR,
 	CPU_WRITE_STACK,
 };
@@ -504,6 +503,7 @@ static const uint8_t cpu_mem_type[CPU_STATE_END] = {
 	CPU_READ_PC,
 	CPU_READ_PC,
 	CPU_READ_PC,
+	CPU_READ_PC,
 	CPU_READ_CPUTMP,
 	CPU_READ_CPUTMP,
 	CPU_READ_CPUTMP,
@@ -533,13 +533,10 @@ static const uint8_t cpu_mem_type[CPU_STATE_END] = {
 	CPU_WRITE_STACK,
 	CPU_WRITE_STACK,
 	CPU_WRITE_STACK,
-	CPU_WRITE_STACK,
-	CPU_READ_NMIVECL,
-	CPU_READ_NMIVECH,
 	CPU_READ_RESETVECL,
 	CPU_READ_RESETVECH,
-	CPU_READ_IRQVECL,
-	CPU_READ_IRQVECH,
+	CPU_READ_NMI_IRQ_VECL,
+	CPU_READ_NMI_IRQ_VECH,
 };
 
 static const uint8_t cpu_start_arr[1] = { CPU_GET_INSTRUCTION };
@@ -551,13 +548,13 @@ static void cpuSetStartArray()
 }
 
 /* arrays for non-callable instructions */
-static const uint8_t cpu_reset_arr[6] = { CPU_NULL_READ8_PC_STACK_DEC, CPU_NULL_READ8_PC_STACK_DEC, CPU_NULL_READ8_PC_STACK_DEC_SET_S1_S2_I, CPU_READ_RESETVEC_PCL, CPU_READ_RESETVEC_PCH, CPU_GET_INSTRUCTION };
-static const uint8_t cpu_nmi_arr[7] = { CPU_NULL_READ8_PC, CPU_STACK_STORE_PCH_DEC, CPU_STACK_STORE_PCL_DEC, CPU_STACK_CLEAR_S1_SET_S2_STORE_P_DEC_SET_I, CPU_READ_NMIVEC_PCL, CPU_READ_NMIVEC_PCH, CPU_GET_INSTRUCTION };
-static const uint8_t cpu_irq_arr[7] = { CPU_NULL_READ8_PC, CPU_STACK_STORE_PCH_DEC, CPU_STACK_STORE_PCL_DEC, CPU_STACK_STORE_P_DEC_SET_I, CPU_READ_IRQVEC_PCL, CPU_READ_IRQVEC_PCH, CPU_GET_INSTRUCTION };
+static const uint8_t cpu_boot_arr[6] = { CPU_NULL_READ8_PC_STACK_DEC, CPU_NULL_READ8_PC_STACK_DEC, CPU_NULL_READ8_PC_STACK_DEC_SET_S1_S2_I, CPU_READ_RESETVEC_PCL, CPU_READ_RESETVEC_PCH, CPU_GET_INSTRUCTION };
+static const uint8_t cpu_reset_arr[6] = { CPU_NULL_READ8_PC_STACK_DEC, CPU_NULL_READ8_PC_STACK_DEC, CPU_NULL_READ8_PC_STACK_DEC_SET_I, CPU_READ_RESETVEC_PCL, CPU_READ_RESETVEC_PCH, CPU_GET_INSTRUCTION };
+static const uint8_t cpu_irq_arr[7] = { CPU_NULL_READ8_PC, CPU_STACK_STORE_PCH_DEC, CPU_STACK_STORE_PCL_DEC, CPU_STACK_CLEAR_S1_SET_S2_STORE_P_DEC_SET_I, CPU_READ_NMI_IRQ_VEC_PCL, CPU_READ_NMI_IRQ_VEC_PCH, CPU_GET_INSTRUCTION };
 static const uint8_t cpu_kill_arr[2] = { CPU_NULL_READ8_PC_ACTION, CPU_GET_INSTRUCTION };
 
 /* arrays for single special instructions */
-static const uint8_t cpu_brk_arr[7] = { CPU_NULL_READ8_PC_INC, CPU_STACK_STORE_PCH_DEC, CPU_STACK_STORE_PCL_DEC, CPU_STACK_SET_S1_S2_STORE_P_DEC_SET_I, CPU_READ_IRQVEC_PCL, CPU_READ_IRQVEC_PCH, CPU_GET_INSTRUCTION };
+static const uint8_t cpu_brk_arr[7] = { CPU_NULL_READ8_PC_INC, CPU_STACK_STORE_PCH_DEC, CPU_STACK_STORE_PCL_DEC, CPU_STACK_SET_S1_S2_STORE_P_DEC_SET_I, CPU_READ_NMI_IRQ_VEC_PCL, CPU_READ_NMI_IRQ_VEC_PCH, CPU_GET_INSTRUCTION };
 static const uint8_t cpu_rti_arr[6] = { CPU_NULL_READ8_PC, CPU_NULL_READ8_PC_STACK_INC, CPU_STACK_GET_P_INC, CPU_STACK_GET_PCL_INC, CPU_STACK_GET_PCH, CPU_GET_INSTRUCTION };
 static const uint8_t cpu_rts_arr[6] = { CPU_NULL_READ8_PC, CPU_NULL_READ8_PC_STACK_INC, CPU_STACK_GET_PCL_INC, CPU_STACK_GET_PCH, CPU_NULL_READ8_PC_INC, CPU_GET_INSTRUCTION };
 static const uint8_t cpu_php_arr[3] = { CPU_NULL_READ8_PC, CPU_STACK_STORE_P_DEC, CPU_GET_INSTRUCTION };
@@ -607,11 +604,15 @@ static const uint8_t cpu_bmi_arr[4] = { CPU_TMP_READ8_PC_INC_CHECK_BMI, CPU_BRAN
 static const uint8_t cpu_bvc_arr[4] = { CPU_TMP_READ8_PC_INC_CHECK_BVC, CPU_BRANCH_SETUP, CPU_NULL_READ8_PC_CHK, CPU_GET_INSTRUCTION };
 static const uint8_t cpu_bvs_arr[4] = { CPU_TMP_READ8_PC_INC_CHECK_BVS, CPU_BRANCH_SETUP, CPU_NULL_READ8_PC_CHK, CPU_GET_INSTRUCTION };
 
+static void cpuCheckIrq()
+{
+	cpu.irq |= (interrupt & cpu.irqMask) | ppuNMI();
+}
+
 /* useful for the branch checks */
 static void cpuBranchCheck(bool takeBranch)
 {
-	cpu.ppu_nmi_handler_req |= ppuNMI();
-	cpu.interrupt_req |= (!!(interrupt & IRQ_MASK) && !(cpu.p & P_FLAG_IRQ_DISABLE));
+	cpuCheckIrq();
 	if(!takeBranch) //get next instruction
 		cpuSetStartArray();
 }
@@ -745,53 +746,54 @@ static bool cpuHandleIrqUpdates()
 		if(cpu.p_irq_req == 1)
 		{
 			#if DEBUG_INTR
-			printf("Setting irq disable %02x %02x %d %d %d %d\n", cpu.p, P_FLAG_IRQ_DISABLE, cpu.interrupt_req, apu_interrupt, 
+			printf("Setting irq disable %02x %02x %d %d %d %d\n", cpu.p, P_FLAG_IRQ_DISABLE, cpu.irq, apu_interrupt, 
 				!(cpu.p & P_FLAG_IRQ_DISABLE), (cpu.p & P_FLAG_IRQ_DISABLE) == 0);
 			#endif
 			cpu.p |= P_FLAG_IRQ_DISABLE;
+			cpu.irqMask = 0;
 		}
 		else
 		{
 			#if DEBUG_INTR
-			printf("Clearing irq disable %02x %02x %d %d %d %d\n", cpu.p, P_FLAG_IRQ_DISABLE, cpu.interrupt_req, apu_interrupt, 
+			printf("Clearing irq disable %02x %02x %d %d %d %d\n", cpu.p, P_FLAG_IRQ_DISABLE, cpu.irq, apu_interrupt, 
 				!(cpu.p & P_FLAG_IRQ_DISABLE), (cpu.p & P_FLAG_IRQ_DISABLE) == 0);
 			#endif
 			cpu.p &= ~P_FLAG_IRQ_DISABLE;
+			cpu.irqMask = IRQ_MASK;
 		}
 		cpu.p_irq_req = 0;
 	}
 	//handle incoming IRQs
 	if(cpu.reset)
 	{
-		apuSet8(0x15, 0);
-		cpu.action_arr = cpu_reset_arr;
+		//for consistent apu reset times
+		cpu_odd_cycle = true;
+		if(cpu.boot)
+		{
+			apuBoot();
+			cpu.action_arr = cpu_boot_arr;
+		}
+		else
+		{
+			apuReset();
+			ppuReset();
+			mapperReset();
+			cpu.action_arr = cpu_reset_arr;
+		}
 		cpu.arr_pos = 0;
 		//cpu.instr = 0;
+		cpu.boot = false;
 		cpu.reset = false;
 		return true;
 	}
-	else if(cpu.ppu_nmi_handler_req)
-	{
-		cpu.action_arr = cpu_nmi_arr;
-		cpu.arr_pos = 0;
-		//cpu.instr = 0;
-		#if DEBUG_INTR
-		printf("NMI from cpu.p %02x cpu.pc %04x\n",cpu.p,cpu.pc);
-		#endif
-		cpu.ppu_nmi_handler_req = false;
-		return true;
-	}
-	else if(cpu.interrupt_req)
+	else if(cpu.irq)
 	{
 		cpu.action_arr = cpu_irq_arr;
 		cpu.arr_pos = 0;
 		//cpu.instr = 0;
 		#if DEBUG_INTR
-		printf("INTR %02x from cpu.p %02x cpu.pc %04x\n",interrupt,cpu.p,cpu.pc);
+		printf("NMI/INTR from instr %02x cpu.p %02x cpu.pc %04x\n",instr,cpu.p,cpu.pc);
 		#endif
-		//just in case, clear if its set
-		interrupt &= ~FDS_TRANSFER_IRQ;
-		cpu.interrupt_req = false;
 		return true;
 	}
 	//acts similar to an irq
@@ -851,23 +853,23 @@ static bool cpuDMATryHalt()
 		case CPU_READ_STACK:
 			memGet8(0x100+cpu.s);
 			break;
-		case CPU_READ_NMIVECL:
-			memGet8(0xFFFA);
-			break;
-		case CPU_READ_NMIVECH:
-			memGet8(0xFFFB);
-			break;
 		case CPU_READ_RESETVECL:
 			memGet8(0xFFFC);
 			break;
 		case CPU_READ_RESETVECH:
 			memGet8(0xFFFD);
 			break;
-		case CPU_READ_IRQVECL:
-			memGet8(0xFFFE);
+		case CPU_READ_NMI_IRQ_VECL:
+			if(cpu.irq & PPU_NMI) //NMI
+				memGet8(0xFFFA);
+			else //IRQ
+				memGet8(0xFFFE);
 			break;
-		case CPU_READ_IRQVECH:
-			memGet8(0xFFFF);
+		case CPU_READ_NMI_IRQ_VECH:
+			if(cpu.irq & PPU_NMI) //NMI
+				memGet8(0xFFFB);
+			else //IRQ
+				memGet8(0xFFFF);
 			break;
 		default: //CPU_WRITE
 			ret = false;
@@ -883,8 +885,8 @@ static bool cpuTryTakeover()
 	if(cpu_is_read)
 	{
 		//printf("DMA Takeover done\n");
-		cpu.currently_dma = true;	
-		//cpu.reset OAM DMA pointer
+		cpu.currently_dma = true;
+		//reset OAM DMA pointer
 		cpu.oam_dma_ptr = 0;
 		//set OAM ready to false
 		cpu.oam_ready = false;
@@ -1001,18 +1003,21 @@ bool cpuCycle()
 	cpu_action = cpu.action_arr[cpu.arr_pos];
 	cpu.arr_pos++;
 	//update interrupts right before next instruction get cycle
-	if(cpu_action != CPU_GET_INSTRUCTION && cpu.action_arr[cpu.arr_pos] == CPU_GET_INSTRUCTION)
-	{
-		cpu.ppu_nmi_handler_req |= ppuNMI();
-		cpu.interrupt_req |= (!!(interrupt & IRQ_MASK) && !(cpu.p & P_FLAG_IRQ_DISABLE));
-	}
+	if(cpu_action != CPU_GET_INSTRUCTION && cpu.action_arr[cpu.arr_pos] == CPU_GET_INSTRUCTION && cpu.allow_update_irq)
+		cpuCheckIrq();
+
 	switch(cpu_action)
 	{
 		case CPU_GET_INSTRUCTION:
 			instr = memGet8(cpu.pc);
 			//if IRQ occurs end this cycle early
 			if(cpuHandleIrqUpdates())
+			{
+				cpu.allow_update_irq = false;
 				break;
+			}
+			else //only set allow to true if its not a BRK
+				cpu.allow_update_irq = (instr != 0x00);
 			cpu.action_arr = cpu_instr_arr[instr];
 			cpu.arr_pos = 0;
 			cpu.instr = instr;
@@ -1248,10 +1253,17 @@ bool cpuCycle()
 			memGet8(cpu.pc);
 			cpu.s--;
 			break;
+		case CPU_NULL_READ8_PC_STACK_DEC_SET_I:
+			memGet8(cpu.pc);
+			cpu.s--;
+			cpu.p |= P_FLAG_IRQ_DISABLE;
+			cpu.irqMask = 0;
+			break;
 		case CPU_NULL_READ8_PC_STACK_DEC_SET_S1_S2_I:
 			memGet8(cpu.pc);
 			cpu.s--;
-			cpu.p = (P_FLAG_IRQ_DISABLE | P_FLAG_S1 | P_FLAG_S2);
+			cpu.p |= (P_FLAG_IRQ_DISABLE | P_FLAG_S1 | P_FLAG_S2);
+			cpu.irqMask = 0;
 			break;
 		case CPU_TMP_READ8_PC_INC:
 			cpu.tmp = memGet8(cpu.pc++);
@@ -1420,6 +1432,7 @@ bool cpuCycle()
 		case CPU_STACK_GET_P:
 			cpu.tmp = memGet8(0x100+cpu.s);
 			cpu.p &= P_FLAG_IRQ_DISABLE;
+			cpu.irqMask = IRQ_MASK;
 			cpu.p |= (cpu.tmp & ~P_FLAG_IRQ_DISABLE);
 			//will do it for us after
 			if(cpu.tmp & P_FLAG_IRQ_DISABLE)
@@ -1435,6 +1448,7 @@ bool cpuCycle()
 			break;
 		case CPU_STACK_GET_P_INC:
 			cpu.p = memGet8(0x100+cpu.s);
+			cpu.irqMask = (cpu.p & P_FLAG_IRQ_DISABLE) ? 0 : IRQ_MASK;
 			cpu.s++;
 			break;
 		case CPU_STACK_GET_PCL_INC:
@@ -1463,31 +1477,22 @@ bool cpuCycle()
 			memSet8(0x100+cpu.s,cpu.pc&0xFF);
 			cpu.s--;
 			break;
-		case CPU_STACK_STORE_P_DEC_SET_I:
-			memSet8(0x100+cpu.s,cpu.p);
-			cpu.s--;
-			cpu.p |= P_FLAG_IRQ_DISABLE;
-			break;
 		case CPU_STACK_SET_S1_S2_STORE_P_DEC_SET_I:
+			cpuCheckIrq();
 			cpu.p |= (P_FLAG_S1 | P_FLAG_S2);
 			memSet8(0x100+cpu.s,cpu.p);
 			cpu.s--;
 			cpu.p |= P_FLAG_IRQ_DISABLE;
+			cpu.irqMask = 0;
 			break;
 		case CPU_STACK_CLEAR_S1_SET_S2_STORE_P_DEC_SET_I:
+			cpuCheckIrq();
 			cpu.p &= ~P_FLAG_S1;
 			cpu.p |= P_FLAG_S2;
 			memSet8(0x100+cpu.s,cpu.p);
 			cpu.s--;
 			cpu.p |= P_FLAG_IRQ_DISABLE;
-			break;
-		case CPU_READ_NMIVEC_PCL:
-			cpu.pc &= ~0xFF;
-			cpu.pc |= memGet8(0xFFFA);
-			break;
-		case CPU_READ_NMIVEC_PCH:
-			cpu.pc &= 0xFF;
-			cpu.pc |= memGet8(0xFFFB)<<8;
+			cpu.irqMask = 0;
 			break;
 		case CPU_READ_RESETVEC_PCL:
 			cpu.pc &= ~0xFF;
@@ -1497,13 +1502,25 @@ bool cpuCycle()
 			cpu.pc &= 0xFF;
 			cpu.pc |= memGet8(0xFFFD)<<8;
 			break;
-		case CPU_READ_IRQVEC_PCL:
+		case CPU_READ_NMI_IRQ_VEC_PCL:
 			cpu.pc &= ~0xFF;
-			cpu.pc |= memGet8(0xFFFE);
+			if(cpu.irq & PPU_NMI) //NMI
+				cpu.pc |= memGet8(0xFFFA);
+			else //IRQ
+				cpu.pc |= memGet8(0xFFFE);
 			break;
-		case CPU_READ_IRQVEC_PCH:
+		case CPU_READ_NMI_IRQ_VEC_PCH:
 			cpu.pc &= 0xFF;
-			cpu.pc |= memGet8(0xFFFF)<<8;
+			if(cpu.irq & PPU_NMI) //NMI
+				cpu.pc |= memGet8(0xFFFB)<<8;
+			else //IRQ
+			{
+				cpu.pc |= memGet8(0xFFFF)<<8;
+				//just in case, clear if its set
+				interrupt &= ~FDS_TRANSFER_IRQ;
+			}
+			//clear these, will get set later
+			cpu.irq = 0;
 			break;
 		default: //should never happen
 			printf("Unknown action %i\n", cpu_action);
@@ -1542,6 +1559,7 @@ void cpuEndPlayNSF()
 	//restore old PC and P
 	cpu.pc = cpu.pc_nsf_bak;
 	cpu.p = cpu.p_nsf_bak;
+	cpu.irqMask = (cpu.p & P_FLAG_IRQ_DISABLE) ? 0 : IRQ_MASK;
 	cpuSetStartArray();
 	//printf("Playback End at %04x\n", cpu.pc);
 }
@@ -1554,15 +1572,17 @@ void cpuInitNSF(uint16_t addr, uint8_t newA, uint8_t newX)
 	memInit();
 	apuInit();
 	//we dont just "(re)boot" though, set new vals
+	cpu.boot = false;
 	cpu.reset = false;
-	cpu.p = (P_FLAG_IRQ_DISABLE | P_FLAG_S1 | P_FLAG_S2);
+	cpu.p |= (P_FLAG_IRQ_DISABLE | P_FLAG_S1 | P_FLAG_S2);
+	cpu.irqMask = 0;
 	cpu.a = newA;
 	cpu.x = newX;
 	cpu.y = 0;
 	cpu.s = 0xFD;
 	//prepare APU regs
-	apuSet8(0x15,0xF);
-	apuSet8(0x17,0x40);
+	apuSetReg15(0x15,0xF);
+	apuSetReg17(0x17,0x40);
 	//used in NSF mapper to detect init return
 	uint16_t initRet = 0x4567-1;
 	memSet8(0x100+cpu.s,initRet>>8);
@@ -1575,13 +1595,15 @@ void cpuInitNSF(uint16_t addr, uint8_t newA, uint8_t newX)
 
 void cpuSoftReset()
 {
+	cpu.boot = false; //soft-reset
 	cpu.reset = true;
 }
 
-void cpuDoOAM_DMA(uint16_t addr)
+void cpuDoOAM_DMA(uint16_t addr, uint8_t val)
 {
+	(void)addr;
 	cpu.oam_dma = true;
-	cpu.oam_dma_addr = addr;
+	cpu.oam_dma_addr = (val<<8);
 }
 
 void cpuDoDMC_DMA(uint16_t addr)

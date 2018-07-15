@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 FIX94
+ * Copyright (C) 2017 - 2018 FIX94
  *
  * This software may be modified and distributed under the terms
  * of the MIT license.  See the LICENSE file for details.
@@ -11,6 +11,7 @@
 #include <malloc.h>
 #include "audio_vrc6.h"
 #include "audio.h"
+#include "mapper.h"
 #include "mem.h"
 #include "cpu.h"
 #include "apu.h"
@@ -21,6 +22,7 @@ uint8_t vrc6Out;
 
 static struct {
 	uint16_t freq1, freq2, sawFreq;
+	uint16_t reloadFreq1, reloadFreq2, reloadSawFreq;
 	uint16_t p1freqCtr, p2freqCtr, sawFreqCtr;
 	uint8_t p1Cycle, p2Cycle, sawCycle;
 	uint8_t p1Vol, p2Vol, sawVol;
@@ -37,6 +39,7 @@ void vrc6AudioInit()
 	audioExpansion |= EXP_VRC6;
 	vrc6Out = 0;
 	vrc6_apu.freq1 = 0, vrc6_apu.freq2 = 0, vrc6_apu.sawFreq = 0;
+	vrc6_apu.reloadFreq1 = 0, vrc6_apu.reloadFreq2 = 0, vrc6_apu.reloadSawFreq = 0;
 	vrc6_apu.p1freqCtr = 0, vrc6_apu.p2freqCtr = 0, vrc6_apu.sawFreqCtr = 0;
 	vrc6_apu.p1Cycle = 0, vrc6_apu.p2Cycle = 0, vrc6_apu.sawCycle = 0;
 	vrc6_apu.p1Vol = 0, vrc6_apu.p2Vol = 0, vrc6_apu.sawVol = 0;
@@ -65,46 +68,27 @@ void vrc6AudioClockTimers()
 {
 	if(vrc6_apu.halt) return;
 
-	if(vrc6_apu.p1freqCtr)
-		vrc6_apu.p1freqCtr--;
 	if(vrc6_apu.p1freqCtr == 0)
 	{
-		if(vrc6_apu.speed == 0)
-			vrc6_apu.p1freqCtr = (vrc6_apu.freq1+1);
-		else if(vrc6_apu.speed == 1)
-			vrc6_apu.p1freqCtr = (vrc6_apu.freq1+1)>>4;
-		else
-			vrc6_apu.p1freqCtr = (vrc6_apu.freq1+1)>>8;
+		vrc6_apu.p1freqCtr = vrc6_apu.reloadFreq1;
 		vrc6_apu.p1Cycle++;
-		if(vrc6_apu.p1Cycle >= 16)
-			vrc6_apu.p1Cycle = 0;
+		vrc6_apu.p1Cycle &= 0xF;
 	}
+	else
+		vrc6_apu.p1freqCtr--;
 
-	if(vrc6_apu.p2freqCtr)
-		vrc6_apu.p2freqCtr--;
 	if(vrc6_apu.p2freqCtr == 0)
 	{
-		if(vrc6_apu.speed == 0)
-			vrc6_apu.p2freqCtr = (vrc6_apu.freq2+1);
-		else if(vrc6_apu.speed == 1)
-			vrc6_apu.p2freqCtr = (vrc6_apu.freq2+1)>>4;
-		else
-			vrc6_apu.p2freqCtr = (vrc6_apu.freq2+1)>>8;
+		vrc6_apu.p2freqCtr = vrc6_apu.reloadFreq2;
 		vrc6_apu.p2Cycle++;
-		if(vrc6_apu.p2Cycle >= 16)
-			vrc6_apu.p2Cycle = 0;
+		vrc6_apu.p2Cycle &= 0xF;
 	}
+	else
+		vrc6_apu.p2freqCtr--;
 
-	if(vrc6_apu.sawFreqCtr)
-		vrc6_apu.sawFreqCtr--;
 	if(vrc6_apu.sawFreqCtr == 0)
 	{
-		if(vrc6_apu.speed == 0)
-			vrc6_apu.sawFreqCtr = (vrc6_apu.sawFreq+1)*2;
-		else if(vrc6_apu.speed == 1)
-			vrc6_apu.sawFreqCtr = (vrc6_apu.sawFreq+1)*2>>4;
-		else
-			vrc6_apu.sawFreqCtr = (vrc6_apu.sawFreq+1)*2>>8;
+		vrc6_apu.sawFreqCtr = vrc6_apu.reloadSawFreq;
 		vrc6_apu.sawCycle++;
 		vrc6_apu.sawVol += vrc6_apu.sawAdd;
 		if(vrc6_apu.sawCycle >= 7)
@@ -113,67 +97,127 @@ void vrc6AudioClockTimers()
 			vrc6_apu.sawVol = 0;
 		}
 	}
+	else
+		vrc6_apu.sawFreqCtr--;
 }
 
-void vrc6AudioSet8(uint16_t addr, uint8_t val)
+static void vrc6UpdateReloadFreq1()
 {
-	if(addr == 0x9000)
+	if(vrc6_apu.speed == 0)
+		vrc6_apu.reloadFreq1 = vrc6_apu.freq1;
+	else if(vrc6_apu.speed == 1)
+		vrc6_apu.reloadFreq1 = vrc6_apu.freq1>>4;
+	else
+		vrc6_apu.reloadFreq1 = vrc6_apu.freq1>>8;
+}
+
+static void vrc6UpdateReloadFreq2()
+{
+	if(vrc6_apu.speed == 0)
+		vrc6_apu.reloadFreq2 = vrc6_apu.freq2;
+	else if(vrc6_apu.speed == 1)
+		vrc6_apu.reloadFreq2 = vrc6_apu.freq2>>4;
+	else
+		vrc6_apu.reloadFreq2 = vrc6_apu.freq2>>8;
+}
+
+static void vrc6UpdateReloadSawFreq()
+{
+	if(vrc6_apu.speed == 0)
+		vrc6_apu.reloadSawFreq = ((vrc6_apu.sawFreq)<<1)+1;
+	else if(vrc6_apu.speed == 1)
+		vrc6_apu.reloadSawFreq = ((vrc6_apu.sawFreq>>4)<<1)+1;
+	else
+		vrc6_apu.reloadSawFreq = ((vrc6_apu.sawFreq>>8)<<1)+1;
+}
+
+void vrc6AudioSet8_9XX0(uint16_t addr, uint8_t val)
+{
+	(void)addr;
+	vrc6_apu.p1Vol = val&0xF;
+	vrc6_apu.p1Duty = (val>>4)&7;
+	vrc6_apu.p1const = ((val&0x80) != 0);
+}
+
+void vrc6AudioSet8_9XX1(uint16_t addr, uint8_t val)
+{
+	(void)addr;
+	vrc6_apu.freq1 = ((vrc6_apu.freq1&~0xFF) | val);
+	vrc6UpdateReloadFreq1();
+}
+
+void vrc6AudioSet8_9XX2(uint16_t addr, uint8_t val)
+{
+	(void)addr;
+	vrc6_apu.freq1 = (vrc6_apu.freq1&0xFF) | ((val&0xF)<<8);
+	vrc6UpdateReloadFreq1();
+	//duty cycle starts from beginning when channel gets enabled
+	if(!vrc6_apu.p1enable && ((val&0x80) != 0))
+		vrc6_apu.p1Cycle = 0;
+	vrc6_apu.p1enable = ((val&0x80) != 0);
+}
+
+void vrc6AudioSet8_9XX3(uint16_t addr, uint8_t val)
+{
+	(void)addr;
+	vrc6_apu.halt = ((val&1) != 0);
+	if((val&6) == 0) vrc6_apu.speed = 0;
+	if((val&2) != 0) vrc6_apu.speed = 1;
+	if((val&4) != 0) vrc6_apu.speed = 2;
+	vrc6UpdateReloadFreq1();
+	vrc6UpdateReloadFreq2();
+	vrc6UpdateReloadSawFreq();
+}
+
+void vrc6AudioSet8_AXX0(uint16_t addr, uint8_t val)
+{
+	(void)addr;
+	vrc6_apu.p2Vol = val&0xF;
+	vrc6_apu.p2Duty = (val>>4)&7;
+	vrc6_apu.p2const = ((val&0x80) != 0);
+}
+
+void vrc6AudioSet8_AXX1(uint16_t addr, uint8_t val)
+{
+	(void)addr;
+	vrc6_apu.freq2 = ((vrc6_apu.freq2&~0xFF) | val);
+	vrc6UpdateReloadFreq2();
+}
+
+void vrc6AudioSet8_AXX2(uint16_t addr, uint8_t val)
+{
+	(void)addr;
+	vrc6_apu.freq2 = (vrc6_apu.freq2&0xFF) | ((val&0xF)<<8);
+	vrc6UpdateReloadFreq2();
+	//duty cycle starts from beginning when channel gets enabled
+	if(!vrc6_apu.p2enable && ((val&0x80) != 0))
+		vrc6_apu.p2Cycle = 0;
+	vrc6_apu.p2enable = ((val&0x80) != 0);
+}
+
+void vrc6AudioSet8_BXX0(uint16_t addr, uint8_t val)
+{
+	(void)addr;
+	vrc6_apu.sawAdd = (val&0x3F);
+}
+
+void vrc6AudioSet8_BXX1(uint16_t addr, uint8_t val)
+{
+	(void)addr;
+	vrc6_apu.sawFreq = ((vrc6_apu.sawFreq&~0xFF) | val);
+	vrc6UpdateReloadSawFreq();
+}
+
+void vrc6AudioSet8_BXX2(uint16_t addr, uint8_t val)
+{
+	(void)addr;
+	vrc6_apu.sawFreq = (vrc6_apu.sawFreq&0xFF) | ((val&0xF)<<8);
+	vrc6UpdateReloadSawFreq();
+	//duty cycle starts from beginning when channel gets enabled
+	if(!vrc6_apu.sawenable && ((val&0x80) != 0))
 	{
-		vrc6_apu.p1Vol = val&0xF;
-		vrc6_apu.p1Duty = (val>>4)&7;
-		vrc6_apu.p1const = ((val&0x80) != 0);
+		vrc6_apu.sawCycle = 0;
+		vrc6_apu.sawVol = 0;
 	}
-	else if(addr == 0x9001)
-	{
-		vrc6_apu.freq1 = ((vrc6_apu.freq1&~0xFF) | val);
-	}
-	else if(addr == 0x9002)
-	{
-		vrc6_apu.freq1 = (vrc6_apu.freq1&0xFF) | ((val&0xF)<<8);
-		vrc6_apu.p1enable = ((val&0x80) != 0);
-		if(!vrc6_apu.p1enable)
-			vrc6_apu.p1Cycle = 0;
-	}
-	else if(addr == 0x9003)
-	{
-		vrc6_apu.halt = ((val&1) != 0);
-		if((val&6) == 0) vrc6_apu.speed = 0;
-		if((val&2) != 0) vrc6_apu.speed = 1;
-		if((val&4) != 0) vrc6_apu.speed = 2;
-	}
-	else if(addr == 0xA000)
-	{
-		vrc6_apu.p2Vol = val&0xF;
-		vrc6_apu.p2Duty = (val>>4)&7;
-		vrc6_apu.p2const = ((val&0x80) != 0);
-	}
-	else if(addr == 0xA001)
-	{
-		vrc6_apu.freq2 = ((vrc6_apu.freq2&~0xFF) | val);
-	}
-	else if(addr == 0xA002)
-	{
-		vrc6_apu.freq2 = (vrc6_apu.freq2&0xFF) | ((val&0xF)<<8);
-		vrc6_apu.p2enable = ((val&0x80) != 0);
-		if(!vrc6_apu.p2enable)
-			vrc6_apu.p2Cycle = 0;
-	}
-	else if(addr == 0xB000)
-	{
-		vrc6_apu.sawAdd = (val&0x3F);
-	}
-	else if(addr == 0xB001)
-	{
-		vrc6_apu.sawFreq = ((vrc6_apu.sawFreq&~0xFF) | val);
-	}
-	else if(addr == 0xB002)
-	{
-		vrc6_apu.sawFreq = (vrc6_apu.sawFreq&0xFF) | ((val&0xF)<<8);
-		vrc6_apu.sawenable = ((val&0x80) != 0);
-		if(!vrc6_apu.sawenable)
-		{
-			vrc6_apu.sawCycle = 0;
-			vrc6_apu.sawVol = 0;
-		}
-	}
+	vrc6_apu.sawenable = ((val&0x80) != 0);
 }

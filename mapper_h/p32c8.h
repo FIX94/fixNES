@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 FIX94
+ * Copyright (C) 2017 - 2018 FIX94
  *
  * This software may be modified and distributed under the terms
  * of the MIT license.  See the LICENSE file for details.
@@ -11,26 +11,56 @@
 void p32c8init(uint8_t *prgROM, uint32_t prgROMsize, 
 			uint8_t *prgRAM, uint32_t prgRAMsize,
 			uint8_t *chrROM, uint32_t chrROMsize);
-uint8_t p32c8get8(uint16_t addr, uint8_t val);
-uint8_t m36_p32c8get8(uint16_t addr, uint8_t val);
-void m0_set8(uint16_t addr, uint8_t val);
-void m11_set8(uint16_t addr, uint8_t val);
-void m36_set8(uint16_t addr, uint8_t val);
-void m38_set8(uint16_t addr, uint8_t val);
-void m41_set8(uint16_t addr, uint8_t val);
-void m46_set8(uint16_t addr, uint8_t val);
-void m66_set8(uint16_t addr, uint8_t val);
-void m79_set8(uint16_t addr, uint8_t val);
-void m113_set8(uint16_t addr, uint8_t val);
-void m133_set8(uint16_t addr, uint8_t val);
-void m140_set8(uint16_t addr, uint8_t val);
-void m144_set8(uint16_t addr, uint8_t val);
-void m147_set8(uint16_t addr, uint8_t val);
-void m148_set8(uint16_t addr, uint8_t val);
-void m201_set8(uint16_t addr, uint8_t val);
-void m240_set8(uint16_t addr, uint8_t val);
-void m242_set8(uint16_t addr, uint8_t val);
-uint8_t p32c8chrGet8(uint16_t addr);
-void p32c8chrSet8(uint16_t addr, uint8_t val);
+void p32c8RAMinit(uint8_t *prgROM, uint32_t prgROMsize, 
+			uint8_t *prgRAM, uint32_t prgRAMsize,
+			uint8_t *chrROM, uint32_t chrROMsize);
+void m7_init(uint8_t *prgROM, uint32_t prgROMsize, 
+			uint8_t *prgRAM, uint32_t prgRAMsize,
+			uint8_t *chrROM, uint32_t chrROMsize);
+void m36_init(uint8_t *prgROM, uint32_t prgROMsize, 
+			uint8_t *prgRAM, uint32_t prgRAMsize,
+			uint8_t *chrROM, uint32_t chrROMsize);
+void m41_init(uint8_t *prgROM, uint32_t prgROMsize, 
+			uint8_t *prgRAM, uint32_t prgRAMsize,
+			uint8_t *chrROM, uint32_t chrROMsize);
+void m46_init(uint8_t *prgROM, uint32_t prgROMsize, 
+			uint8_t *prgRAM, uint32_t prgRAMsize,
+			uint8_t *chrROM, uint32_t chrROMsize);
+void m185_init(uint8_t *prgROM, uint32_t prgROMsize, 
+			uint8_t *prgRAM, uint32_t prgRAMsize,
+			uint8_t *chrROM, uint32_t chrROMsize);
+void m242_init(uint8_t *prgROM, uint32_t prgROMsize, 
+			uint8_t *prgRAM, uint32_t prgRAMsize,
+			uint8_t *chrROM, uint32_t chrROMsize);
+void p32c8RAMinitGet8(uint16_t addr);
+void m36_initGet8(uint16_t addr);
+void m0_initSet8(uint16_t addr);
+void m3_initSet8(uint16_t addr);
+void m7_initSet8(uint16_t addr);
+void m11_initSet8(uint16_t addr);
+void m36_initSet8(uint16_t addr);
+void m38_initSet8(uint16_t addr);
+void m41_initSet8(uint16_t addr);
+void m46_initSet8(uint16_t addr);
+void m66_initSet8(uint16_t addr);
+void m79_initSet8(uint16_t addr);
+void m87_initSet8(uint16_t addr);
+void m101_initSet8(uint16_t addr);
+void m113_initSet8(uint16_t addr);
+void m133_initSet8(uint16_t addr);
+void m140_initSet8(uint16_t addr);
+void m144_initSet8(uint16_t addr);
+void m145_initSet8(uint16_t addr);
+void m147_initSet8(uint16_t addr);
+void m148_initSet8(uint16_t addr);
+void m149_initSet8(uint16_t addr);
+void m185_initSet8(uint16_t addr);
+void m201_initSet8(uint16_t addr);
+void m240_initSet8(uint16_t addr);
+void m242_initSet8(uint16_t addr);
+void m185_initPPUGet8(uint16_t addr);
+void m41_reset();
+void m46_reset();
+void m242_reset();
 
 #endif

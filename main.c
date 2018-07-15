@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 FIX94
+ * Copyright (C) 2017 - 2018 FIX94
  *
  * This software may be modified and distributed under the terms
  * of the MIT license.  See the LICENSE file for details.
@@ -29,6 +29,7 @@
 #include "audio_fds.h"
 #include "audio_vrc7.h"
 #include "mapper_h/nsf.h"
+#include "mapper_h/fds.h"
 #if ZIPSUPPORT
 #include "unzip/unzip.h"
 #endif
@@ -37,7 +38,7 @@
 #define DEBUG_KEY 0
 #define DEBUG_LOAD_INFO 1
 
-const char *VERSION_STRING = "fixNES Alpha v1.1";
+const char *VERSION_STRING = "fixNES Alpha v1.2";
 static char window_title[256];
 static char window_title_pause[256];
 
@@ -78,12 +79,29 @@ static char emuSaveName[1024];
 uint8_t *emuPrgRAM = NULL;
 uint32_t emuPrgRAMsize = 0;
 //used externally
+#ifdef COL_32BIT
+uint32_t textureImage[0xF000];
+#define TEXIMAGE_LEN VISIBLE_DOTS*VISIBLE_LINES*4
+#ifdef COL_GL_BSWAP
+#define GL_TEX_FMT GL_UNSIGNED_INT_8_8_8_8_REV
+#else //no REVerse
+#define GL_TEX_FMT GL_UNSIGNED_INT_8_8_8_8
+#endif
+#else //COL_16BIT
 uint16_t textureImage[0xF000];
+#define TEXIMAGE_LEN VISIBLE_DOTS*VISIBLE_LINES*2
+#ifdef COL_GL_BSWAP
+#define GL_TEX_FMT GL_UNSIGNED_SHORT_5_6_5_REV
+#else //no REVerse
+#define GL_TEX_FMT GL_UNSIGNED_SHORT_5_6_5
+#endif
+#endif
 bool nesPause = false;
 bool ppuDebugPauseFrame = false;
 bool doOverscan = true;
 bool nesPAL = false;
 bool nesEmuNSFPlayback = false;
+uint8_t emuInitialNT = NT_UNKNOWN;
 
 #ifndef __LIBRETRO__
 static bool inPause = false;
@@ -116,7 +134,6 @@ static DWORD emuMainTotalElapsed = 0;
 #define VISIBLE_LINES 240
 
 static uint32_t linesToDraw = VISIBLE_LINES;
-static const uint32_t visibleImg = VISIBLE_DOTS*VISIBLE_LINES*2;
 static uint8_t scaleFactor = 2;
 bool emuSaveEnabled = false;
 bool emuFdsHasSideB = false;
@@ -126,10 +143,12 @@ uint32_t cpuCycleTimer;
 uint32_t vrc7CycleTimer;
 //from input.c
 extern uint8_t inValReads[8];
-//from mapper.c
-extern bool mapperUse78A;
 //from m32.c
 extern bool m32_singlescreen;
+//from p16c8.c
+extern bool m78_m78a;
+//from ppu.c
+extern bool ppuMapper5;
 
 #ifdef __LIBRETRO__
 int nesEmuLoadGame(const char* filename)
@@ -142,7 +161,7 @@ int main(int argc, char** argv)
 #endif
 	puts(VERSION_STRING);
 	strcpy(window_title, VERSION_STRING);
-	memset(textureImage,0,visibleImg);
+	memset(textureImage,0,TEXIMAGE_LEN);
 	emuFileType = FTYPE_UNK;
 	linesToDraw = VISIBLE_LINES;
 	scaleFactor = 2;
@@ -153,6 +172,10 @@ int main(int argc, char** argv)
 	doOverscan = true;
 	nesPAL = false;
 	nesEmuNSFPlayback = false;
+	m32_singlescreen = false;
+	m78_m78a = false;
+	ppuMapper5 = false;
+	emuInitialNT = NT_UNKNOWN;
 	memset(emuFileName,0,1024);
 #ifndef __LIBRETRO__
 	memset(emuSaveName,0,1024);
@@ -176,8 +199,14 @@ int main(int argc, char** argv)
 		uint8_t mapper = ((emuNesROM[6] & 0xF0) >> 4) | ((emuNesROM[7] & 0xF0));
 		emuSaveEnabled = (emuNesROM[6] & (1<<1)) != 0;
 		bool trainer = (emuNesROM[6] & (1<<2)) != 0;
+		uint32_t ROMsize = emuNesROMsize-16;
 		uint32_t prgROMsize = emuNesROM[4] * 0x4000;
+		if(prgROMsize > ROMsize) //ensure we read in bounds
+			prgROMsize = ROMsize;
+		ROMsize -= prgROMsize;
 		uint32_t chrROMsize = emuNesROM[5] * 0x2000;
+		if(chrROMsize > ROMsize) //ensure we read in bounds
+			chrROMsize = ROMsize;
 		if(mapper == 5) //just to be on the safe side
 			emuPrgRAMsize = 0x10000;
 		else
@@ -205,28 +234,45 @@ int main(int argc, char** argv)
 		apuInit();
 		inputInit();
 		if(emuNesROM[6] & 8)
+		{
+			emuInitialNT = NT_4SCREEN;
 			ppuSetNameTbl4Screen();
+		}
 		else if(emuNesROM[6] & 1)
+		{
+			emuInitialNT = NT_VERTICAL;
 			ppuSetNameTblVertical();
+		}
 		else
+		{
+			emuInitialNT = NT_HORIZONTAL;
 			ppuSetNameTblHorizontal();
+		}
 		#if DEBUG_LOAD_INFO
 		printf("Used Mapper: %i\n", mapper);
 		printf("PRG: 0x%x bytes PRG RAM: 0x%x bytes CHR: 0x%x bytes\n", prgROMsize, emuPrgRAMsize, chrROMsize);
 		#endif
-		if(mapper == 32)
+		if(mapper == 5)
+			ppuMapper5 = true;
+		else if(mapper == 32)
 		{
 			if(strstr(emuFileName,"Major League") != NULL)
+			{
+				printf("Using Single Screen for Major League Mapper 32\n");
 				m32_singlescreen = true;
+			}
 			else
 				m32_singlescreen = false;
 		}
-		if(mapper == 78)
+		else if(mapper == 78)
 		{
 			if(strstr(emuFileName,"Holy Diver") != NULL)
-				mapperUse78A = true;
+			{
+				printf("Using Holy Diver Variant for Mapper 78\n");
+				m78_m78a = true;
+			}
 			else
-				mapperUse78A = false;
+				m78_m78a = false;
 		}
 		if(!mapperInit(mapper, prgROM, prgROMsize, emuPrgRAM, emuPrgRAMsize, chrROM, chrROMsize))
 		{
@@ -456,7 +502,18 @@ int main(int argc, char** argv)
 	nesEmuSetWindowsVSync(1);
 	#endif
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, VISIBLE_DOTS, linesToDraw, 0, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, textureImage);
+#ifdef COL_32BIT
+#ifdef COL_BGRA
+	printf("Drawing onto BGRA8 Texture\n");
+	glTexImage2D(GL_TEXTURE_2D, 0, 4, VISIBLE_DOTS, linesToDraw, 0, GL_BGRA, GL_TEX_FMT, textureImage);
+#else //case RGBA
+	printf("Drawing onto RGBA8 Texture\n");
+	glTexImage2D(GL_TEXTURE_2D, 0, 4, VISIBLE_DOTS, linesToDraw, 0, GL_RGBA, GL_TEX_FMT, textureImage);
+#endif //end COL_BGRA
+#else //case COL_16BIT
+	printf("Drawing onto RGB565 Texture\n");
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, VISIBLE_DOTS, linesToDraw, 0, GL_RGB, GL_TEX_FMT, textureImage);
+#endif //end COL_32BIT
 	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
 	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
 	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
@@ -700,7 +757,6 @@ void nesEmuDeinit(void)
 
 //used externally
 #ifndef __LIBRETRO__
-bool emuSkipVsync = false;
 bool emuSkipFrame = false;
 #endif
 
@@ -763,7 +819,9 @@ void nesEmuMainLoop(void)
 			#endif
 		#endif
 			if(nesEmuNSFPlayback)
-				nsfVsync();
+				nsfVsync(); //for next song checks
+			else if(audioExpansion&EXP_FDS)
+				fdsupdatedisc(); //for possible disc insert/switch
 			break;
 		}
 	}
@@ -931,8 +989,9 @@ static void nesEmuHandleKeyDown(unsigned char key, int x, int y)
 			if(!inReset)
 			{
 				inReset = true;
+				//will be used at the end of a frame
 				if(!nesEmuNSFPlayback)
-					cpuSoftReset();
+					ppuSoftReset();
 			}
 			break;
 		default:
@@ -1123,7 +1182,15 @@ static void nesEmuDisplayFrame()
 			return;
 		}
 		#endif
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, VISIBLE_DOTS, linesToDraw, 0, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, textureImage);
+#ifdef COL_32BIT
+#ifdef COL_BGRA
+	glTexImage2D(GL_TEXTURE_2D, 0, 4, VISIBLE_DOTS, linesToDraw, 0, GL_BGRA, GL_TEX_FMT, textureImage);
+#else //case RGBA
+	glTexImage2D(GL_TEXTURE_2D, 0, 4, VISIBLE_DOTS, linesToDraw, 0, GL_RGBA, GL_TEX_FMT, textureImage);
+#endif //end COL_BGRA
+#else //case COL_16BIT
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, VISIBLE_DOTS, linesToDraw, 0, GL_RGB, GL_TEX_FMT, textureImage);
+#endif //end COL_32BIT
 		emuRenderFrame = false;
 
 		glClear(GL_COLOR_BUFFER_BIT);

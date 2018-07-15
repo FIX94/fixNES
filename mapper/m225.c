@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 FIX94
+ * Copyright (C) 2017 - 2018 FIX94
  *
  * This software may be modified and distributed under the terms
  * of the MIT license.  See the LICENSE file for details.
@@ -11,18 +11,10 @@
 #include <string.h>
 #include "../ppu.h"
 #include "../mapper.h"
+#include "../mem.h"
+#include "../mapper_h/common.h"
 
-static uint8_t *m225_prgROM;
-static uint8_t *m225_chrROM;
-static uint32_t m225_prgROMsize;
-static uint32_t m225_chrROMsize;
-static uint8_t m225_chrRAM[0x2000];
 static uint8_t m225_regRAM[4];
-static uint32_t m225_PRGBank;
-static uint32_t m225_CHRBank;
-static uint32_t m225_prgROMand;
-static uint32_t m225_chrROMand;
-static bool m225_prgFull;
 
 void m225init(uint8_t *prgROMin, uint32_t prgROMsizeIn, 
 			uint8_t *prgRAMin, uint32_t prgRAMsizeIn,
@@ -30,80 +22,61 @@ void m225init(uint8_t *prgROMin, uint32_t prgROMsizeIn,
 {
 	(void)prgRAMin;
 	(void)prgRAMsizeIn;
-	m225_prgROM = prgROMin;
-	m225_prgROMsize = prgROMsizeIn;
-	m225_prgROMand = mapperGetAndValue(prgROMsizeIn);
-	m225_PRGBank = 0;
-	if(chrROMsizeIn > 0)
-	{
-		m225_chrROM = chrROMin;
-		m225_chrROMsize = chrROMsizeIn;
-		m225_chrROMand = mapperGetAndValue(chrROMsizeIn);
-	}
-	else
-	{
-		m225_chrROM = m225_chrRAM;
-		m225_chrROMsize = 0x2000;
-		m225_chrROMand = 0x1FFF;
-	}
-	memset(m225_chrRAM,0,0x2000);
+	prg16init(prgROMin,prgROMsizeIn);
+	prg16setBank0(0<<14); prg16setBank1(1<<14);
+	chr8init(chrROMin,chrROMsizeIn);
 	memset(m225_regRAM,0,4);
-	m225_CHRBank = 0;
-	m225_prgFull = true;
 	printf("Mapper 225 inited\n");
 }
 
-uint8_t m225get8(uint16_t addr, uint8_t val)
+static uint8_t m225getRAM(uint16_t addr)
+{
+	return m225_regRAM[addr&3];
+}
+
+void m225initGet8(uint16_t addr)
 {
 	if(addr >= 0x5800 && addr < 0x6000)
-		return m225_regRAM[addr&3]&0xF;
-	else if(addr >= 0x8000)
-	{
-		if(m225_prgFull)
-			return m225_prgROM[((((m225_PRGBank<<14)&~0x7FFF)+(addr&0x7FFF))&m225_prgROMand)];
-		return m225_prgROM[((((m225_PRGBank<<14)&~0x3FFF)+(addr&0x3FFF))&m225_prgROMand)];
-	}
-	return val;
+		memInitMapperGetPointer(addr, m225getRAM);
+	prg16initGet8(addr);
 }
 
-void m225set8(uint16_t addr, uint8_t val)
+static void m225setRAM(uint16_t addr, uint8_t val)
+{
+	m225_regRAM[addr&3] = val&0xF;
+}
+
+static void m225setParams(uint16_t addr, uint8_t val)
+{
+	(void)val;
+	uint8_t chrBank = addr&0x3F;
+	uint8_t prgBank = (addr>>6)&0x3F;
+	if(addr&0x4000)
+	{
+		chrBank |= 0x80;
+		prgBank |= 0x80;
+	}
+	if((addr&0x1000) == 0) //mode 32k
+	{
+		prg16setBank0((prgBank&0xFE)<<14);
+		prg16setBank1((prgBank|0x01)<<14);
+	}
+	else //mode 16k
+	{
+		prg16setBank0(prgBank<<14);
+		prg16setBank1(prgBank<<14);
+	}
+	chr8setBank0(chrBank<<13);
+	if((addr&0x2000) == 0)
+		ppuSetNameTblVertical();
+	else
+		ppuSetNameTblHorizontal();
+}
+
+void m225initSet8(uint16_t addr)
 {
 	if(addr >= 0x5800 && addr < 0x6000)
-		m225_regRAM[addr&3] = val&0xF;
+		memInitMapperSetPointer(addr, m225setRAM);
 	else if(addr >= 0x8000)
-	{
-		//printf("m225set8 %04x %02x\n", addr, val);
-		m225_CHRBank = (addr&0x3F);
-		m225_prgFull = ((addr&0x1000) == 0);
-		m225_PRGBank = (addr>>6)&0x3F;
-		if(addr&0x4000)
-		{
-			m225_CHRBank |= 0x80;
-			m225_PRGBank |= 0x80;
-		}
-		if((addr&0x2000) == 0)
-		{
-			//printf("Vertical mode\n");
-			ppuSetNameTblVertical();
-		}
-		else
-		{
-			//printf("Horizontal mode\n");
-			ppuSetNameTblHorizontal();
-		}
-		//printf("%4x %8x %d %2x\n",  m225_CHRBank, m225_prgROMadd, m225_prgFull, m225_PRGBank);
-	}
-}
-
-uint8_t m225chrGet8(uint16_t addr)
-{
-	//printf("%04x\n",addr);
-	return m225_chrROM[((m225_CHRBank<<13)+(addr&0x1FFF))&m225_chrROMand];
-}
-
-void m225chrSet8(uint16_t addr, uint8_t val)
-{
-	//printf("m225chrSet8 %04x %02x\n", addr, val);
-	if(m225_chrROM == m225_chrRAM) //Writable
-		m225_chrROM[addr&0x1FFF] = val;
+		memInitMapperSetPointer(addr, m225setParams);
 }

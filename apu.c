@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 FIX94
+ * Copyright (C) 2017 - 2018 FIX94
  *
  * This software may be modified and distributed under the terms
  * of the MIT license.  See the LICENSE file for details.
@@ -18,6 +18,7 @@
 #include "audio_n163.h"
 #include "audio_s5b.h"
 #include "audio.h"
+#include "mapper.h"
 #include "mem.h"
 #include "cpu.h"
 
@@ -658,14 +659,14 @@ void apuCycle()
 	if(apu.mode_change)
 		apuChangeMode();
 
-	if(apu.mode5 == false)
+	if(apu.modeCurCtr == 0)
 	{
-		if(apu.modeCurCtr == 0)
+		if(apu.modePos == 5)
+			apu.modePos = 0;
+		else
+			apu.modePos++;
+		if(apu.mode5 == false)
 		{
-			if(apu.modePos == 5)
-				apu.modePos = 0;
-			else
-				apu.modePos++;
 			apu.modeCurCtr = apu.mode4Ctr[apu.modePos]-1;
 			if(apu.modePos == 3 || apu.modePos == 5)
 			{
@@ -690,16 +691,7 @@ void apuCycle()
 			}
 		}
 		else
-			apu.modeCurCtr--;
-	}
-	else
-	{
-		if(apu.modeCurCtr == 0)
 		{
-			if(apu.modePos == 5)
-				apu.modePos = 0;
-			else
-				apu.modePos++;
 			apu.modeCurCtr = apu.mode5Ctr[apu.modePos]-1;
 			if(apu.modePos != 1 && apu.modePos != 5)
 			{
@@ -708,199 +700,242 @@ void apuCycle()
 				apuClockB();
 			}
 		}
-		else
-			apu.modeCurCtr--;
 	}
+	else
+		apu.modeCurCtr--;
 }
 
-extern bool emuSkipVsync, emuSkipFrame;
-
-void apuSet8(uint8_t reg, uint8_t val)
+void apuSetReg00(uint16_t addr, uint8_t val)
 {
-	//printf("%02x %02x %04x\n", reg, val, cpuGetPc());
-	apu.reg[reg] = val;
-	if(reg == 0)
-	{
-		apu.p1Env.vol = val&0xF;
-		apu.p1seq = pulseSeqs[val>>6];
-		apu.p1Env.constant = ((val&PULSE_CONST_V) != 0);
-		apu.p1Env.loop = apu.p1haltloop = ((val&PULSE_HALT_LOOP) != 0);
-		if(apu.freq1 > 8 && (apu.freq1 < 0x7FF))
-			apu.p1Sweep.mute = false; //to be safe
-	}
-	else if(reg == 1)
-	{
-		//printf("P1 sweep %02x\n", val);
-		apu.p1Sweep.enabled = ((val&0x80) != 0);
-		apu.p1Sweep.shift = val&7;
-		apu.p1Sweep.period = (val>>4)&7;
-		apu.p1Sweep.negative = ((val&0x8) != 0);
-		apu.p1Sweep.start = true;
-		if(apu.freq1 > 8 && (apu.freq1 < 0x7FF))
-			apu.p1Sweep.mute = false; //to be safe
-		doSweepLogic(&apu.p1Sweep, &apu.freq1);
-	}
-	else if(reg == 2)
-	{
-		//printf("P1 time low %02x\n", val);
-		apu.freq1 = ((apu.freq1&~0xFF) | val);
-		if(apu.freq1 > 8 && (apu.freq1 < 0x7FF))
-			apu.p1Sweep.mute = false; //to be safe
-	}
-	else if(reg == 3)
-	{
-		apu.p1Cycle = 0;
-		if(apu.reg[0x15] & P1_ENABLE)
-			apu.p1LengthCtr = apu.lengthLookupTbl[val>>3];
-		apu.freq1 = (apu.freq1&0xFF) | ((val&7)<<8);
-		if(apu.freq1 > 8 && (apu.freq1 < 0x7FF))
-			apu.p1Sweep.mute = false; //to be safe
-		//printf("P1 new freq %04x\n", apu.freq1);
-		apu.p1Env.start = true;
-	}
-	else if(reg == 4)
-	{
-		apu.p2Env.vol = val&0xF;
-		apu.p2seq = pulseSeqs[val>>6];
-		apu.p2Env.constant = ((val&PULSE_CONST_V) != 0);
-		apu.p2Env.loop = apu.p2haltloop = ((val&PULSE_HALT_LOOP) != 0);
-		if(apu.freq2 > 8 && (apu.freq2 < 0x7FF))
-			apu.p2Sweep.mute = false; //to be safe
-	}
-	else if(reg == 5)
-	{
-		//printf("P2 sweep %02x\n", val);
-		apu.p2Sweep.enabled = ((val&0x80) != 0);
-		apu.p2Sweep.shift = val&7;
-		apu.p2Sweep.period = (val>>4)&7;
-		apu.p2Sweep.negative = ((val&0x8) != 0);
-		apu.p2Sweep.start = true;
-		if(apu.freq2 > 8 && (apu.freq2 < 0x7FF))
-			apu.p2Sweep.mute = false; //to be safe
-		doSweepLogic(&apu.p2Sweep, &apu.freq2);
-	}
-	else if(reg == 6)
-	{
-		//printf("P2 time low %02x\n", val);
-		apu.freq2 = ((apu.freq2&~0xFF) | val);
-		if(apu.freq2 > 8 && (apu.freq2 < 0x7FF))
-			apu.p2Sweep.mute = false; //to be safe
-	}
-	else if(reg == 7)
-	{
-		apu.p2Cycle = 0;
-		if(apu.reg[0x15] & P2_ENABLE)
-			apu.p2LengthCtr = apu.lengthLookupTbl[val>>3];
-		apu.freq2 = (apu.freq2&0xFF) | ((val&7)<<8);
-		if(apu.freq2 > 8 && (apu.freq2 < 0x7FF))
-			apu.p2Sweep.mute = false; //to be safe
-		//printf("P2 new freq %04x\n", apu.freq2);
-		apu.p2Env.start = true;
-	}
-	else if(reg == 8)
-	{
-		apu.triLinearCtr = val&0x7F;
-		apu.trihaltloop = ((val&TRI_HALT_LOOP) != 0);
-	}
-	else if(reg == 0xA)
-	{
-		apu.triFreq = ((apu.triFreq&~0xFF) | val);
-		//if(apu.triFreq < 2)
-		//	apu.triLengthCtr = 0;
-	}
-	else if(reg == 0xB)
-	{
-		if(apu.reg[0x15] & TRI_ENABLE)
-			apu.triLengthCtr = apu.lengthLookupTbl[val>>3];
-		apu.triFreq = (apu.triFreq&0xFF) | ((val&7)<<8);
-		//printf("Tri new freq %04x\n", apu.triFreq);
-		//if(apu.triFreq < 2)
-		//	apu.triLengthCtr = 0;
-		apu.trireload = true;
-	}
-	else if(reg == 0xC)
-	{
-		apu.noiseEnv.vol = val&0xF;
-		apu.noiseEnv.constant = ((val&PULSE_CONST_V) != 0);
-		apu.noiseEnv.loop = apu.noisehaltloop = ((val&PULSE_HALT_LOOP) != 0);
-	}
-	else if(reg == 0xE)
-	{
-		apu.noiseMode1 = ((val&0x80) != 0);
-		apu.noiseFreq = apu.noisePeriod[val&0xF]-1;
-	}
-	else if(reg == 0xF)
-	{
-		if(apu.reg[0x15] & NOISE_ENABLE)
-			apu.noiseLengthCtr = apu.lengthLookupTbl[val>>3];
-		apu.noiseEnv.start = true;
-	}
-	else if(reg == 0x10)
-	{
-		//printf("Set 0x10 %02x\n", val);
-		apu.dmcFreq = apu.dmcPeriod[val&0xF]-1;
-		apu.dmchaltloop = ((val&DMC_HALT_LOOP) != 0);
-		apu.dmcirqenable = ((val&DMC_IRQ_ENABLE) != 0);
-		//printf("%d\n", apu.dmcirqenable);
-		if(!apu.dmcirqenable)
-			interrupt &= ~DMC_IRQ;
-	}
-	else if(reg == 0x11)
-		apu.dmcVol = val&0x7F;
-	else if(reg == 0x12)
-		apu.dmcAddr = 0xC000+(val*64);
-	else if(reg == 0x13)
-	{
-		//printf("Set 0x13 %02x\n", val);
-		apu.dmcLen = (val*16)+1;
-	}
-	else if(reg == 0x15)
-	{
-		//printf("Set 0x15 %02x\n",val);
-		if(!(val & P1_ENABLE))
-			apu.p1LengthCtr = 0;
-		if(!(val & P2_ENABLE))
-			apu.p2LengthCtr = 0;
-		if(!(val & TRI_ENABLE))
-			apu.triLengthCtr = 0;
-		if(!(val & NOISE_ENABLE))
-			apu.noiseLengthCtr = 0;
-		if(!(val & DMC_ENABLE))
-			apu.dmcCurLen = 0;
-		else if(apu.dmcCurLen == 0)
-		{
-			apu.dmcCurAddr = apu.dmcAddr;
-			apu.dmcCurLen = apu.dmcLen;
-		}
+	(void)addr;
+	apu.reg[0] = val;
+	apu.p1Env.vol = val&0xF;
+	apu.p1seq = pulseSeqs[val>>6];
+	apu.p1Env.constant = ((val&PULSE_CONST_V) != 0);
+	apu.p1Env.loop = apu.p1haltloop = ((val&PULSE_HALT_LOOP) != 0);
+	if(apu.freq1 > 8 && (apu.freq1 < 0x7FF))
+		apu.p1Sweep.mute = false; //to be safe
+}
+void apuSetReg01(uint16_t addr, uint8_t val)
+{
+	(void)addr;
+	apu.reg[1] = val;
+	//printf("P1 sweep %02x\n", val);
+	apu.p1Sweep.enabled = ((val&0x80) != 0);
+	apu.p1Sweep.shift = val&7;
+	apu.p1Sweep.period = (val>>4)&7;
+	apu.p1Sweep.negative = ((val&0x8) != 0);
+	apu.p1Sweep.start = true;
+	if(apu.freq1 > 8 && (apu.freq1 < 0x7FF))
+		apu.p1Sweep.mute = false; //to be safe
+	doSweepLogic(&apu.p1Sweep, &apu.freq1);
+}
+void apuSetReg02(uint16_t addr, uint8_t val)
+{
+	(void)addr;
+	apu.reg[2] = val;
+	//printf("P1 time low %02x\n", val);
+	apu.freq1 = ((apu.freq1&~0xFF) | val);
+	if(apu.freq1 > 8 && (apu.freq1 < 0x7FF))
+		apu.p1Sweep.mute = false; //to be safe
+}
+void apuSetReg03(uint16_t addr, uint8_t val)
+{
+	(void)addr;
+	apu.reg[3] = val;
+	apu.p1Cycle = 0;
+	if(apu.reg[0x15] & P1_ENABLE)
+		apu.p1LengthCtr = apu.lengthLookupTbl[val>>3];
+	apu.freq1 = (apu.freq1&0xFF) | ((val&7)<<8);
+	if(apu.freq1 > 8 && (apu.freq1 < 0x7FF))
+		apu.p1Sweep.mute = false; //to be safe
+	//printf("P1 new freq %04x\n", apu.freq1);
+	apu.p1Env.start = true;
+}
+void apuSetReg04(uint16_t addr, uint8_t val)
+{
+	(void)addr;
+	apu.reg[4] = val;
+	apu.p2Env.vol = val&0xF;
+	apu.p2seq = pulseSeqs[val>>6];
+	apu.p2Env.constant = ((val&PULSE_CONST_V) != 0);
+	apu.p2Env.loop = apu.p2haltloop = ((val&PULSE_HALT_LOOP) != 0);
+	if(apu.freq2 > 8 && (apu.freq2 < 0x7FF))
+		apu.p2Sweep.mute = false; //to be safe
+}
+void apuSetReg05(uint16_t addr, uint8_t val)
+{
+	(void)addr;
+	apu.reg[5] = val;
+	//printf("P2 sweep %02x\n", val);
+	apu.p2Sweep.enabled = ((val&0x80) != 0);
+	apu.p2Sweep.shift = val&7;
+	apu.p2Sweep.period = (val>>4)&7;
+	apu.p2Sweep.negative = ((val&0x8) != 0);
+	apu.p2Sweep.start = true;
+	if(apu.freq2 > 8 && (apu.freq2 < 0x7FF))
+		apu.p2Sweep.mute = false; //to be safe
+	doSweepLogic(&apu.p2Sweep, &apu.freq2);
+}
+void apuSetReg06(uint16_t addr, uint8_t val)
+{
+	(void)addr;
+	apu.reg[6] = val;
+	//printf("P2 time low %02x\n", val);
+	apu.freq2 = ((apu.freq2&~0xFF) | val);
+	if(apu.freq2 > 8 && (apu.freq2 < 0x7FF))
+		apu.p2Sweep.mute = false; //to be safe
+}
+void apuSetReg07(uint16_t addr, uint8_t val)
+{
+	(void)addr;
+	apu.reg[7] = val;
+	apu.p2Cycle = 0;
+	if(apu.reg[0x15] & P2_ENABLE)
+		apu.p2LengthCtr = apu.lengthLookupTbl[val>>3];
+	apu.freq2 = (apu.freq2&0xFF) | ((val&7)<<8);
+	if(apu.freq2 > 8 && (apu.freq2 < 0x7FF))
+		apu.p2Sweep.mute = false; //to be safe
+	//printf("P2 new freq %04x\n", apu.freq2);
+	apu.p2Env.start = true;
+}
+void apuSetReg08(uint16_t addr, uint8_t val)
+{
+	(void)addr;
+	apu.reg[8] = val;
+	apu.triLinearCtr = val&0x7F;
+	apu.trihaltloop = ((val&TRI_HALT_LOOP) != 0);
+}
+void apuSetReg0A(uint16_t addr, uint8_t val)
+{
+	(void)addr;
+	apu.reg[0xA] = val;
+	apu.triFreq = ((apu.triFreq&~0xFF) | val);
+}
+void apuSetReg0B(uint16_t addr, uint8_t val)
+{
+	(void)addr;
+	apu.reg[0xB] = val;
+	if(apu.reg[0x15] & TRI_ENABLE)
+		apu.triLengthCtr = apu.lengthLookupTbl[val>>3];
+	apu.triFreq = (apu.triFreq&0xFF) | ((val&7)<<8);
+	//printf("Tri new freq %04x\n", apu.triFreq);
+	apu.trireload = true;
+}
+void apuSetReg0C(uint16_t addr, uint8_t val)
+{
+	(void)addr;
+	apu.reg[0xC] = val;
+	apu.noiseEnv.vol = val&0xF;
+	apu.noiseEnv.constant = ((val&PULSE_CONST_V) != 0);
+	apu.noiseEnv.loop = apu.noisehaltloop = ((val&PULSE_HALT_LOOP) != 0);
+}
+void apuSetReg0E(uint16_t addr, uint8_t val)
+{
+	(void)addr;
+	apu.reg[0xE] = val;
+	apu.noiseMode1 = ((val&0x80) != 0);
+	apu.noiseFreq = apu.noisePeriod[val&0xF]-1;
+}
+void apuSetReg0F(uint16_t addr, uint8_t val)
+{
+	(void)addr;
+	apu.reg[0xF] = val;
+	if(apu.reg[0x15] & NOISE_ENABLE)
+		apu.noiseLengthCtr = apu.lengthLookupTbl[val>>3];
+	apu.noiseEnv.start = true;
+}
+void apuSetReg10(uint16_t addr, uint8_t val)
+{
+	(void)addr;
+	apu.reg[0x10] = val;
+	//printf("Set 0x10 %02x\n", val);
+	apu.dmcFreq = apu.dmcPeriod[val&0xF]-1;
+	apu.dmchaltloop = ((val&DMC_HALT_LOOP) != 0);
+	apu.dmcirqenable = ((val&DMC_IRQ_ENABLE) != 0);
+	//printf("%d\n", apu.dmcirqenable);
+	if(!apu.dmcirqenable)
 		interrupt &= ~DMC_IRQ;
-	}
-	else if(reg == 0x17)
+}
+void apuSetReg11(uint16_t addr, uint8_t val)
+{
+	(void)addr;
+	apu.reg[0x11] = val;
+	apu.dmcVol = val&0x7F;
+}
+void apuSetReg12(uint16_t addr, uint8_t val)
+{
+	(void)addr;
+	apu.reg[0x12] = val;
+	apu.dmcAddr = 0xC000+(val*64);
+}
+void apuSetReg13(uint16_t addr, uint8_t val)
+{
+	(void)addr;
+	apu.reg[0x13] = val;
+	//printf("Set 0x13 %02x\n", val);
+	apu.dmcLen = (val*16)+1;
+}
+void apuSetReg15(uint16_t addr, uint8_t val)
+{
+	(void)addr;
+	apu.reg[0x15] = val;
+	//printf("Set 0x15 %02x\n",val);
+	if(!(val & P1_ENABLE))
+		apu.p1LengthCtr = 0;
+	if(!(val & P2_ENABLE))
+		apu.p2LengthCtr = 0;
+	if(!(val & TRI_ENABLE))
+		apu.triLengthCtr = 0;
+	if(!(val & NOISE_ENABLE))
+		apu.noiseLengthCtr = 0;
+	if(!(val & DMC_ENABLE))
+		apu.dmcCurLen = 0;
+	else if(apu.dmcCurLen == 0)
 	{
-		apu.enable_irq = ((val&(1<<6)) == 0);
-		if(!apu.enable_irq)
-		{
-			apu.irq = 0;
-			interrupt &= ~APU_IRQ;
-		}
-		apu.new_mode5 = ((val&(1<<7)) != 0);
-		//printf("Set 0x17 %d %d\n", apu.enable_irq, apu.new_mode5);
-		apu.mode_change = true;
+		apu.dmcCurAddr = apu.dmcAddr;
+		apu.dmcCurLen = apu.dmcLen;
 	}
+	interrupt &= ~DMC_IRQ;
+}
+void apuSetReg17(uint16_t addr, uint8_t val)
+{
+	(void)addr;
+	apu.reg[0x17] = val;
+	apu.enable_irq = ((val&(1<<6)) == 0);
+	if(!apu.enable_irq)
+	{
+		apu.irq = 0;
+		interrupt &= ~APU_IRQ;
+	}
+	apu.new_mode5 = ((val&(1<<7)) != 0);
+	//printf("Set 0x17 %d %d\n", apu.enable_irq, apu.new_mode5);
+	apu.mode_change = true;
 }
 
-uint8_t apuGet8(uint8_t reg)
+uint8_t apuGetReg15(uint16_t addr)
 {
-	//printf("%08x\n", reg);
-	if(reg == 0x15)
-	{
-		uint8_t intrflags = ((apu.irq<<6) | ((!!(interrupt&DMC_IRQ))<<7));
-		uint8_t apuretval = ((apu.p1LengthCtr > 0) | ((apu.p2LengthCtr > 0)<<1) | ((apu.triLengthCtr > 0)<<2) | ((apu.noiseLengthCtr > 0)<<3) | ((apu.dmcCurLen > 0)<<4) | intrflags);
-		//printf("Get 0x15 %02x\n",apuretval);
-		interrupt &= ~APU_IRQ;
-		apu.irq = 0;
-		return apuretval;
-	}
-	return apu.reg[reg];
+	(void)addr;
+	uint8_t intrflags = ((apu.irq<<6) | ((!!(interrupt&DMC_IRQ))<<7));
+	uint8_t apuretval = ((apu.p1LengthCtr > 0) | ((apu.p2LengthCtr > 0)<<1) | ((apu.triLengthCtr > 0)<<2) | ((apu.noiseLengthCtr > 0)<<3) | ((apu.dmcCurLen > 0)<<4) | intrflags);
+	//printf("Get 0x15 %02x\n",apuretval);
+	interrupt &= ~APU_IRQ;
+	apu.irq = 0;
+	return apuretval;
+}
+
+void apuBoot()
+{
+	apuSetReg15(0x15,0);
+	apuSetReg17(0x17,0);
+}
+
+void apuReset()
+{
+	apuSetReg15(0x15,0);
+	interrupt &= ~APU_IRQ;
+	apu.irq = 0;
+	apu.mode_change = true;
 }
 
 uint8_t *apuGetBuf()
@@ -922,6 +957,7 @@ uint32_t apuGetFrequency()
 	return apu.Frequency;
 }
 
+extern bool emuSkipFrame;
 bool apuUpdate()
 {
 #ifdef __LIBRETRO__

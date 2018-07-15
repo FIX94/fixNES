@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 FIX94
+ * Copyright (C) 2017 - 2018 FIX94
  *
  * This software may be modified and distributed under the terms
  * of the MIT license.  See the LICENSE file for details.
@@ -12,6 +12,7 @@
 #include <string.h>
 #include "audio_n163.h"
 #include "audio.h"
+#include "mapper.h"
 #include "mem.h"
 #include "cpu.h"
 #include "apu.h"
@@ -80,36 +81,34 @@ void n163AudioClockTimers()
 	}
 }
 
-void n163AudioSet8(uint16_t addr, uint8_t val)
+void n163AudioSet8_48XX(uint16_t addr, uint8_t val)
 {
-	//printf("n163AudioSet8 %04x %02x\n", addr, val);
-	if(addr >= 0xF800)
+	(void)addr;
+	//printf("n163AudioSet8_48XX %04x %02x\n", addr, val);
+	n163Buf[n163CurAddr] = val;
+	if(n163_addrInc)
 	{
-		n163CurAddr = val&0x7F;
-		n163_addrInc = ((val&0x80)!=0);
-	}
-	else if(addr >= 0x4800 && addr < 0x5000)
-	{
-		n163Buf[n163CurAddr] = val;
-		if(n163_addrInc)
-		{
-			n163CurAddr++;
-			n163CurAddr&=0x7F;
-		}
+		n163CurAddr++;
+		n163CurAddr&=0x7F;
 	}
 }
 
-uint8_t n163AudioGet8(uint16_t addr, uint8_t val)
+void n163AudioSet8_F8XX(uint16_t addr, uint8_t val)
 {
-	if(addr >= 0x4800 && addr < 0x5000)
+	(void)addr;
+	//printf("n163AudioSet8_F8XX %04x %02x\n", addr, val);
+	n163CurAddr = val&0x7F;
+	n163_addrInc = ((val&0x80)!=0);
+}
+
+uint8_t n163AudioGet8_48XX(uint16_t addr)
+{
+	(void)addr;
+	uint8_t val = n163Buf[n163CurAddr];
+	if(n163_addrInc)
 	{
-		val = n163Buf[n163CurAddr];
-		if(n163_addrInc)
-		{
-			n163CurAddr++;
-			n163CurAddr&=0x7F;
-		}
+		n163CurAddr++;
+		n163CurAddr&=0x7F;
 	}
-	//printf("n163AudioGet8 %04x %02x\n", addr, val);
 	return val;
 }

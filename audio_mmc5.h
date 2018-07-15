@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 FIX94
+ * Copyright (C) 2017 - 2018 FIX94
  *
  * This software may be modified and distributed under the terms
  * of the MIT license.  See the LICENSE file for details.
@@ -13,8 +13,8 @@
 void mmc5AudioInit();
 FIXNES_NOINLINE void mmc5AudioCycle();
 void mmc5AudioClockTimers();
-void mmc5AudioSet8(uint8_t reg, uint8_t val);
-uint8_t mmc5AudioGet8(uint8_t reg);
+void mmc5AudioSet8(uint16_t addr, uint8_t val);
+uint8_t mmc5AudioGet8(uint16_t addr);
 FIXNES_NOINLINE void mmc5AudioLenCycle();
 void mmc5AudioPCMWrite(uint8_t val);
 

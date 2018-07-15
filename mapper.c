@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 FIX94
+ * Copyright (C) 2017 - 2018 FIX94
  *
  * This software may be modified and distributed under the terms
  * of the MIT license.  See the LICENSE file for details.
@@ -14,17 +14,13 @@
 #include "mapper_h/fds.h"
 #include "mapper_h/m32.h"
 #include "mapper_h/p16c8.h"
+#include "mapper_h/common.h"
 #include "ppu.h"
+#include "mem.h"
 
-get8FuncT mapperGet8;
-set8FuncT mapperSet8;
-chrGet8FuncT mapperChrGet8;
-chrSet8FuncT mapperChrSet8;
-vramGet8FuncT mapperVramGet8;
-vramSet8FuncT mapperVramSet8;
 cycleFuncT mapperCycle;
+resetFuncT mapperReset;
 uint8_t mapperChrMode;
-bool mapperUse78A = false;
 
 static void mapperNone() { };
 
@@ -35,45 +31,51 @@ bool mapperInit(uint8_t mapper, uint8_t *prgROM, uint32_t prgROMsize, uint8_t *p
 		printf("Unsupported Mapper %i!\n", mapper);
 		return false;
 	}
+	memInitGetSetPointers(); //pre-set get8/set8
 	mapperList[mapper].initF(prgROM, prgROMsize, prgRAM, prgRAMsize, chrROM, chrROMsize);
-	mapperGet8 = mapperList[mapper].get8F;
-	mapperSet8 = mapperList[mapper].set8F;
-	mapperChrGet8 = mapperList[mapper].chrGet8F;
-	mapperChrSet8 = mapperList[mapper].chrSet8F;
+	uint32_t addr;
+	for(addr = 0; addr < 0x4000; addr++)
+	{
+		mapperList[mapper].initPPUGet8F(addr);
+		mapperList[mapper].initPPUSet8F(addr);
+	}
+	for(addr = 0x4000; addr < 0x10000; addr++)
+	{
+		mapperList[mapper].initGet8F(addr);
+		mapperList[mapper].initSet8F(addr);
+	}
 	//just have something assigned
 	if(mapperList[mapper].cycleFuncF == NULL)
 		mapperCycle = mapperNone;
 	else
 		mapperCycle = mapperList[mapper].cycleFuncF;
-	//some mappers re-route VRAM
-	if(mapperList[mapper].vramGet8F == NULL)
-		mapperVramGet8 = ppuVRAMGet8;
+	//just have something assigned
+	if(mapperList[mapper].resetFuncF == NULL)
+		mapperReset = mapperNone;
 	else
-		mapperVramGet8 = mapperList[mapper].vramGet8F;
-	if(mapperList[mapper].vramSet8F == NULL)
-		mapperVramSet8 = ppuVRAMSet8;
-	else
-		mapperVramSet8 = mapperList[mapper].vramSet8F;
-	//Holy Diver Hack
-	if(mapper == 78 && mapperUse78A)
-	{
-		printf("Using Holy Diver Variant for Mapper 78\n");
-		mapperSet8 = m78a_set8;
-	}
+		mapperReset = mapperList[mapper].resetFuncF;
 	mapperChrMode = 0;
 	return true;
 }
 
 bool mapperInitNSF(uint8_t *nsfBIN, uint32_t nsfBINsize, uint8_t *prgRAM, uint32_t prgRAMsize)
 {
+	memInitGetSetPointers(); //pre-set get8/set8
 	nsfinit(nsfBIN, nsfBINsize, prgRAM, prgRAMsize);
-	mapperGet8 = nsfget8;
-	mapperSet8 = nsfset8;
-	mapperChrGet8 = nsfchrGet8;
-	mapperChrSet8 = nsfchrSet8;
+	uint32_t addr;
+	//common CHR RAM for NSF
+	for(addr = 0; addr < 0x4000; addr++)
+	{
+		chr8initPPUGet8(addr);
+		chr8initPPUSet8(addr);
+	}
+	for(addr = 0x4000; addr < 0x10000; addr++)
+	{
+		nsfinitGet8(addr);
+		nsfinitSet8(addr);
+	}
 	mapperCycle = nsfcycle;
-	mapperVramGet8 = ppuVRAMGet8;
-	mapperVramSet8 = ppuVRAMSet8;
+	mapperReset = mapperNone;
 	mapperChrMode = 0;
 	return true;
 }
@@ -111,14 +113,22 @@ bool mapperInitFDS(uint8_t *fdsFile, bool fdsSideB, uint8_t *prgRAM, uint32_t pr
 	}
 	fread(fdsBIOS, 1, 0x2000, f);
 	fclose(f);
+	memInitGetSetPointers(); //pre-set get8/set8
 	fdsinit(fdsBIOS, fsize, fdsFile, fdsSideB, prgRAM, prgRAMsize);
-	mapperGet8 = fdsget8;
-	mapperSet8 = fdsset8;
-	mapperChrGet8 = fdschrGet8;
-	mapperChrSet8 = fdschrSet8;
-	mapperVramGet8 = ppuVRAMGet8;
-	mapperVramSet8 = ppuVRAMSet8;
+	uint32_t addr;
+	//common CHR RAM for FDS
+	for(addr = 0; addr < 0x4000; addr++)
+	{
+		chr8initPPUGet8(addr);
+		chr8initPPUSet8(addr);
+	}
+	for(addr = 0x4000; addr < 0x10000; addr++)
+	{
+		fdsinitGet8(addr);
+		fdsinitSet8(addr);
+	}
 	mapperCycle = fdscycle;
+	mapperReset = mapperNone;
 	mapperChrMode = 0;
 	return true;
 }

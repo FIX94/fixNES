@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 FIX94
+ * Copyright (C) 2017 - 2018 FIX94
  *
  * This software may be modified and distributed under the terms
  * of the MIT license.  See the LICENSE file for details.
@@ -14,7 +14,7 @@ void cpuStartPlayNSF();
 void cpuEndPlayNSF();
 void cpuSoftReset();
 bool cpuCycle();
-void cpuDoOAM_DMA(uint16_t addr);
+void cpuDoOAM_DMA(uint16_t addr, uint8_t val);
 void cpuDoDMC_DMA(uint16_t addr);
 bool cpuInDMC_DMA();
 uint16_t cpuGetPc();
@@ -25,6 +25,7 @@ uint16_t cpuGetPc();
 #define FDS_IRQ (1<<3)
 #define FDS_TRANSFER_IRQ (1<<4)
 #define MMC5_DMC_IRQ (1<<5)
+#define PPU_NMI (1<<6) //not maskable of course
 #define IRQ_MASK (MAPPER_IRQ | APU_IRQ | DMC_IRQ | FDS_IRQ | FDS_TRANSFER_IRQ | MMC5_DMC_IRQ)
 
 #endif

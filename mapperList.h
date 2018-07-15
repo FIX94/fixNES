@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 FIX94
+ * Copyright (C) 2017 - 2018 FIX94
  *
  * This software may be modified and distributed under the terms
  * of the MIT license.  See the LICENSE file for details.
@@ -10,13 +10,12 @@
 
 typedef struct _mapperList_t {
 	initFuncT initF;
-	get8FuncT get8F;
-	set8FuncT set8F;
-	chrGet8FuncT chrGet8F;
-	chrSet8FuncT chrSet8F;
-	vramGet8FuncT vramGet8F;
-	vramSet8FuncT vramSet8F;
+	initGet8FuncT initGet8F;
+	initSet8FuncT initSet8F;
+	initPPUGet8FuncT initPPUGet8F;
+	initPPUSet8FuncT initPPUSet8F;
 	cycleFuncT cycleFuncF;
+	resetFuncT resetFuncF;
 } mapperList_t;
 
 extern mapperList_t mapperList[256];

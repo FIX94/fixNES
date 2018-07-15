@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 FIX94
+ * Copyright (C) 2017 - 2018 FIX94
  *
  * This software may be modified and distributed under the terms
  * of the MIT license.  See the LICENSE file for details.
@@ -11,15 +11,21 @@
 void m206init(uint8_t *prgROM, uint32_t prgROMsize, 
 			uint8_t *prgRAM, uint32_t prgRAMsize,
 			uint8_t *chrROM, uint32_t chrROMsize);
-uint8_t m112get8(uint16_t addr, uint8_t val);
-uint8_t m206get8(uint16_t addr, uint8_t val);
-void m95set8(uint16_t addr, uint8_t val);
-void m112set8(uint16_t addr, uint8_t val);
-void m154set8(uint16_t addr, uint8_t val);
-void m206set8(uint16_t addr, uint8_t val);
-uint8_t m76chrGet8(uint16_t addr);
-uint8_t m88chrGet8(uint16_t addr);
-uint8_t m206chrGet8(uint16_t addr);
-void m206chrSet8(uint16_t addr, uint8_t val);
+void m95init(uint8_t *prgROM, uint32_t prgROMsize, 
+			uint8_t *prgRAM, uint32_t prgRAMsize,
+			uint8_t *chrROM, uint32_t chrROMsize);
+void m112init(uint8_t *prgROM, uint32_t prgROMsize, 
+			uint8_t *prgRAM, uint32_t prgRAMsize,
+			uint8_t *chrROM, uint32_t chrROMsize);
+void m112initGet8(uint16_t addr);
+void m76initSet8(uint16_t addr);
+void m88initSet8(uint16_t addr);
+void m95initSet8(uint16_t addr);
+void m112initSet8(uint16_t addr);
+void m154initSet8(uint16_t addr);
+void m206initSet8(uint16_t addr);
+void m76initChrGet8(uint16_t addr);
+void m206initChrGet8(uint16_t addr);
+void m206initChrSet8(uint16_t addr);
 
 #endif

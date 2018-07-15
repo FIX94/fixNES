@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 FIX94
+ * Copyright (C) 2017 - 2018 FIX94
  *
  * This software may be modified and distributed under the terms
  * of the MIT license.  See the LICENSE file for details.
@@ -13,6 +13,7 @@
 #include "apu.h"
 #include "audio_fds.h"
 #include "audio.h"
+#include "mapper.h"
 #include "mem.h"
 #include "cpu.h"
 
@@ -225,114 +226,117 @@ FIXNES_NOINLINE void fdsAudioMasterUpdate()
 	}
 }
 
-void fdsAudioSet8(uint8_t reg, uint8_t val)
+void fdsAudioSet8(uint16_t addr, uint8_t val)
 {
-	if(reg == 0)
+	switch(addr&0xF)
 	{
-		fds_apu.volEnvEnabled = ((val&0x80) == 0);
-		fds_apu.volEnvMode = ((val&0x40) != 0);
-		fds_apu.volEnvSpeed = val&0x3F; //always set speed
-		if(!fds_apu.volEnvEnabled) //only set gain when unit is disabled
-			fds_apu.volEnvGain = val&0x3F;
-		fdsUpdateClockRates(); //always resets clock
-		fds_apu.curVolEnvClock = fds_apu.volEnvClock;
-	}
-	else if(reg == 2)
-		fds_apu.freq = ((fds_apu.freq&~0xFF) | val);
-	else if(reg == 3)
-	{
-		fds_apu.masterEnable = ((val&0x80) == 0);
-		fds_apu.freq = (fds_apu.freq&0xFF) | ((val&0xF)<<8);
-		if(fds_apu.freq == 0)
-			fds_apu.masterEnable = false;
-		if(!fds_apu.masterEnable)
-		{
-			//disabling resets clock and wave pos
-			fds_apu.curMasterClock = 0;
-			fds_apu.curWavePos = 0;
-			fds_apu.curWave = fds_apu.wave[fds_apu.curWavePos];
-		}
-		fds_apu.envMasterEnable = ((val&0x40) == 0);
-		if(!fds_apu.envMasterEnable)
-		{
-			//disabling resets both env clocks
+		case 0:
+			fds_apu.volEnvEnabled = ((val&0x80) == 0);
+			fds_apu.volEnvMode = ((val&0x40) != 0);
+			fds_apu.volEnvSpeed = val&0x3F; //always set speed
+			if(!fds_apu.volEnvEnabled) //only set gain when unit is disabled
+				fds_apu.volEnvGain = val&0x3F;
+			fdsUpdateClockRates(); //always resets clock
 			fds_apu.curVolEnvClock = fds_apu.volEnvClock;
+			break;
+		case 2:
+			fds_apu.freq = ((fds_apu.freq&~0xFF) | val);
+			break;
+		case 3:
+			fds_apu.masterEnable = ((val&0x80) == 0);
+			fds_apu.freq = (fds_apu.freq&0xFF) | ((val&0xF)<<8);
+			if(fds_apu.freq == 0)
+				fds_apu.masterEnable = false;
+			if(!fds_apu.masterEnable)
+			{
+				//disabling resets clock and wave pos
+				fds_apu.curMasterClock = 0;
+				fds_apu.curWavePos = 0;
+				fds_apu.curWave = fds_apu.wave[fds_apu.curWavePos];
+			}
+			fds_apu.envMasterEnable = ((val&0x40) == 0);
+			if(!fds_apu.envMasterEnable)
+			{
+				//disabling resets both env clocks
+				fds_apu.curVolEnvClock = fds_apu.volEnvClock;
+				fds_apu.curSweepClock = fds_apu.sweepClock;
+			}
+			break;
+		case 4:
+			fds_apu.sweepEnabled = ((val&0x80) == 0);
+			fds_apu.sweepMode = ((val&0x40) != 0);
+			fds_apu.sweepSpeed = val&0x3F; //always set speed
+			if(!fds_apu.sweepEnabled) //only set gain when unit is disabled
+				fds_apu.sweepModGain = val&0x3F;
+			fdsUpdateClockRates(); //always resets clock
 			fds_apu.curSweepClock = fds_apu.sweepClock;
-		}
-	}
-	else if(reg == 4)
-	{
-		fds_apu.sweepEnabled = ((val&0x80) == 0);
-		fds_apu.sweepMode = ((val&0x40) != 0);
-		fds_apu.sweepSpeed = val&0x3F; //always set speed
-		if(!fds_apu.sweepEnabled) //only set gain when unit is disabled
-			fds_apu.sweepModGain = val&0x3F;
-		fdsUpdateClockRates(); //always resets clock
-		fds_apu.curSweepClock = fds_apu.sweepClock;
-	}
-	else if(reg == 5)
-	{
-		fds_apu.modCounter = (val&0x7F);
-		if(val&0x40) //7-bit signed
-			fds_apu.modCounter |= 0x80;
-		else
-			fds_apu.modCounter &= ~0x80;
-	}
-	else if(reg == 6)
-		fds_apu.modFreq = ((fds_apu.modFreq&~0xFF) | val);
-	else if(reg == 7)
-	{
-		fds_apu.modEnabled = ((val&0x80) == 0);
-		fds_apu.modFreq = (fds_apu.modFreq&0xFF) | ((val&0xF)<<8);
-		if(fds_apu.modFreq == 0)
-			fds_apu.modEnabled = false;
-		if(!fds_apu.modEnabled)
-		{
-			//disabling resets clock 
-			fds_apu.curModClock = 0;
-			//make sure to clear old change too
-			fds_apu.modChange = 0;
-		}
-	}
-	else if(reg == 8)
-	{
-		if(!fds_apu.modEnabled)
-		{
-			fds_apu.modulation[fds_apu.curModPos] = val;
-			fds_apu.curModPos++; fds_apu.curModPos&=0x3F;
-			fds_apu.modulation[fds_apu.curModPos] = val;
-			fds_apu.curModPos++; fds_apu.curModPos&=0x3F;
-		}
-	}
-	else if(reg == 9)
-	{
-		fds_apu.wavWrite = ((val&0x80) != 0);
-		fds_apu.masterVol = val&3;
-	}
-	else if(reg == 0xA)
-	{
-		fds_apu.envSpeed = val;
-		fdsUpdateClockRates();
+			break;
+		case 5:
+			fds_apu.modCounter = (val&0x7F);
+			if(val&0x40) //7-bit signed
+				fds_apu.modCounter |= 0x80;
+			else
+				fds_apu.modCounter &= ~0x80;
+			break;
+		case 6:
+			fds_apu.modFreq = ((fds_apu.modFreq&~0xFF) | val);
+			break;
+		case 7:
+			fds_apu.modEnabled = ((val&0x80) == 0);
+			fds_apu.modFreq = (fds_apu.modFreq&0xFF) | ((val&0xF)<<8);
+			if(fds_apu.modFreq == 0)
+				fds_apu.modEnabled = false;
+			if(!fds_apu.modEnabled)
+			{
+				//disabling resets clock 
+				fds_apu.curModClock = 0;
+				//make sure to clear old change too
+				fds_apu.modChange = 0;
+			}
+			break;
+		case 8:
+			if(!fds_apu.modEnabled)
+			{
+				fds_apu.modulation[fds_apu.curModPos] = val;
+				fds_apu.curModPos++; fds_apu.curModPos&=0x3F;
+				fds_apu.modulation[fds_apu.curModPos] = val;
+				fds_apu.curModPos++; fds_apu.curModPos&=0x3F;
+			}
+			break;
+		case 9:
+			fds_apu.wavWrite = ((val&0x80) != 0);
+			fds_apu.masterVol = val&3;
+			break;
+		case 0xA:
+			fds_apu.envSpeed = val;
+			fdsUpdateClockRates();
+			break;
+		default:
+			break;
 	}
 }
 
-uint8_t fdsAudioGet8(uint8_t reg)
+uint8_t fdsAudioGetReg90(uint16_t addr)
 {
-	if(reg == 0)
-		return fds_apu.volEnvGain|0x40;
-	else if(reg == 2)
-		return fds_apu.sweepModGain|0x40;
-	return 0;
+	(void)addr;
+	return fds_apu.volEnvGain|0x40;
 }
 
-void fdsAudioSetWave(uint8_t pos, uint8_t val)
+uint8_t fdsAudioGetReg92(uint16_t addr)
+{
+	(void)addr;
+	return fds_apu.sweepModGain|0x40;
+}
+
+
+void fdsAudioSetWave(uint16_t addr, uint8_t val)
 {
 	if(!fds_apu.wavWrite)
 		return;
-	fds_apu.wave[pos] = val;
+	fds_apu.wave[addr&0x3F] = val;
 }
 
-uint8_t fdsAudioGetWave(uint8_t pos)
+uint8_t fdsAudioGetWave(uint16_t addr)
 {
-	return fds_apu.wave[pos];
+	return fds_apu.wave[addr&0x3F];
 }

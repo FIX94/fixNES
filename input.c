@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 FIX94
+ * Copyright (C) 2017 - 2018 FIX94
  *
  * This software may be modified and distributed under the terms
  * of the MIT license.  See the LICENSE file for details.
@@ -23,8 +23,9 @@ void inputInit()
 	memset(inValReads, 0, 8);
 }
 
-void inputSet(uint8_t in)
+void inputSet(uint16_t addr, uint8_t in)
 {
+	(void)addr;
 	inPollMode = in;
 	#if DEBUG_INPUT
 	printf("Set %02x\n",in);
@@ -33,8 +34,10 @@ void inputSet(uint8_t in)
 		inPos = 0;
 }
 
-uint8_t inputGet()
+extern uint8_t memLastVal;
+uint8_t inputGetP1(uint16_t addr)
 {
+	(void)addr;
 	uint8_t ret = 1;
 	if(inPollMode&1)
 		ret = inValReads[BUTTON_A];
@@ -55,5 +58,13 @@ uint8_t inputGet()
 		printf("keeps reading\n");
 		#endif
 	}
-	return (ret&1);
+	return (memLastVal&(~0x1F))|(ret&1);
+}
+
+extern uint8_t memLastVal;
+uint8_t inputGetP2(uint16_t addr)
+{
+	(void)addr;
+	//no player 2 set up yet
+	return (memLastVal&(~0x1F));
 }

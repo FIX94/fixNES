@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 FIX94
+ * Copyright (C) 2017 - 2018 FIX94
  *
  * This software may be modified and distributed under the terms
  * of the MIT license.  See the LICENSE file for details.
@@ -25,9 +25,30 @@ void apuWriteDMCBuf(uint8_t val);
 uint8_t *apuGetBuf();
 uint32_t apuGetBufSize();
 uint32_t apuGetFrequency();
-void apuSet8(uint8_t reg, uint8_t val);
-uint8_t apuGet8(uint8_t reg);
+void apuSetReg00(uint16_t addr, uint8_t val);
+void apuSetReg01(uint16_t addr, uint8_t val);
+void apuSetReg02(uint16_t addr, uint8_t val);
+void apuSetReg03(uint16_t addr, uint8_t val);
+void apuSetReg04(uint16_t addr, uint8_t val);
+void apuSetReg05(uint16_t addr, uint8_t val);
+void apuSetReg06(uint16_t addr, uint8_t val);
+void apuSetReg07(uint16_t addr, uint8_t val);
+void apuSetReg08(uint16_t addr, uint8_t val);
+void apuSetReg0A(uint16_t addr, uint8_t val);
+void apuSetReg0B(uint16_t addr, uint8_t val);
+void apuSetReg0C(uint16_t addr, uint8_t val);
+void apuSetReg0E(uint16_t addr, uint8_t val);
+void apuSetReg0F(uint16_t addr, uint8_t val);
+void apuSetReg10(uint16_t addr, uint8_t val);
+void apuSetReg11(uint16_t addr, uint8_t val);
+void apuSetReg12(uint16_t addr, uint8_t val);
+void apuSetReg13(uint16_t addr, uint8_t val);
+void apuSetReg15(uint16_t addr, uint8_t val);
+void apuSetReg17(uint16_t addr, uint8_t val);
+uint8_t apuGetReg15(uint16_t addr);
 bool apuUpdate();
+void apuBoot();
+void apuReset();
 
 typedef struct _envelope_t {
 	bool start;
