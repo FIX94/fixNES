@@ -121,8 +121,10 @@ void nsfinit(uint8_t *nsfBIN, uint32_t nsfBINsize, uint8_t *prgRAMin, uint32_t p
 			nsf.bankEnable = true;
 	}
 	if(nsf.bankEnable) nsf.loadAddr &= 0xFFF;
-	nsf.curTrack = 1;
 	nsf.trackTotal = nsfBIN[6];
+	nsf.curTrack = nsfBIN[7];
+	if(nsf.curTrack > nsf.trackTotal)
+		nsf.curTrack = 1;
 	memset(nsf.prevValReads, 0, 8);
 	printf("NSF Player inited in %s Mode (VRC6 %s, VRC7 %s, FDS %s, MMC5 %s, N163 %s, S5B %s) %s banking\n", nesPAL ? "PAL" : "NTSC", 
 		onOff(audioExpansion&EXP_VRC6), onOff(audioExpansion&EXP_VRC7), onOff(audioExpansion&EXP_FDS), onOff(audioExpansion&EXP_MMC5),
