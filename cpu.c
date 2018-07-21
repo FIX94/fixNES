@@ -25,6 +25,9 @@
 #define P_FLAG_OVERFLOW (1<<6)
 #define P_FLAG_NEGATIVE (1<<7)
 
+#define CPU_OAM_DMA (1<<0)
+#define CPU_DMC_DMA (1<<1)
+
 extern bool nesPause;
 
 //used externally
@@ -41,12 +44,11 @@ static struct {
 	uint8_t instr;
 	uint8_t irq;
 	uint8_t irqMask;
+	uint8_t dma;
 	bool boot;
 	bool reset;
 	bool needsIndFix;
 	bool allow_update_irq;
-	bool oam_dma;
-	bool dmc_dma;
 	bool currently_dma;
 	bool oam_ready;
 	bool dmc_dma_dummyread;
@@ -84,8 +86,7 @@ void cpuInit()
 	cpu.instr = 0;
 	cpu.irq = 0;
 	cpu.irqMask = 0;
-	cpu.oam_dma = false;
-	cpu.dmc_dma = false;
+	cpu.dma = 0;
 	cpu.currently_dma = false;
 	cpu.oam_ready = false;
 	cpu.dmc_dma_dummyread = false;
@@ -108,7 +109,7 @@ void cpuInit()
 	nsf_endPlayback = false;
 }
 
-static void setRegStats(uint8_t reg)
+FIXNES_ALWAYSINLINE inline static void setRegStats(uint8_t reg)
 {
 	if(reg == 0)
 	{
@@ -125,7 +126,7 @@ static void setRegStats(uint8_t reg)
 	}
 }
 
-static void cpuSetARRRegs()
+FIXNES_ALWAYSINLINE inline static void cpuSetARRRegs()
 {
 	if((cpu.a & ((1<<5) | (1<<6))) == ((1<<5) | (1<<6)))
 	{
@@ -151,25 +152,25 @@ static void cpuSetARRRegs()
 
 /* Helper functions for updating reg sets */
 
-static inline void cpuSetA(uint8_t val)
+FIXNES_ALWAYSINLINE inline static void cpuSetA(uint8_t val)
 {
 	cpu.a = val;
 	setRegStats(cpu.a);
 }
 
-static inline void cpuSetX(uint8_t val)
+FIXNES_ALWAYSINLINE inline static void cpuSetX(uint8_t val)
 {
 	cpu.x = val;
 	setRegStats(cpu.x);
 }
 
-static inline void cpuSetY(uint8_t val)
+FIXNES_ALWAYSINLINE inline static void cpuSetY(uint8_t val)
 {
 	cpu.y = val;
 	setRegStats(cpu.y);
 }
 
-static inline uint8_t cpuSetTMP(uint8_t val)
+FIXNES_ALWAYSINLINE inline static uint8_t cpuSetTMP(uint8_t val)
 {
 	setRegStats(val);
 	return val;
@@ -177,25 +178,25 @@ static inline uint8_t cpuSetTMP(uint8_t val)
 
 /* Various Instructions used multiple times */
 
-static inline void cpuAND()
+FIXNES_ALWAYSINLINE inline static void cpuAND()
 {
 	cpu.a &= cpu.tmp;
 	setRegStats(cpu.a);
 }
 
-static inline void cpuORA()
+FIXNES_ALWAYSINLINE inline static void cpuORA()
 {
 	cpu.a |= cpu.tmp;
 	setRegStats(cpu.a);
 }
 
-static inline void cpuEOR()
+FIXNES_ALWAYSINLINE inline static void cpuEOR()
 {
 	cpu.a ^= cpu.tmp;
 	setRegStats(cpu.a);
 }
 
-static uint8_t cpuASL(uint8_t val)
+FIXNES_ALWAYSINLINE inline static uint8_t cpuASL(uint8_t val)
 {
 	if(val & (1<<7))
 		cpu.p |= P_FLAG_CARRY;
@@ -206,10 +207,10 @@ static uint8_t cpuASL(uint8_t val)
 	return val;
 }
 
-static void cpuASLa() { cpuSetA(cpuASL(cpu.a)); };
-static void cpuASLt() { cpu.tmp = cpuASL(cpu.tmp); };
+FIXNES_ALWAYSINLINE inline static void cpuASLa() { cpuSetA(cpuASL(cpu.a)); };
+FIXNES_ALWAYSINLINE inline static void cpuASLt() { cpu.tmp = cpuASL(cpu.tmp); };
 
-static uint8_t cpuLSR(uint8_t val)
+FIXNES_ALWAYSINLINE inline static uint8_t cpuLSR(uint8_t val)
 {
 	if(val & (1<<0))
 		cpu.p |= P_FLAG_CARRY;
@@ -220,10 +221,10 @@ static uint8_t cpuLSR(uint8_t val)
 	return val;
 }
 
-static void cpuLSRa() { cpuSetA(cpuLSR(cpu.a)); };
-static void cpuLSRt() { cpu.tmp = cpuLSR(cpu.tmp); };
+FIXNES_ALWAYSINLINE inline static void cpuLSRa() { cpuSetA(cpuLSR(cpu.a)); };
+FIXNES_ALWAYSINLINE inline static void cpuLSRt() { cpu.tmp = cpuLSR(cpu.tmp); };
 
-static uint8_t cpuROL(uint8_t val)
+FIXNES_ALWAYSINLINE inline static uint8_t cpuROL(uint8_t val)
 {
 	uint8_t oldP = cpu.p;
 	if(val & (1<<7))
@@ -237,10 +238,10 @@ static uint8_t cpuROL(uint8_t val)
 	return val;
 }
 
-static void cpuROLa() { cpuSetA(cpuROL(cpu.a)); };
-static void cpuROLt() { cpu.tmp = cpuROL(cpu.tmp); };
+FIXNES_ALWAYSINLINE inline static void cpuROLa() { cpuSetA(cpuROL(cpu.a)); };
+FIXNES_ALWAYSINLINE inline static void cpuROLt() { cpu.tmp = cpuROL(cpu.tmp); };
 
-static uint8_t cpuROR(uint8_t val)
+FIXNES_ALWAYSINLINE inline static uint8_t cpuROR(uint8_t val)
 {
 	uint8_t oldP = cpu.p;
 	if(val & (1<<0))
@@ -254,16 +255,16 @@ static uint8_t cpuROR(uint8_t val)
 	return val;
 }
 
-static void cpuRORa() { cpuSetA(cpuROR(cpu.a)); };
-static void cpuRORt() { cpu.tmp = cpuROR(cpu.tmp); };
+FIXNES_ALWAYSINLINE inline static void cpuRORa() { cpuSetA(cpuROR(cpu.a)); };
+FIXNES_ALWAYSINLINE inline static void cpuRORt() { cpu.tmp = cpuROR(cpu.tmp); };
 
-static void cpuKIL()
+FIXNES_ALWAYSINLINE inline static void cpuKIL()
 {
 	printf("Processor Requested Lock-Up at %04x\n", cpu.pc-1);
 	nesPause = true;
 }
 
-static void cpuADCv(uint8_t in)
+FIXNES_ALWAYSINLINE inline static void cpuADCv(uint8_t in)
 {
 	//use uint16_t here to easly detect carry
 	uint16_t res = cpu.a + in;
@@ -286,14 +287,14 @@ static void cpuADCv(uint8_t in)
 	cpuSetA(res);
 }
 
-static void cpuADC() { cpuADCv(cpu.tmp); }
+FIXNES_ALWAYSINLINE inline static void cpuADC() { cpuADCv(cpu.tmp); }
 
-static void cpuSBC() { cpuADCv(~cpu.tmp); }
+FIXNES_ALWAYSINLINE inline static void cpuSBC() { cpuADCv(~cpu.tmp); }
 
-static void cpuISC() { cpu.tmp = cpuSetTMP(cpu.tmp+1); cpuSBC(); }
+FIXNES_ALWAYSINLINE inline static void cpuISC() { cpu.tmp = cpuSetTMP(cpu.tmp+1); cpuSBC(); }
 
 
-static uint8_t cpuCMP(uint8_t reg)
+FIXNES_ALWAYSINLINE inline static uint8_t cpuCMP(uint8_t reg)
 {
 	if(reg >= cpu.tmp)
 		cpu.p |= P_FLAG_CARRY;
@@ -305,13 +306,13 @@ static uint8_t cpuCMP(uint8_t reg)
 	return cmpVal;
 }
 
-static void cpuCMPa() { cpuCMP(cpu.a); }
-static void cpuCMPx() { cpuCMP(cpu.x); }
-static void cpuCMPy() { cpuCMP(cpu.y); }
-static void cpuCMPax() { cpu.x = cpuCMP(cpu.a&cpu.x); }
-static void cpuDCP() { cpu.tmp = cpuSetTMP(cpu.tmp-1); cpuCMPa(); }
+FIXNES_ALWAYSINLINE inline static void cpuCMPa() { cpuCMP(cpu.a); }
+FIXNES_ALWAYSINLINE inline static void cpuCMPx() { cpuCMP(cpu.x); }
+FIXNES_ALWAYSINLINE inline static void cpuCMPy() { cpuCMP(cpu.y); }
+FIXNES_ALWAYSINLINE inline static void cpuCMPax() { cpu.x = cpuCMP(cpu.a&cpu.x); }
+FIXNES_ALWAYSINLINE inline static void cpuDCP() { cpu.tmp = cpuSetTMP(cpu.tmp-1); cpuCMPa(); }
 
-static void cpuBIT()
+FIXNES_ALWAYSINLINE inline static void cpuBIT()
 {
 	if((cpu.a & cpu.tmp) == 0)
 		cpu.p |= P_FLAG_ZERO;
@@ -329,20 +330,20 @@ static void cpuBIT()
 		cpu.p &= ~P_FLAG_NEGATIVE;
 }
 
-static void cpuSLO() {	cpuASLt(); cpuORA(); }
-static void cpuRLA() {	cpuROLt(); cpuAND(); }
-static void cpuSRE() { cpuLSRt(); cpuEOR(); }
-static void cpuRRA() { cpuRORt(); cpuADC(); }
-static void cpuASR() {	cpuAND(); cpuLSRa(); }
+FIXNES_ALWAYSINLINE inline static void cpuSLO() {	cpuASLt(); cpuORA(); }
+FIXNES_ALWAYSINLINE inline static void cpuRLA() {	cpuROLt(); cpuAND(); }
+FIXNES_ALWAYSINLINE inline static void cpuSRE() { cpuLSRt(); cpuEOR(); }
+FIXNES_ALWAYSINLINE inline static void cpuRRA() { cpuRORt(); cpuADC(); }
+FIXNES_ALWAYSINLINE inline static void cpuASR() {	cpuAND(); cpuLSRa(); }
 
-static void cpuARR()
+FIXNES_ALWAYSINLINE inline static void cpuARR()
 {
 	cpuAND();
 	cpuRORa();
 	cpuSetARRRegs();
 }
 
-static void cpuAAC()
+FIXNES_ALWAYSINLINE inline static void cpuAAC()
 {
 	cpuAND();
 	if(cpu.p & P_FLAG_NEGATIVE)
@@ -351,40 +352,40 @@ static void cpuAAC()
 		cpu.p &= ~P_FLAG_CARRY;
 }
 
-static void cpuCLC() { cpu.p &= ~P_FLAG_CARRY; }
-static void cpuSEC() { cpu.p |= P_FLAG_CARRY; }
+FIXNES_ALWAYSINLINE inline static void cpuCLC() { cpu.p &= ~P_FLAG_CARRY; }
+FIXNES_ALWAYSINLINE inline static void cpuSEC() { cpu.p |= P_FLAG_CARRY; }
 
-static void cpuCLI() { cpu.p_irq_req = 2; }
-static void cpuSEI() { cpu.p_irq_req = 1; }
+FIXNES_ALWAYSINLINE inline static void cpuCLI() { cpu.p_irq_req = 2; }
+FIXNES_ALWAYSINLINE inline static void cpuSEI() { cpu.p_irq_req = 1; }
 
-static void cpuCLV() { cpu.p &= ~P_FLAG_OVERFLOW; }
+FIXNES_ALWAYSINLINE inline static void cpuCLV() { cpu.p &= ~P_FLAG_OVERFLOW; }
 
-static void cpuCLD() { cpu.p &= ~P_FLAG_DECIMAL; }
-static void cpuSED() { cpu.p |= P_FLAG_DECIMAL; }
+FIXNES_ALWAYSINLINE inline static void cpuCLD() { cpu.p &= ~P_FLAG_DECIMAL; }
+FIXNES_ALWAYSINLINE inline static void cpuSED() { cpu.p |= P_FLAG_DECIMAL; }
 
-static void cpuINX() { cpuSetX(cpu.x+1); }
-static void cpuINY() { cpuSetY(cpu.y+1); }
-static void cpuINCt() { cpu.tmp = cpuSetTMP(cpu.tmp+1); }
+FIXNES_ALWAYSINLINE inline static void cpuINX() { cpuSetX(cpu.x+1); }
+FIXNES_ALWAYSINLINE inline static void cpuINY() { cpuSetY(cpu.y+1); }
+FIXNES_ALWAYSINLINE inline static void cpuINCt() { cpu.tmp = cpuSetTMP(cpu.tmp+1); }
 
-static void cpuDEX() { cpuSetX(cpu.x-1); }
-static void cpuDEY() { cpuSetY(cpu.y-1); }
-static void cpuDECt() { cpu.tmp = cpuSetTMP(cpu.tmp-1); }
+FIXNES_ALWAYSINLINE inline static void cpuDEX() { cpuSetX(cpu.x-1); }
+FIXNES_ALWAYSINLINE inline static void cpuDEY() { cpuSetY(cpu.y-1); }
+FIXNES_ALWAYSINLINE inline static void cpuDECt() { cpu.tmp = cpuSetTMP(cpu.tmp-1); }
 
-static void cpuTXA() { cpuSetA(cpu.x); }
-static void cpuTYA() { cpuSetA(cpu.y); }
-static void cpuTSX() { cpuSetX(cpu.s); }
-static void cpuTXS() { cpu.s = cpu.x; }
+FIXNES_ALWAYSINLINE inline static void cpuTXA() { cpuSetA(cpu.x); }
+FIXNES_ALWAYSINLINE inline static void cpuTYA() { cpuSetA(cpu.y); }
+FIXNES_ALWAYSINLINE inline static void cpuTSX() { cpuSetX(cpu.s); }
+FIXNES_ALWAYSINLINE inline static void cpuTXS() { cpu.s = cpu.x; }
 
-static void cpuTAY() { cpuSetY(cpu.a); }
-static void cpuTAX() { cpuSetX(cpu.a); }
+FIXNES_ALWAYSINLINE inline static void cpuTAY() { cpuSetY(cpu.a); }
+FIXNES_ALWAYSINLINE inline static void cpuTAX() { cpuSetX(cpu.a); }
 
-static void cpuLDA() { cpuSetA(cpu.tmp); }
-static void cpuLDX() { cpuSetX(cpu.tmp); }
-static void cpuLDY() { cpuSetY(cpu.tmp); }
-static void cpuXAA() { cpuSetA(cpu.x&cpu.tmp); }
-static void cpuAXT() { cpuSetA(cpu.tmp); cpuSetX(cpu.a); }
-static void cpuLAX() { cpuSetA(cpu.tmp); cpuSetX(cpu.tmp); }
-static void cpuLAR() { cpuSetA(cpu.tmp); cpuAND(cpu.s); cpuSetX(cpu.a); cpu.s = cpu.a; }
+FIXNES_ALWAYSINLINE inline static void cpuLDA() { cpuSetA(cpu.tmp); }
+FIXNES_ALWAYSINLINE inline static void cpuLDX() { cpuSetX(cpu.tmp); }
+FIXNES_ALWAYSINLINE inline static void cpuLDY() { cpuSetY(cpu.tmp); }
+FIXNES_ALWAYSINLINE inline static void cpuXAA() { cpuSetA(cpu.x&cpu.tmp); }
+FIXNES_ALWAYSINLINE inline static void cpuAXT() { cpuSetA(cpu.tmp); cpuSetX(cpu.a); }
+FIXNES_ALWAYSINLINE inline static void cpuLAX() { cpuSetA(cpu.tmp); cpuSetX(cpu.tmp); }
+FIXNES_ALWAYSINLINE inline static void cpuLAR() { cpu.a = cpu.s; cpuAND(); cpuSetX(cpu.a); cpu.s = cpu.a; }
 
 /* For Interrupt Handling */
 
@@ -541,7 +542,7 @@ static const uint8_t cpu_mem_type[CPU_STATE_END] = {
 
 static const uint8_t cpu_start_arr[1] = { CPU_GET_INSTRUCTION };
 
-static void cpuSetStartArray()
+FIXNES_ALWAYSINLINE inline static void cpuSetStartArray()
 {
 	cpu.action_arr = cpu_start_arr;
 	cpu.arr_pos = 0;
@@ -604,20 +605,20 @@ static const uint8_t cpu_bmi_arr[4] = { CPU_TMP_READ8_PC_INC_CHECK_BMI, CPU_BRAN
 static const uint8_t cpu_bvc_arr[4] = { CPU_TMP_READ8_PC_INC_CHECK_BVC, CPU_BRANCH_SETUP, CPU_NULL_READ8_PC_CHK, CPU_GET_INSTRUCTION };
 static const uint8_t cpu_bvs_arr[4] = { CPU_TMP_READ8_PC_INC_CHECK_BVS, CPU_BRANCH_SETUP, CPU_NULL_READ8_PC_CHK, CPU_GET_INSTRUCTION };
 
-static void cpuCheckIrq()
+FIXNES_ALWAYSINLINE inline static void cpuCheckIrq()
 {
 	cpu.irq |= (interrupt & cpu.irqMask) | ppuNMI();
 }
 
 /* useful for the branch checks */
-static void cpuBranchCheck(bool takeBranch)
+FIXNES_ALWAYSINLINE inline static void cpuBranchCheck(bool takeBranch)
 {
 	cpuCheckIrq();
 	if(!takeBranch) //get next instruction
 		cpuSetStartArray();
 }
 
-static void cpuBranchSetup()
+FIXNES_ALWAYSINLINE inline static void cpuBranchSetup()
 {
 	cpu.indVal = cpu.pc + (int8_t)cpu.tmp;
 	//only need extra cycle if it needs fixup
@@ -812,7 +813,7 @@ static bool cpuHandleIrqUpdates()
 	return false;
 }
 
-static void cpuSetAddrIndFix()
+FIXNES_ALWAYSINLINE inline static void cpuSetAddrIndFix()
 {
 	//first read will be at wrong pos
 	//so let cpu know it needs fixup
@@ -823,7 +824,7 @@ static void cpuSetAddrIndFix()
 	}
 }
 
-static bool cpuDoAddrIndFix()
+FIXNES_ALWAYSINLINE inline static bool cpuDoAddrIndFix()
 {
 	if(cpu.needsIndFix)
 	{
@@ -897,16 +898,16 @@ static bool cpuTryTakeover()
 	return false;
 }
 
-static void cpuDoDMA()
+FIXNES_NOINLINE static void cpuDoDMA()
 {
-	if(cpu.dmc_dma)
+	if(cpu.dma & CPU_DMC_DMA)
 	{
 		if(cpu.currently_dma && cpu.dmc_halted)
 		{
 			if(cpu.dmc_dma_dummyread) //1st read always dummy read
 			{
 				cpu.dmc_dma_dummyread = false;
-				if(!cpu.oam_dma || cpu.oam_dma_pause)
+				if(!(cpu.dma&CPU_OAM_DMA) || cpu.oam_dma_pause)
 				{
 					cpuDMATryHalt();
 					return;
@@ -916,7 +917,7 @@ static void cpuDoDMA()
 			{
 				uint8_t dmc_dma_val = memGet8(cpu.dmc_dma_addr);
 				apuWriteDMCBuf(dmc_dma_val);
-				cpu.dmc_dma = false;
+				cpu.dma &= ~CPU_DMC_DMA;
 				if(!cpu.oam_halted) //done with DMA
 					cpu.currently_dma = false;
 				//for next dmc dma
@@ -926,7 +927,7 @@ static void cpuDoDMA()
 			}
 			else //WRITE on odd, possibly another dummy read
 			{
-				if(!cpu.oam_dma || cpu.oam_dma_pause)
+				if(!(cpu.dma&CPU_OAM_DMA) || cpu.oam_dma_pause)
 				{
 					cpuDMATryHalt();
 					return;
@@ -943,7 +944,7 @@ static void cpuDoDMA()
 				{
 					cpu.dmc_halted = true;
 					//fully ignore OAM DMA if this is out 2nd/3rd attempt
-					if(cpu.oam_dma && cpu.dmc_halt_attempt)
+					if((cpu.dma&CPU_OAM_DMA) && cpu.dmc_halt_attempt)
 						cpu.oam_dma_pause = true;
 					else //was first halt attempt, possibly allows next OAM DMA cycle
 						cpu.oam_dma_pause = false;
@@ -953,7 +954,7 @@ static void cpuDoDMA()
 			}
 		}
 	}
-	if(cpu.oam_dma)
+	if(cpu.dma&CPU_OAM_DMA)
 	{
 		if(cpu.currently_dma && cpu.oam_halted)
 		{
@@ -975,7 +976,7 @@ static void cpuDoDMA()
 					if(cpu.oam_dma_ptr == 0)
 					{
 						//printf("OAM DMA Done\n");
-						cpu.oam_dma = false;
+						cpu.dma &= ~CPU_OAM_DMA;
 						if(!cpu.dmc_halted) //done with DMA
 							cpu.currently_dma = false;
 						cpu.oam_halted = false;
@@ -991,14 +992,17 @@ static void cpuDoDMA()
 }
 
 /* Main CPU Interpreter */
-bool cpuCycle()
+FIXNES_ALWAYSINLINE bool cpuCycle()
 {
 	cpu_odd_cycle^=true;
 	//printf("CPU Cycle\n");
 	//do DMC and OAM DMA first
-	cpuDoDMA();
-	if(cpu.currently_dma)
-		return true;
+	if(cpu.dma)
+	{
+		cpuDoDMA();
+		if(cpu.currently_dma)
+			return true;
+	}
 	uint8_t instr, cpu_action;
 	cpu_action = cpu.action_arr[cpu.arr_pos];
 	cpu.arr_pos++;
@@ -1602,17 +1606,17 @@ void cpuSoftReset()
 void cpuDoOAM_DMA(uint16_t addr, uint8_t val)
 {
 	(void)addr;
-	cpu.oam_dma = true;
+	cpu.dma |= CPU_OAM_DMA;
 	cpu.oam_dma_addr = (val<<8);
 }
 
 void cpuDoDMC_DMA(uint16_t addr)
 {
-	cpu.dmc_dma = true;
+	cpu.dma |= CPU_DMC_DMA;
 	cpu.dmc_dma_addr = addr;
 }
 
 bool cpuInDMC_DMA()
 {
-	return cpu.dmc_dma;
+	return !!(cpu.dma&CPU_DMC_DMA);
 }

@@ -8,6 +8,8 @@
 #ifndef _apu_h_
 #define _apu_h_
 
+#include "common.h"
+
 #define NUM_BUFFERS 4
 
 #define EXP_VRC6 (1<<0)
@@ -20,7 +22,7 @@
 void apuInitBufs();
 void apuDeinitBufs();
 void apuInit();
-void apuCycle();
+FIXNES_ALWAYSINLINE void apuCycle();
 void apuWriteDMCBuf(uint8_t val);
 uint8_t *apuGetBuf();
 uint32_t apuGetBufSize();
@@ -69,6 +71,9 @@ typedef struct _sweep_t {
 	uint8_t period;
 	uint8_t divider;
 	uint8_t shift;
+	//specifically signed for pulse 1 as a shift value of 0 and negative
+	//flag enabled would cause an overflow and a mute otherwise
+	int16_t targetFreq;
 } sweep_t;
 
 void doEnvelopeLogic(envelope_t *env);

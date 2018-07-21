@@ -468,22 +468,22 @@ static void saveSprite(uint8_t p0, uint8_t p1)
 	ppu.OAM2Ptr += 4;
 }
 
-static void updateBGTileAddress()
+FIXNES_ALWAYSINLINE inline static void updateBGTileAddress()
 {
 	if((ppu.VramAddr & 0x1F) == 0x1F)
 		ppu.VramAddr ^= 0x41F;
 	else
 		ppu.VramAddr++;
 }
-static void updateBGHoriAddress()
+FIXNES_ALWAYSINLINE inline static void updateBGHoriAddress()
 {
 	ppu.VramAddr = (ppu.VramAddr & (~PPU_VRAM_HORIZONTAL_MASK)) | (ppu.TmpVramAddr & PPU_VRAM_HORIZONTAL_MASK);
 }
-static void updateBGVertAddress()
+FIXNES_ALWAYSINLINE inline static void updateBGVertAddress()
 {
 	ppu.VramAddr = (ppu.VramAddr & (~PPU_VRAM_VERTICAL_MASK)) | (ppu.TmpVramAddr & PPU_VRAM_VERTICAL_MASK);
 }
-static void updateBGYAddress()
+FIXNES_ALWAYSINLINE inline static void updateBGYAddress()
 {
 	/* update Y position for writes */
 	if((ppu.VramAddr & 0x7000) != (7<<12))
@@ -496,13 +496,13 @@ static void updateBGYAddress()
 	}
 }
 
-static void setNTAddr()
+FIXNES_ALWAYSINLINE inline static void setNTAddr()
 {
 	ppu.NextAddr = (ppu.VramAddr & 0xFFF) | 0x2000;
 }
 
 extern void mmc5setTile(uint16_t dot);
-static void getNTAddr(uint16_t dot)
+FIXNES_ALWAYSINLINE inline static void getNTAddr(uint16_t dot)
 {
 	/* MMC5 Scanline/Scroll Related */
 	if(ppuMapper5) mmc5setTile(dot);
@@ -512,40 +512,40 @@ static void getNTAddr(uint16_t dot)
 	ppu.NextTile = chrROMBG+(ntByte<<4)+curTileY;
 }
 
-static void setATAddr()
+FIXNES_ALWAYSINLINE inline static void setATAddr()
 {
 	ppu.NextAddr = (ppu.VramAddr & 0xC00) | 0x23C0 | ((ppu.VramAddr>>4)&0x38) | ((ppu.VramAddr>>2)&7);
 }
 
-static void getATAddr()
+FIXNES_ALWAYSINLINE inline static void getATAddr()
 {
 	/* Select new BG Background Attribute */
 	ppu.BGAttribReg = memPPUGet8(ppu.NextAddr) >> ((ppu.VramAddr & 0x2) | (ppu.VramAddr >> 4 & 0x4));
 }
 
-static void setTileAddr(uint8_t add)
+FIXNES_ALWAYSINLINE inline static void setTileAddr(uint8_t add)
 {
 	ppu.NextAddr = ppu.NextTile+add;
 }
-static void getBGTileAddrLow()
+FIXNES_ALWAYSINLINE inline static void getBGTileAddrLow()
 {
 	mapperChrMode = 0;
 	uint8_t tmp = memPPUGet8(ppu.NextAddr);
 	ppu.BGRegB = tmp >> 0 & 0x55; ppu.BGRegA = tmp >> 1 & 0x55;
 }
-static void getBGTileAddrHigh()
+FIXNES_ALWAYSINLINE inline static void getBGTileAddrHigh()
 {
 	mapperChrMode = 0;
 	uint8_t tmp = memPPUGet8(ppu.NextAddr);
 	ppu.BGRegA |= tmp << 0 & 0xAA; ppu.BGRegB |= tmp << 1 & 0xAA;
 }
-static uint8_t getSpriteTileAddr()
+FIXNES_ALWAYSINLINE inline static uint8_t getSpriteTileAddr()
 {
 	mapperChrMode = 1;
 	return memPPUGet8(ppu.NextAddr);
 }
 
-static void spriteEvalInit()
+FIXNES_ALWAYSINLINE inline static void spriteEvalInit()
 {
 	ppu.OAMzSpritePos = ppu.OAMpos;
 	ppu.OAM2pos = 0;
@@ -553,7 +553,7 @@ static void spriteEvalInit()
 	ppu.spriteEvalB = spriteEvalB_P1;
 }
 
-static void spriteEvalA()
+FIXNES_ALWAYSINLINE inline static void spriteEvalA()
 {
 	ppu.TmpOAMVal = ppu.OAM[(ppu.OAMpos+ppu.OAMcpPos)&0xFF];
 	//printf("%i %i %i %02x\n", ppu.OAMpos,  ppu.OAMcpPos, (ppu.OAMpos+ppu.OAMcpPos)&0xFF, ppu.TmpOAMVal);
@@ -702,17 +702,17 @@ static void spriteEvalB_P9(uint16_t line)
 	ppu.OAMpos += 4;
 }
 
-static void initSpriteTileFetch()
+FIXNES_ALWAYSINLINE inline static void initSpriteTileFetch()
 {
 	ppu.OAM2Ptr = ppu.OAM2;
 }
 
-static void resetOAMPos()
+FIXNES_ALWAYSINLINE inline static void resetOAMPos()
 {
 	ppu.OAMpos = 0;
 }
 
-static void ClearOAM2Byte()
+FIXNES_ALWAYSINLINE inline static void ClearOAM2Byte()
 {
 	ppu.OAM2[ppu.OAM2pos++] = 0xFF;
 }
@@ -744,7 +744,7 @@ static uint16_t ppuLastDot(uint16_t line)
 	return line;
 }
 
-void ppuCycle()
+FIXNES_ALWAYSINLINE void ppuCycle()
 {
 	uint16_t dot = ppu.curDot, line = ppu.curLine, drawPos;
 	uint8_t curCol;
@@ -1635,7 +1635,7 @@ static uint8_t ppuDoSprites(uint8_t color, uint16_t dot)
 	return color;
 }
 
-bool ppuDrawDone()
+FIXNES_ALWAYSINLINE bool ppuDrawDone()
 {
 	if(ppu.FrameDone)
 	{

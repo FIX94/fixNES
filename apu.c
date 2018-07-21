@@ -188,7 +188,11 @@ void apuInitBufs()
 	//apu.Frequency = nesPAL ? 831187 : 893415;
 	//effective frequencies for Original PPU Video out
 	//apu.Frequency = nesPAL ? 831303 : 894886;
+#if AUDIO_LOWERFREQ
+	apu.Frequency = nesPAL ? 51956 : 55930;
+#else
 	apu.Frequency = nesPAL ? 207825 : 223721;
+#endif
 	audioExpansion = 0;
 	double dt = 1.0/((double)apu.Frequency);
 	//LP at 22kHz
@@ -213,11 +217,11 @@ void apuInitBufs()
 #if AUDIO_FLOAT
 	apu.BufSizeBytes = apu.BufSize*sizeof(float);
 	apu.OutBuf = (float*)malloc(apu.BufSizeBytes);
-	printf("Audio: 32-bit Float Output\n"); 
+	printf("Audio: 32-bit Float Output at %iHz\n", apu.Frequency); 
 #else
 	apu.BufSizeBytes = apu.BufSize*sizeof(int16_t);
 	apu.OutBuf = (int16_t*)malloc(apu.BufSizeBytes);
-	printf("Audio: 16-bit Short Output\n");
+	printf("Audio: 16-bit Short Output at %iHz\n", apu.Frequency);
 #endif
 	/* https://wiki.nesdev.com/w/index.php/APU_Mixer#Lookup_Table */
 	uint8_t i;
@@ -314,7 +318,7 @@ void apuWriteDMCBuf(uint8_t val)
 
 extern bool cpu_odd_cycle;
 
-static void apuChangeMode()
+FIXNES_NOINLINE static void apuChangeMode()
 {
 	if(!cpu_odd_cycle)
 		return;
@@ -356,57 +360,49 @@ void doEnvelopeLogic(envelope_t *env)
 	//env->envelope = (env->constant ? env->vol : env->decay);
 }
 
-void sweepUpdateFreq(sweep_t *sw, uint16_t *freq)
+static void sweepUpdateFreq(sweep_t *sw, uint16_t *freq)
 {
-	uint16_t inFreq = *freq;
-	if(sw->shift > 0)
+	//any freq update causes target freq update
+	sw->targetFreq = *freq;
+	if(sw->targetFreq >= 8)
 	{
 		if(sw->negative)
 		{
-			inFreq -= (inFreq >> sw->shift);
-			if(sw->chan1 == true) inFreq--;
+			sw->targetFreq -= (sw->targetFreq >> sw->shift);
+			if(sw->chan1 == true) sw->targetFreq--;
 		}
 		else
-			inFreq += (inFreq >> sw->shift);
+			sw->targetFreq += (sw->targetFreq >> sw->shift);
+		if(sw->targetFreq <= 0x7FF)
+			sw->mute = false;
+		else //larger than freq register
+			sw->mute = true;
 	}
-	if(inFreq > 8 && (inFreq < 0x7FF))
-	{
-		sw->mute = false;
-		if(sw->enabled && sw->shift)
-			*freq = inFreq;
-	}
-	else
+	else //any input < 8 gets muted
 		sw->mute = true;
 }
 
-void doSweepLogic(sweep_t *sw, uint16_t *freq)
+static void doSweepLogic(sweep_t *sw, uint16_t *freq)
 {
+	if(sw->divider == 0)
+	{
+		if(sw->enabled && sw->shift && !sw->mute)
+		{
+			*freq = sw->targetFreq;
+			sweepUpdateFreq(sw, freq);
+		}
+		sw->divider = sw->period;
+	}
+	else
+		sw->divider--;
 	if(sw->start)
 	{
-		uint8_t prevDiv = sw->divider;
 		sw->divider = sw->period;
 		sw->start = false;
-		if(prevDiv == 0)
-			sweepUpdateFreq(sw, freq);
 	}
-	else
-	{
-		if(sw->divider == 0)
-		{
-			sweepUpdateFreq(sw, freq);
-			sw->divider = sw->period;
-		}
-		else
-			sw->divider--;
-	}
-	//gets clocked too little on its own?
-	/*if(inFreq < 8 || (inFreq >= 0x7FF))
-		sw->mute = true;
-	else
-		sw->mute = false;*/
 }
 
-void apuClockA()
+FIXNES_NOINLINE static void apuClockA()
 {
 	if(apu.p1LengthCtr)
 	{
@@ -426,7 +422,7 @@ void apuClockA()
 		apu.noiseLengthCtr--;
 }
 
-void apuClockB()
+FIXNES_NOINLINE static void apuClockB()
 {
 	if(apu.p1LengthCtr)
 		doEnvelopeLogic(&apu.p1Env);
@@ -442,19 +438,23 @@ void apuClockB()
 		apu.trireload = false;
 }
 
-void apuCycle()
+FIXNES_ALWAYSINLINE void apuCycle()
 {
 	uint8_t aExp = audioExpansion;
+#if AUDIO_LOWERFREQ
+	if(!(apu.apuClock&31))
+#else
 	if(!(apu.apuClock&7))
+#endif
 	{
 		if(apu.p1LengthCtr && (apu.reg[0x15] & P1_ENABLE))
 		{
-			if(!apu.p1Sweep.mute && apu.freq1 >= 8 && apu.freq1 < 0x7FF)
+			if(!apu.p1Sweep.mute)
 				apu.p1Out = apu.p1seq[apu.p1Cycle] ? (apu.p1Env.constant ? apu.p1Env.vol : apu.p1Env.decay) : 0;
 		}
 		if(apu.p2LengthCtr && (apu.reg[0x15] & P2_ENABLE))
 		{
-			if(!apu.p2Sweep.mute && apu.freq2 >= 8 && apu.freq2 < 0x7FF)
+			if(!apu.p2Sweep.mute)
 				apu.p2Out = apu.p2seq[apu.p2Cycle] ? (apu.p2Env.constant ? apu.p2Env.vol : apu.p2Env.decay) : 0;
 		}
 		if(apu.triLengthCtr && apu.triCurLinearCtr && (apu.reg[0x15] & TRI_ENABLE))
@@ -713,8 +713,6 @@ void apuSetReg00(uint16_t addr, uint8_t val)
 	apu.p1seq = pulseSeqs[val>>6];
 	apu.p1Env.constant = ((val&PULSE_CONST_V) != 0);
 	apu.p1Env.loop = apu.p1haltloop = ((val&PULSE_HALT_LOOP) != 0);
-	if(apu.freq1 > 8 && (apu.freq1 < 0x7FF))
-		apu.p1Sweep.mute = false; //to be safe
 }
 void apuSetReg01(uint16_t addr, uint8_t val)
 {
@@ -726,9 +724,8 @@ void apuSetReg01(uint16_t addr, uint8_t val)
 	apu.p1Sweep.period = (val>>4)&7;
 	apu.p1Sweep.negative = ((val&0x8) != 0);
 	apu.p1Sweep.start = true;
-	if(apu.freq1 > 8 && (apu.freq1 < 0x7FF))
-		apu.p1Sweep.mute = false; //to be safe
-	doSweepLogic(&apu.p1Sweep, &apu.freq1);
+	//adjust for new sweep regs
+	sweepUpdateFreq(&apu.p1Sweep, &apu.freq1);
 }
 void apuSetReg02(uint16_t addr, uint8_t val)
 {
@@ -736,8 +733,7 @@ void apuSetReg02(uint16_t addr, uint8_t val)
 	apu.reg[2] = val;
 	//printf("P1 time low %02x\n", val);
 	apu.freq1 = ((apu.freq1&~0xFF) | val);
-	if(apu.freq1 > 8 && (apu.freq1 < 0x7FF))
-		apu.p1Sweep.mute = false; //to be safe
+	sweepUpdateFreq(&apu.p1Sweep, &apu.freq1);
 }
 void apuSetReg03(uint16_t addr, uint8_t val)
 {
@@ -747,8 +743,7 @@ void apuSetReg03(uint16_t addr, uint8_t val)
 	if(apu.reg[0x15] & P1_ENABLE)
 		apu.p1LengthCtr = apu.lengthLookupTbl[val>>3];
 	apu.freq1 = (apu.freq1&0xFF) | ((val&7)<<8);
-	if(apu.freq1 > 8 && (apu.freq1 < 0x7FF))
-		apu.p1Sweep.mute = false; //to be safe
+	sweepUpdateFreq(&apu.p1Sweep, &apu.freq1);
 	//printf("P1 new freq %04x\n", apu.freq1);
 	apu.p1Env.start = true;
 }
@@ -760,8 +755,6 @@ void apuSetReg04(uint16_t addr, uint8_t val)
 	apu.p2seq = pulseSeqs[val>>6];
 	apu.p2Env.constant = ((val&PULSE_CONST_V) != 0);
 	apu.p2Env.loop = apu.p2haltloop = ((val&PULSE_HALT_LOOP) != 0);
-	if(apu.freq2 > 8 && (apu.freq2 < 0x7FF))
-		apu.p2Sweep.mute = false; //to be safe
 }
 void apuSetReg05(uint16_t addr, uint8_t val)
 {
@@ -773,9 +766,8 @@ void apuSetReg05(uint16_t addr, uint8_t val)
 	apu.p2Sweep.period = (val>>4)&7;
 	apu.p2Sweep.negative = ((val&0x8) != 0);
 	apu.p2Sweep.start = true;
-	if(apu.freq2 > 8 && (apu.freq2 < 0x7FF))
-		apu.p2Sweep.mute = false; //to be safe
-	doSweepLogic(&apu.p2Sweep, &apu.freq2);
+	//adjust for new sweep regs
+	sweepUpdateFreq(&apu.p2Sweep, &apu.freq2);
 }
 void apuSetReg06(uint16_t addr, uint8_t val)
 {
@@ -783,8 +775,7 @@ void apuSetReg06(uint16_t addr, uint8_t val)
 	apu.reg[6] = val;
 	//printf("P2 time low %02x\n", val);
 	apu.freq2 = ((apu.freq2&~0xFF) | val);
-	if(apu.freq2 > 8 && (apu.freq2 < 0x7FF))
-		apu.p2Sweep.mute = false; //to be safe
+	sweepUpdateFreq(&apu.p2Sweep, &apu.freq2);
 }
 void apuSetReg07(uint16_t addr, uint8_t val)
 {
@@ -794,8 +785,7 @@ void apuSetReg07(uint16_t addr, uint8_t val)
 	if(apu.reg[0x15] & P2_ENABLE)
 		apu.p2LengthCtr = apu.lengthLookupTbl[val>>3];
 	apu.freq2 = (apu.freq2&0xFF) | ((val&7)<<8);
-	if(apu.freq2 > 8 && (apu.freq2 < 0x7FF))
-		apu.p2Sweep.mute = false; //to be safe
+	sweepUpdateFreq(&apu.p2Sweep, &apu.freq2);
 	//printf("P2 new freq %04x\n", apu.freq2);
 	apu.p2Env.start = true;
 }

@@ -34,12 +34,16 @@ For the standalone you will at least need freeglut as well as openal-soft, it sh
 Also you can use this as a core for retroarch by using the Makefile in the libretro folder.    
 
 There are several defines you can add/remove for different options for both the standalone version and the retroarch core:
+AUDIO_LOWERFREQ  
+Reduces the output frequency of the emulator for more performance  
 COL_32BIT  
 Changes the output texture to be 32bit per pixel (RGBA8) instead of 16bit (RGB565)  
 COL_BGRA  
 Used in combination with COL_32BIT, this will change the output texture to BGRA8 instead of RGBA8  
 COL_TEX_BSWAP  
-In 32bit per pixel mode, this will change the byte order of the output texture, in 16bit mode this will output in BGR565    
+In 32bit per pixel mode, this will change the byte order of the output texture, in 16bit mode this will output in BGR565  
+DO_INLINE_ATTRIBS  
+Will use optimized function inline attributes for more overall performance    
 
 These defines are specific to the standalone version:  
 AUDIO_FLOAT  

@@ -8,10 +8,12 @@
 #ifndef _ppu_h_
 #define _ppu_h_
 
+#include "common.h"
+
 void ppuInit();
 void ppuAddCycles();
-void ppuCycle();
-bool ppuDrawDone();
+FIXNES_ALWAYSINLINE void ppuCycle();
+FIXNES_ALWAYSINLINE bool ppuDrawDone();
 uint8_t ppuGet8(uint16_t addr);
 void ppuSet8(uint16_t addr, uint8_t val);
 uint8_t ppuNMI();

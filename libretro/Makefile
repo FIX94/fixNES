@@ -1,8 +1,9 @@
 
 TARGET_NAME := fixnes
 DEBUG = 0
-AUDIO_FLOAT = 0
+AUDIO_LOWERFREQ = 0
 DO_LTO = 0
+DO_INLINE_ATTRIBS = 0
 
 ifeq ($(platform),)
 	platform = unix
@@ -221,7 +222,9 @@ else ifeq ($(platform), ngc)
 	PLATFORM_DEFINES += -DGEKKO -DHW_DOL -mrvl -mcpu=750 -meabi -mhard-float
 	PLATFORM_DEFINES += -U__INT32_TYPE__ -U __UINT32_TYPE__ -D__INT32_TYPE__=int
 	STATIC_LINKING = 1
+	AUDIO_LOWERFREQ = 1
 	DO_LTO = 1
+	DO_INLINE_ATTRIBS = 1
 
 # Nintendo Wii
 else ifeq ($(platform), wii)
@@ -233,6 +236,7 @@ else ifeq ($(platform), wii)
 	PLATFORM_DEFINES += -U__INT32_TYPE__ -U __UINT32_TYPE__ -D__INT32_TYPE__=int
 	STATIC_LINKING = 1
 	DO_LTO = 1
+	DO_INLINE_ATTRIBS = 1
 
 # Nintendo WiiU
 else ifeq ($(platform), wiiu)
@@ -243,6 +247,7 @@ else ifeq ($(platform), wiiu)
 	PLATFORM_DEFINES += -DGEKKO -DWIIU -DHW_RVL -mwup -mcpu=750 -meabi -mhard-float
 	PLATFORM_DEFINES += -U__INT32_TYPE__ -U __UINT32_TYPE__ -D__INT32_TYPE__=int
 	STATIC_LINKING = 1
+	DO_INLINE_ATTRIBS = 1
 
 # ARM
 else ifneq (,$(findstring armv,$(platform)))
@@ -294,13 +299,17 @@ else
 
 endif
 
-ifeq ($(AUDIO_FLOAT),1)
-CFLAGS += -DAUDIO_FLOAT=1
+ifeq ($(AUDIO_LOWERFREQ),1)
+CFLAGS += -DAUDIO_LOWERFREQ=1
 endif
 
 ifeq ($(DO_LTO),1)
 CFLAGS += -flto
 CXXFLAGS += -flto
+endif
+
+ifeq ($(DO_INLINE_ATTRIBS),1)
+CFLAGS += -DDO_INLINE_ATTRIBS=1 -Wno-attributes
 endif
 
 ifeq ($(DEBUG), 1)

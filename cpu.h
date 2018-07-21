@@ -8,12 +8,14 @@
 #ifndef _cpu_h_
 #define _cpu_h_
 
+#include "common.h"
+
 void cpuInit();
 void cpuInitNSF(uint16_t addr, uint8_t newA, uint8_t newX);
 void cpuStartPlayNSF();
 void cpuEndPlayNSF();
 void cpuSoftReset();
-bool cpuCycle();
+FIXNES_ALWAYSINLINE bool cpuCycle();
 void cpuDoOAM_DMA(uint16_t addr, uint8_t val);
 void cpuDoDMC_DMA(uint16_t addr);
 bool cpuInDMC_DMA();
