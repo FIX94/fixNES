@@ -41,7 +41,7 @@ void m44_init(uint8_t *prgROMin, uint32_t prgROMsizeIn,
 	printf("Mapper 44 (Mapper 4 Game Select) inited\n");
 }
 
-static uint8_t m45_curReg;
+static uint8_t m45_curReg, m45_chrROMandVal;
 
 void m45_init(uint8_t *prgROMin, uint32_t prgROMsizeIn, 
 			uint8_t *prgRAMin, uint32_t prgRAMsizeIn,
@@ -227,12 +227,21 @@ void m44_initSet8(uint16_t addr)
 		mmc3initSet8(addr);
 }
 
+static void m45_setChrROMand()
+{
+	if(mmc3GetChrROMadd() || m45_chrROMandVal) //default chr rom mask generation
+		mmc3_chrROMand = (((0xFF >> ((~m45_chrROMandVal)&0xF))+1)<<10)-1;
+	else //this code is just a guess, if no chr rom or/and value, use full and value
+		mmc3_chrROMand = (((0xFF >> ((~0xF)&0xF))+1)<<10)-1;
+}
+
 static void m45_setParams6XXX(uint16_t addr, uint8_t val)
 {
 	(void)addr;
 	if(m45_curReg == 0)
 	{
 		mmc3SetChrROMadd((mmc3GetChrROMadd() & ~0x3FFFF) | (val<<10));
+		m45_setChrROMand(); //update because of new add value
 		//printf("mmc3_chrROMadd r0 %08x inVal %02x\n", mmc3GetChrROMadd(), val);
 	}
 	else if(m45_curReg == 1)
@@ -242,8 +251,9 @@ static void m45_setParams6XXX(uint16_t addr, uint8_t val)
 	}
 	else if(m45_curReg == 2)
 	{
-		mmc3_chrROMand = (((0xFF >> ((~val)&0xF))+1)<<10)-1;
 		mmc3SetChrROMadd((mmc3GetChrROMadd() & 0x3FFFF) | ((val>>4)<<18));
+		m45_chrROMandVal = val&0xF;
+		m45_setChrROMand();
 		//printf("mmc3_chrROMand %08x mmc3_chrROMadd r1 %08x inVal %02x\n", mmc3_chrROMand, mmc3GetChrROMadd(), val);
 	}
 	else if(m45_curReg == 3)
@@ -491,7 +501,8 @@ void m45_reset()
 	mmc3_prgROMand = 0x7FFFF;
 	mmc3SetPrgROMBankPtr();
 	mmc3SetChrROMadd(0);
-	mmc3_chrROMand = 0x7FFFF;
+	m45_chrROMandVal = 0;
+	m45_setChrROMand();
 	mmc3SetChrROMBankPtr();
 	mmc3add_regLock = false;
 	mmc3add_prgRAMenable = false;

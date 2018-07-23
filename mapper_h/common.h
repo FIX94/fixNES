@@ -8,6 +8,17 @@
 #ifndef _COMMON_H_
 #define _COMMON_H_
 
+void prg4init(uint8_t *prgROM, uint32_t prgROMsize);
+void prg4initGet8(uint16_t addr);
+void prg4setBank0(uint32_t val);
+void prg4setBank1(uint32_t val);
+void prg4setBank2(uint32_t val);
+void prg4setBank3(uint32_t val);
+void prg4setBank4(uint32_t val);
+void prg4setBank5(uint32_t val);
+void prg4setBank6(uint32_t val);
+void prg4setBank7(uint32_t val);
+
 void prg8init(uint8_t *prgROM, uint32_t prgROMsize);
 void prg8initGet8(uint16_t addr);
 void prg8setBank0(uint32_t val);

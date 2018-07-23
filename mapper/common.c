@@ -18,6 +18,58 @@ static struct {
 	uint8_t *prgROM;
 	uint32_t prgROMand;
 	uint8_t *prgROMBank0Ptr, *prgROMBank1Ptr,
+			*prgROMBank2Ptr, *prgROMBank3Ptr,
+			*prgROMBank4Ptr, *prgROMBank5Ptr,
+			*prgROMBank6Ptr, *prgROMBank7Ptr;
+} prg4;
+
+void prg4init(uint8_t *prgROM, uint32_t prgROMsize)
+{
+	prg4.prgROM = prgROM;
+	prg4.prgROMand = mapperGetAndValue(prgROMsize);
+	prg4setBank0(0); prg4setBank1(0); prg4setBank2(0); prg4setBank3(0);
+	prg4setBank4(0); prg4setBank5(0); prg4setBank6(0); prg4setBank7(0);
+	printf("Using Common PRG ROM (%iKB Total) 4KB Banks\n", (prgROMsize>>10));
+}
+
+static uint8_t prg4GetROM0(uint16_t addr) { return prg4.prgROMBank0Ptr[addr&0xFFF]; }
+static uint8_t prg4GetROM1(uint16_t addr) { return prg4.prgROMBank1Ptr[addr&0xFFF]; }
+static uint8_t prg4GetROM2(uint16_t addr) { return prg4.prgROMBank2Ptr[addr&0xFFF]; }
+static uint8_t prg4GetROM3(uint16_t addr) { return prg4.prgROMBank3Ptr[addr&0xFFF]; }
+static uint8_t prg4GetROM4(uint16_t addr) { return prg4.prgROMBank4Ptr[addr&0xFFF]; }
+static uint8_t prg4GetROM5(uint16_t addr) { return prg4.prgROMBank5Ptr[addr&0xFFF]; }
+static uint8_t prg4GetROM6(uint16_t addr) { return prg4.prgROMBank6Ptr[addr&0xFFF]; }
+static uint8_t prg4GetROM7(uint16_t addr) { return prg4.prgROMBank7Ptr[addr&0xFFF]; }
+
+void prg4initGet8(uint16_t addr)
+{
+	if(addr < 0x8000) return;
+	else if(addr < 0x9000) memInitMapperGetPointer(addr, prg4GetROM0);
+	else if(addr < 0xA000) memInitMapperGetPointer(addr, prg4GetROM1);
+	else if(addr < 0xB000) memInitMapperGetPointer(addr, prg4GetROM2);
+	else if(addr < 0xC000) memInitMapperGetPointer(addr, prg4GetROM3);
+	else if(addr < 0xD000) memInitMapperGetPointer(addr, prg4GetROM4);
+	else if(addr < 0xE000) memInitMapperGetPointer(addr, prg4GetROM5);
+	else if(addr < 0xF000) memInitMapperGetPointer(addr, prg4GetROM6);
+	else memInitMapperGetPointer(addr, prg4GetROM7);
+}
+
+void prg4setBank0(uint32_t val) { prg4.prgROMBank0Ptr = prg4.prgROM+(val&prg4.prgROMand); }
+void prg4setBank1(uint32_t val) { prg4.prgROMBank1Ptr = prg4.prgROM+(val&prg4.prgROMand); }
+void prg4setBank2(uint32_t val) { prg4.prgROMBank2Ptr = prg4.prgROM+(val&prg4.prgROMand); }
+void prg4setBank3(uint32_t val) { prg4.prgROMBank3Ptr = prg4.prgROM+(val&prg4.prgROMand); }
+void prg4setBank4(uint32_t val) { prg4.prgROMBank4Ptr = prg4.prgROM+(val&prg4.prgROMand); }
+void prg4setBank5(uint32_t val) { prg4.prgROMBank5Ptr = prg4.prgROM+(val&prg4.prgROMand); }
+void prg4setBank6(uint32_t val) { prg4.prgROMBank6Ptr = prg4.prgROM+(val&prg4.prgROMand); }
+void prg4setBank7(uint32_t val) { prg4.prgROMBank7Ptr = prg4.prgROM+(val&prg4.prgROMand); }
+
+
+
+
+static struct {
+	uint8_t *prgROM;
+	uint32_t prgROMand;
+	uint8_t *prgROMBank0Ptr, *prgROMBank1Ptr,
 			*prgROMBank2Ptr, *prgROMBank3Ptr;
 } prg8;
 

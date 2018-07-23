@@ -57,6 +57,15 @@ void m57_init(uint8_t *prgROMin, uint32_t prgROMsizeIn,
 	p1632c8SetPrgROMBank();
 }
 
+void m58_init(uint8_t *prgROMin, uint32_t prgROMsizeIn, 
+			uint8_t *prgRAMin, uint32_t prgRAMsizeIn,
+			uint8_t *chrROMin, uint32_t chrROMsizeIn)
+{
+	p16c8init(prgROMin, prgROMsizeIn, prgRAMin, prgRAMsizeIn, chrROMin, chrROMsizeIn);
+	//sets special prg bank layout
+	m58_reset();
+}
+
 static uint8_t m60_state;
 void m60_init(uint8_t *prgROMin, uint32_t prgROMsizeIn, 
 			uint8_t *prgRAMin, uint32_t prgRAMsizeIn,
@@ -132,6 +141,48 @@ void m200_init(uint8_t *prgROMin, uint32_t prgROMsizeIn,
 	m200SetPrgROMBank(0);
 }
 
+static uint8_t m221_prgmode;
+static uint32_t m221_curPRGBank,m221_outerPRGBank;
+static void m221SetPrgROMBank()
+{
+	if(m221_prgmode&1)
+	{
+		if(m221_prgmode&2)
+		{
+			prg16setBank0((m221_curPRGBank)|m221_outerPRGBank);
+			prg16setBank1((((m221_curPRGBank)&~0x1FFFF)|0x1C000)|m221_outerPRGBank);
+		}
+		else
+		{
+			prg16setBank0((m221_curPRGBank&~0x7FFF)|m221_outerPRGBank);
+			prg16setBank1((m221_curPRGBank|0x4000)|m221_outerPRGBank);
+		}
+	}
+	else
+	{
+		prg16setBank0(m221_curPRGBank|m221_outerPRGBank);
+		prg16setBank1(m221_curPRGBank|m221_outerPRGBank);
+	}
+}
+
+void m221_init(uint8_t *prgROMin, uint32_t prgROMsizeIn, 
+			uint8_t *prgRAMin, uint32_t prgRAMsizeIn,
+			uint8_t *chrROMin, uint32_t chrROMsizeIn)
+{
+	p16c8init(prgROMin, prgROMsizeIn, prgRAMin, prgRAMsizeIn, chrROMin, chrROMsizeIn);
+	//sets special prg bank layout
+	m221_reset();
+}
+
+void m226_init(uint8_t *prgROMin, uint32_t prgROMsizeIn, 
+			uint8_t *prgRAMin, uint32_t prgRAMsizeIn,
+			uint8_t *chrROMin, uint32_t chrROMsizeIn)
+{
+	p16c8init(prgROMin, prgROMsizeIn, prgRAMin, prgRAMsizeIn, chrROMin, chrROMsizeIn);
+	//sets special prg bank layout
+	m226_reset();
+}
+
 static void m231SetPrgROMBank(uint32_t bank)
 {
 	prg16setBank0(bank&~0x7FFF); prg16setBank1(bank);
@@ -144,6 +195,17 @@ void m231_init(uint8_t *prgROMin, uint32_t prgROMsizeIn,
 	p16c8init(prgROMin, prgROMsizeIn, prgRAMin, prgRAMsizeIn, chrROMin, chrROMsizeIn);
 	//special prg bank layout
 	m231SetPrgROMBank(0);
+}
+
+static uint8_t m230_mode;
+void m230_init(uint8_t *prgROMin, uint32_t prgROMsizeIn, 
+			uint8_t *prgRAMin, uint32_t prgRAMsizeIn,
+			uint8_t *chrROMin, uint32_t chrROMsizeIn)
+{
+	p16c8init(prgROMin, prgROMsizeIn, prgRAMin, prgRAMsizeIn, chrROMin, chrROMsizeIn);
+	//special prg bank layout
+	m230_mode = 0;
+	m230_reset();
 }
 
 static uint32_t m232_curPRGBank;
@@ -161,6 +223,29 @@ void m232_init(uint8_t *prgROMin, uint32_t prgROMsizeIn,
 	//special prg bank layout
 	m232_curPRGBank = 0;
 	m232SetPrgROMBank();
+}
+
+static uint8_t m235_bankshift;
+void m235_init(uint8_t *prgROMin, uint32_t prgROMsizeIn, 
+			uint8_t *prgRAMin, uint32_t prgRAMsizeIn,
+			uint8_t *chrROMin, uint32_t chrROMsizeIn)
+{
+	p16c8init(prgROMin, prgROMsizeIn, prgRAMin, prgRAMsizeIn, chrROMin, chrROMsizeIn);
+	//seemingly select from either 512kb or 1mb rom banks depending on input size
+	m235_bankshift = (prgROMsizeIn <= 0x200000) ? 19 : 20;
+	//special prg bank layout
+	m235_reset();
+}
+
+
+extern uint8_t memLastVal;
+static uint8_t m212_getParams(uint16_t addr) { (void)addr; return 0x80|memLastVal; }
+void m212_initGet8(uint16_t addr)
+{
+	if((addr&0xE010) == 0x6000) //required for some to not lock up
+		memInitMapperGetPointer(addr, m212_getParams);
+	else //normal rom init
+		prg16initGet8(addr);
 }
 
 static void m2_setParams(uint16_t addr, uint8_t val) { (void)addr; prg16setBank0((val & 0xF)<<14); }
@@ -416,6 +501,8 @@ static void m200_setParams(uint16_t addr, uint8_t val)
 	(void)val;
 	m200SetPrgROMBank((addr&7)<<14);
 	chr8setBank0((addr&7)<<13);
+	//some assigned to 200 seem to have this reversed so
+	//those will look wrong, oh well..
 	if((addr&8) != 0)
 		ppuSetNameTblHorizontal();
 	else
@@ -475,6 +562,31 @@ void m212_initSet8(uint16_t addr)
 	memInitMapperSetPointer(addr, m212_setParams);
 }
 
+static void m221_setParams8000(uint16_t addr, uint8_t val)
+{
+	(void)val;
+	if(addr&1)
+		ppuSetNameTblHorizontal();
+	else
+		ppuSetNameTblVertical();
+	m221_prgmode = ((addr>>1)&1)|((addr>>7)&2);
+	//this selection can indeed overlap the inner bank seemingly...
+	m221_outerPRGBank = ((addr>>2)&0x3F)<<14;
+	m221SetPrgROMBank();
+}
+static void m221_setParamsC000(uint16_t addr, uint8_t val)
+{
+	(void)val;
+	m221_curPRGBank = (addr&7)<<14;
+	m221SetPrgROMBank();
+}
+void m221_initSet8(uint16_t addr)
+{
+	if(addr < 0x8000) return;
+	if((addr&0xC000) == 0x8000) memInitMapperSetPointer(addr, m221_setParams8000);
+	else memInitMapperSetPointer(addr, m221_setParamsC000);
+}
+
 static void m226_setParams8XX0(uint16_t addr, uint8_t val)
 {
 	(void)addr;
@@ -499,6 +611,45 @@ void m226_initSet8(uint16_t addr)
 	if(addr < 0x8000) return;
 	if((addr&1) == 0) memInitMapperSetPointer(addr, m226_setParams8XX0);
 	else memInitMapperSetPointer(addr, m226_setParams8XX1);
+}
+
+static void m229_setParams(uint16_t addr, uint8_t val)
+{
+	(void)val;
+	//rather unusual mode switch
+	p1632_p16 = ((addr&0x1E) != 0);
+	p1632_curPRGBank = (addr&0x1F)<<14;
+	p1632c8SetPrgROMBank();
+	chr8setBank0((addr&0x1F)<<13);
+	if((addr&0x20) != 0)
+		ppuSetNameTblHorizontal();
+	else
+		ppuSetNameTblVertical();
+
+}
+void m229_initSet8(uint16_t addr)
+{
+	if(addr < 0x8000) return;
+	memInitMapperSetPointer(addr, m229_setParams);
+}
+
+static void m230_setParamsContra(uint16_t addr, uint8_t val) { (void)addr; prg16setBank0((val&7)<<14); }
+static void m230_setParamsMulti(uint16_t addr, uint8_t val)
+{
+	(void)addr;
+	p1632_p16 = ((val&0x20) != 0);
+	p1632_curPRGBank = ((val&0x1F)<<14)+(8<<14);
+	p1632c8SetPrgROMBank();
+	if((val&0x40) != 0)
+		ppuSetNameTblVertical();
+	else
+		ppuSetNameTblHorizontal();
+}
+void m230_initSet8(uint16_t addr)
+{
+	if(addr < 0x8000) return;
+	if(m230_mode == 0) memInitMapperSetPointer(addr, m230_setParamsContra);
+	else memInitMapperSetPointer(addr, m230_setParamsMulti);
 }
 
 static void m231_setParams(uint16_t addr, uint8_t val)
@@ -537,6 +688,37 @@ void m232_initSet8(uint16_t addr)
 	else memInitMapperSetPointer(addr, m232_setParamsCXXX);
 }
 
+static void m235_setParams(uint16_t addr, uint8_t val)
+{
+	(void)val;
+	p1632_p16 = ((addr&0x800) != 0);
+	p1632_curPRGBank = (addr&0x1F)<<15;
+	if(p1632_p16 && (addr&0x1000) != 0) //upper 16k
+		p1632_curPRGBank |= (1<<14);
+	p1632_curPRGBank |= (((addr>>8)&3)<<m235_bankshift);
+	p1632c8SetPrgROMBank();
+	if((addr&0x400) != 0)
+		ppuSetNameTblSingleLower();
+	else if((addr&0x2000) != 0)
+		ppuSetNameTblHorizontal();
+	else
+		ppuSetNameTblVertical();
+}
+void m235_initSet8(uint16_t addr)
+{
+	if(addr < 0x8000) return;
+	memInitMapperSetPointer(addr, m235_setParams);
+}
+
+void m58_reset()
+{
+	p1632_p16 = false;
+	p1632_curPRGBank = 0;
+	p1632c8SetPrgROMBank();
+	chr8setBank0(0);
+	ppuSetNameTblVertical();
+}
+
 void m60_reset()
 {
 	switch(m60_state)
@@ -570,4 +752,52 @@ void m62_reset()
 	p1632_curPRGBank = 0;
 	p1632c8SetPrgROMBank();
 	chr8setBank0(0);
+	ppuSetNameTblVertical();
+}
+
+void m221_reset()
+{
+	m221_prgmode = 0;
+	m221_curPRGBank = 0; m221_outerPRGBank = 0;
+	m221SetPrgROMBank();
+}
+
+void m226_reset()
+{
+	//without this seems to reset
+	//into some different (wrong) menu
+	//which is interesting...
+	p1632_p16 = false;
+	p1632_curPRGBank = 0;
+	p1632c8SetPrgROMBank();
+	ppuSetNameTblHorizontal();
+}
+
+void m230_reset()
+{
+	m230_mode^=1;
+	if(m230_mode == 0)
+	{
+		prg16setBank0(0<<14);
+		prg16setBank1(7<<14);
+		ppuSetNameTblVertical();
+	}
+	else
+	{
+		p1632_p16 = false;
+		p1632_curPRGBank = (8<<14);
+		p1632c8SetPrgROMBank();
+		ppuSetNameTblHorizontal();
+	}
+	uint32_t prgaddr;
+	for(prgaddr = 0x8000; prgaddr < 0x10000; prgaddr++)
+		m230_initSet8(prgaddr);
+}
+
+void m235_reset()
+{
+	p1632_p16 = false;
+	p1632_curPRGBank = 0;
+	p1632c8SetPrgROMBank();
+	ppuSetNameTblVertical();
 }

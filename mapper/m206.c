@@ -57,6 +57,8 @@ void m95init(uint8_t *prgROMin, uint32_t prgROMsizeIn,
 //top right it will have an X without PRG RAM and the game will not function
 //correctly, with PRG RAM however it will display "OK" and actually work
 static bool m112_usesPrgRAM;
+//extended chr bank bit used by for example "Fighting Hero III"
+static uint16_t m112b0Upper, m112b1Upper, m112b2Upper, m112b3Upper;
 void m112init(uint8_t *prgROMin, uint32_t prgROMsizeIn, 
 			uint8_t *prgRAMin, uint32_t prgRAMsizeIn,
 			uint8_t *chrROMin, uint32_t chrROMsizeIn)
@@ -67,6 +69,9 @@ void m112init(uint8_t *prgROMin, uint32_t prgROMsizeIn,
 		prgRAM8init(prgRAMin);
 		m112_usesPrgRAM = true;
 	}
+	else
+		m112_usesPrgRAM = false;
+	m112b0Upper = 0, m112b1Upper = 0, m112b2Upper = 0, m112b3Upper = 0;
 }
 
 void m112initGet8(uint16_t addr)
@@ -158,16 +163,16 @@ static void m112setParamsA000(uint16_t addr, uint8_t val)
 			m206CHRBank1Ptr = m206chrROM+(((val&~1)<<10)&m206chrROMand);
 			break;
 		case 4:
-			m206CHRBank2Ptr = m206chrROM+((val<<10)&m206chrROMand);
+			m206CHRBank2Ptr = m206chrROM+(((val|m112b0Upper)<<10)&m206chrROMand);
 			break;
 		case 5:
-			m206CHRBank3Ptr = m206chrROM+((val<<10)&m206chrROMand);
+			m206CHRBank3Ptr = m206chrROM+(((val|m112b1Upper)<<10)&m206chrROMand);
 			break;
 		case 6:
-			m206CHRBank4Ptr = m206chrROM+((val<<10)&m206chrROMand);
+			m206CHRBank4Ptr = m206chrROM+(((val|m112b2Upper)<<10)&m206chrROMand);
 			break;
 		case 7:
-			m206CHRBank5Ptr = m206chrROM+((val<<10)&m206chrROMand);
+			m206CHRBank5Ptr = m206chrROM+(((val|m112b3Upper)<<10)&m206chrROMand);
 			break;
 	}
 }
@@ -219,6 +224,12 @@ static void m95setParams8001(uint16_t addr, uint8_t val)
 	}
 }
 
+static void m112setParamsC000(uint16_t addr, uint8_t val)
+{
+	(void)addr;
+	m112b0Upper = (val&0x10)<<4, m112b1Upper = (val&0x20)<<3,
+	m112b2Upper = (val&0x40)<<2, m112b3Upper = (val&0x80)<<1;
+}
 static void m112setParamsE000(uint16_t addr, uint8_t val)
 {
 	(void)addr;
@@ -272,6 +283,7 @@ void m112initSet8(uint16_t ori_addr)
 	uint16_t proc_addr = ori_addr&0xE001;
 	if(proc_addr == 0x8000) memInitMapperSetPointer(ori_addr, m206setParams8000);
 	else if(proc_addr == 0xA000) memInitMapperSetPointer(ori_addr, m112setParamsA000);
+	else if(proc_addr == 0xC000) memInitMapperSetPointer(ori_addr, m112setParamsC000);
 	else if(proc_addr == 0xE000) memInitMapperSetPointer(ori_addr, m112setParamsE000);
 }
 void m154initSet8(uint16_t ori_addr)

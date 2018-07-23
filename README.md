@@ -4,14 +4,14 @@ If you want to check it out for some reason I do include a windows binary in the
 
 Loading Files:  
 NTSC and PAL .nes ROMs are supported, it also creates .sav files if the chosen game supports saving.
-If you are starting a PAL NES title then make sure it has (E),(Europe),(Australia),(France),(Germany),(Italy),(Spain) or (Sweden) in the filename to be started in PAL mode.  
+If you are starting a PAL NES title then make sure it has (E),(Europe),(PAL),(Australia),(France),(Germany),(Italy),(Spain) or (Sweden) in the filename to be started in PAL mode.  
 You can also play FDS titles if you have the FDS BIOS named disksys.rom in the same folder as your .fds/.qd files.  
 You can also listen to .nsf music files, changing tracks works by pressing left/right.  
 To start a file, simply drag and drop it into the fixNES Application or call it via command line with the file as argument.  
 You can also load from a .zip file, the first found supported file from that .zip will be used.    
 
 Supported .nes Mappers:  
-0,1,2,3,4,5,7,9,10,11,12,13,15,19,21,22,23,24,25,26,32,33,34,36,37,38,41,44,45,46,47,48,49,52,57,58,60,61,62,65,66,67,68,69,70,71,73,75,76,78,79,85,87,88,89,93,94,95,97,101,112,113,118,119,133,140,144,145,146,147,148,149,152,154,155,156,174,180,184,185,200,201,202,203,205,206,210,212,225,226,228,232,232,240 and 242.  
+0,1,2,3,4,5,7,9,10,11,12,13,15,19,21,22,23,24,25,26,28,31,32,33,34,36,37,38,41,44,45,46,47,48,49,52,57,58,60,61,62,65,66,67,68,69,70,71,73,75,76,78,79,85,87,88,89,93,94,95,97,101,107,112,113,118,119,132,133,136,137,138,139,140,141,144,145,146,147,148,149,152,154,155,156,172,173,174,180,184,185,193,200,201,202,203,205,206,210,212,221,225,226,228,229,230,231,232,235,237,240 and 242.  
 Supported Audio Expansions (for both ROMs and NSF Files):  
 VRC6, VRC7, FDS, MMC5, N163, Sunsoft 5B    
 

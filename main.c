@@ -38,7 +38,7 @@
 #define DEBUG_KEY 0
 #define DEBUG_LOAD_INFO 1
 
-const char *VERSION_STRING = "fixNES Alpha v1.2.2";
+const char *VERSION_STRING = "fixNES Alpha v1.2.3";
 static char window_title[256];
 static char window_title_pause[256];
 
@@ -195,18 +195,34 @@ int main(int argc, char** argv)
 		nesEmuFileClose();
 		nesPAL = (strstr(emuFileName,"(E)") != NULL) || (strstr(emuFileName,"(Europe)") != NULL) || (strstr(emuFileName,"(Australia)") != NULL)
 			|| (strstr(emuFileName,"(France)") != NULL) || (strstr(emuFileName,"(Germany)") != NULL) || (strstr(emuFileName,"(Italy)") != NULL)
-			|| (strstr(emuFileName,"(Spain)") != NULL) || (strstr(emuFileName,"(Sweden)") != NULL);
+			|| (strstr(emuFileName,"(Spain)") != NULL) || (strstr(emuFileName,"(Sweden)") != NULL) || (strstr(emuFileName,"(PAL)") != NULL);
 		uint8_t mapper = ((emuNesROM[6] & 0xF0) >> 4) | ((emuNesROM[7] & 0xF0));
 		emuSaveEnabled = (emuNesROM[6] & (1<<1)) != 0;
 		bool trainer = (emuNesROM[6] & (1<<2)) != 0;
 		uint32_t ROMsize = emuNesROMsize-16;
 		uint32_t prgROMsize = emuNesROM[4] * 0x4000;
 		if(prgROMsize > ROMsize) //ensure we read in bounds
+		{
+			printf("Suggested PRG ROM of 0x%04x is too big, using 0x%04x instead\n", prgROMsize, ROMsize);
 			prgROMsize = ROMsize;
+		}
 		ROMsize -= prgROMsize;
 		uint32_t chrROMsize = emuNesROM[5] * 0x2000;
-		if(chrROMsize > ROMsize) //ensure we read in bounds
+		if(prgROMsize == 0) //can happen on some roms...
+		{
+			printf("PRG ROM size was 0, forcing the whole file to be PRG ROM\n");
+			prgROMsize = ROMsize;
+			if(chrROMsize) //force use CHR RAM in this case for now...
+			{
+				printf("CHR ROM was set to 0x%04x, instead of the suggested CHR ROM it will now use CHR RAM\n", chrROMsize);
+				chrROMsize = 0;
+			}
+		}
+		else if(chrROMsize > ROMsize) //ensure we read in bounds
+		{
+			printf("Suggested CHR ROM of 0x%04x is too big, using 0x%04x instead\n", chrROMsize, ROMsize);
 			chrROMsize = ROMsize;
+		}
 		if(mapper == 5) //just to be on the safe side
 			emuPrgRAMsize = 0x10000;
 		else

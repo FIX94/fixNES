@@ -13,6 +13,7 @@
 #include "../mapper.h"
 #include "../mem.h"
 #include "../mapper_h/common.h"
+#include "../mapper_h/m225.h"
 
 static uint8_t m225_regRAM[4];
 
@@ -23,7 +24,7 @@ void m225init(uint8_t *prgROMin, uint32_t prgROMsizeIn,
 	(void)prgRAMin;
 	(void)prgRAMsizeIn;
 	prg16init(prgROMin,prgROMsizeIn);
-	prg16setBank0(0<<14); prg16setBank1(1<<14);
+	m225reset();
 	chr8init(chrROMin,chrROMsizeIn);
 	memset(m225_regRAM,0,4);
 	printf("Mapper 225 inited\n");
@@ -53,8 +54,8 @@ static void m225setParams(uint16_t addr, uint8_t val)
 	uint8_t prgBank = (addr>>6)&0x3F;
 	if(addr&0x4000)
 	{
-		chrBank |= 0x80;
-		prgBank |= 0x80;
+		chrBank |= 0x40;
+		prgBank |= 0x40;
 	}
 	if((addr&0x1000) == 0) //mode 32k
 	{
@@ -79,4 +80,14 @@ void m225initSet8(uint16_t addr)
 		memInitMapperSetPointer(addr, m225setRAM);
 	else if(addr >= 0x8000)
 		memInitMapperSetPointer(addr, m225setParams);
+}
+
+void m225reset()
+{
+	//reset to menu vectors seem to generally exist on most games,
+	//however on some without this it will reset glitchy,
+	//so for the sake of clean resetting everywhere do this
+	prg16setBank0(0<<14); prg16setBank1(1<<14);
+	chr8setBank0(0);
+	ppuSetNameTblVertical();
 }
