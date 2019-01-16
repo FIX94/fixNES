@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 - 2018 FIX94
+ * Copyright (C) 2017 - 2019 FIX94
  *
  * This software may be modified and distributed under the terms
  * of the MIT license.  See the LICENSE file for details.
@@ -38,7 +38,7 @@
 #define DEBUG_KEY 0
 #define DEBUG_LOAD_INFO 1
 
-const char *VERSION_STRING = "fixNES Alpha v1.2.3";
+const char *VERSION_STRING = "fixNES Alpha v1.2.4";
 static char window_title[256];
 static char window_title_pause[256];
 
@@ -143,6 +143,9 @@ uint32_t cpuCycleTimer;
 uint32_t vrc7CycleTimer;
 //from input.c
 extern uint8_t inValReads[8];
+//from m30.c
+extern bool m30_flashable;
+extern bool m30_singlescreen;
 //from m32.c
 extern bool m32_singlescreen;
 //from p16c8.c
@@ -223,16 +226,27 @@ int main(int argc, char** argv)
 			printf("Suggested CHR ROM of 0x%04x is too big, using 0x%04x instead\n", chrROMsize, ROMsize);
 			chrROMsize = ROMsize;
 		}
-		if(mapper == 5) //just to be on the safe side
-			emuPrgRAMsize = 0x10000;
+		if(mapper == 30 && emuSaveEnabled) //rewritable prg
+		{
+			emuPrgRAMsize = prgROMsize;
+			m30_flashable = true;
+		}
 		else
 		{
-			emuPrgRAMsize = emuNesROM[8] * 0x2000;
-			if(emuPrgRAMsize == 0) emuPrgRAMsize = 0x2000;
+			m30_flashable = false;
+			if(mapper == 5) //just to be on the safe side
+				emuPrgRAMsize = 0x10000;
+			else
+			{
+				emuPrgRAMsize = emuNesROM[8] * 0x2000;
+				if(emuPrgRAMsize == 0) emuPrgRAMsize = 0x2000;
+			}
 		}
 		emuPrgRAM = malloc(emuPrgRAMsize);
 		uint8_t *prgROM = emuNesROM+16;
-		if(trainer)
+		if(m30_flashable) //initial prg fill
+			memcpy(emuPrgRAM, prgROM, prgROMsize);
+		else if(trainer)
 		{
 			memcpy(emuPrgRAM+0x1000,prgROM,0x200);
 			prgROM += 512;
@@ -270,6 +284,11 @@ int main(int argc, char** argv)
 		#endif
 		if(mapper == 5)
 			ppuMapper5 = true;
+		else if(mapper == 30)
+		{
+			//TODO: add single screen ones here
+			m30_singlescreen = false;
+		}
 		else if(mapper == 32)
 		{
 			if(strstr(emuFileName,"Major League") != NULL)

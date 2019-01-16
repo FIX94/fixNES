@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 - 2018 FIX94
+ * Copyright (C) 2017 - 2019 FIX94
  *
  * This software may be modified and distributed under the terms
  * of the MIT license.  See the LICENSE file for details.
@@ -110,9 +110,9 @@ static struct {
 } apu;
 
 #if AUDIO_FLOAT
-static float APU_ampVol[7] = { 3.0f, 2.0f, 1.5f, 1.2f, 1.0f, 0.85f, 0.75f };
+static float APU_ampVol[7] = { 2.0f, 1.75f, 1.5f, 1.2f, 1.0f, 0.85f, 0.75f };
 #else
-static int32_t APU_ampVol[7] = { 192, 128, 96, 77, 64, 55, 48 };
+static int32_t APU_ampVol[7] = { 128, 112, 96, 77, 64, 55, 48 };
 #endif
 
 //used externally

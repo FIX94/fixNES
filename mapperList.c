@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 - 2018 FIX94
+ * Copyright (C) 2017 - 2019 FIX94
  *
  * This software may be modified and distributed under the terms
  * of the MIT license.  See the LICENSE file for details.
@@ -16,6 +16,7 @@
 #include "mapper_h/m13.h"
 #include "mapper_h/m15.h"
 #include "mapper_h/m28.h"
+#include "mapper_h/m30.h"
 #include "mapper_h/m31.h"
 #include "mapper_h/m32.h"
 #include "mapper_h/m33.h"
@@ -78,7 +79,7 @@ mapperList_t mapperList[256] = {
 	{ NULL,			NULL,				NULL,			NULL,				NULL,				NULL, NULL },
 	{ m28init,		m28initGet8,		m28initSet8,	m28initPPUGet8,		m28initPPUSet8,		NULL, NULL },
 	{ NULL,			NULL,				NULL,			NULL,				NULL,				NULL, NULL },
-	{ NULL,			NULL,				NULL,			NULL,				NULL,				NULL, NULL },
+	{ m30init,		prg16initGet8,		m30initSet8,	m30initPPUGet8,		m30initPPUSet8,		NULL, NULL },
 	{ m31init,		prg4initGet8,		m31initSet8,	chr8initPPUGet8,	chr8initPPUSet8,	NULL, NULL },
 	{ m32init,		m32initGet8,		m32initSet8,	chr1initPPUGet8,	chr1initPPUSet8,	NULL, NULL },
 	{ m33init,		prg8initGet8,		m33initSet8,	chr1initPPUGet8,	chr1initPPUSet8,	NULL, NULL },
