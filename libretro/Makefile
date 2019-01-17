@@ -247,7 +247,6 @@ else ifeq ($(platform), wiiu)
 	PLATFORM_DEFINES += -DGEKKO -DWIIU -DHW_RVL -mwup -mcpu=750 -meabi -mhard-float
 	PLATFORM_DEFINES += -U__INT32_TYPE__ -U __UINT32_TYPE__ -D__INT32_TYPE__=int
 	STATIC_LINKING = 1
-	DO_INLINE_ATTRIBS = 1
 
 # ARM
 else ifneq (,$(findstring armv,$(platform)))
