@@ -360,6 +360,7 @@ OBJS += ../mapper/m206.o
 OBJS += ../mapper/m225.o
 OBJS += ../mapper/m228.o
 OBJS += ../mapper/m237.o
+OBJS += ../mapper/m30.o
 OBJS += ../mapper/m31.o
 OBJS += ../mapper/m32.o
 OBJS += ../mapper/m33.o
