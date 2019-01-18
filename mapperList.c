@@ -23,6 +23,7 @@
 #include "mapper_h/m34.h"
 #include "mapper_h/m48.h"
 #include "mapper_h/m65.h"
+#include "mapper_h/m77.h"
 #include "mapper_h/m137.h"
 #include "mapper_h/m156.h"
 #include "mapper_h/m193.h"
@@ -33,6 +34,7 @@
 #include "mapper_h/namco.h"
 #include "mapper_h/p16c8.h"
 #include "mapper_h/p32c8.h"
+#include "mapper_h/rambo1.h"
 #include "mapper_h/vrc1.h"
 #include "mapper_h/vrc2_4.h"
 #include "mapper_h/vrc3.h"
@@ -113,7 +115,7 @@ mapperList_t mapperList[256] = {
 	{ p1632c8init,	prg16initGet8,		m61_initSet8,	chr8initPPUGet8,	chr8initPPUSet8,	NULL, NULL },
 	{ m62_init,		prg16initGet8,		m62_initSet8,	chr8initPPUGet8,	chr8initPPUSet8,	NULL, m62_reset },
 	{ NULL,			NULL,				NULL,			NULL,				NULL,				NULL, NULL },
-	{ NULL,			NULL,				NULL,			NULL,				NULL,				NULL, NULL },
+	{ rambo1init,	prg8initGet8,		rambo1initSet8,	rambo1initPPUGet8,	rambo1initPPUSet8,	rambo1cycle, NULL },
 	{ m65init,		prg8initGet8,		m65initSet8,	chr1initPPUGet8,	chr1initPPUSet8,	m65cycle, NULL },
 	{ p32c8init,	prg32initGet8,		m66_initSet8,	chr8initPPUGet8,	chr8initPPUSet8,	NULL, NULL },
 	{ s3init,		prg16initGet8,		s3initSet8,		chr2initPPUGet8,	chr2initPPUSet8,	s3cycle, NULL },
@@ -125,8 +127,8 @@ mapperList_t mapperList[256] = {
 	{ vrc3init,		vrc3initGet8,		vrc3initSet8,	chr8initPPUGet8,	chr8initPPUSet8,	vrc3cycle, NULL },
 	{ NULL,			NULL,				NULL,			NULL,				NULL,				NULL, NULL },
 	{ vrc1init,		prg8initGet8,		vrc1initSet8,	chr4initPPUGet8,	chr4initPPUSet8,	NULL, NULL },
-	{ m206init,		prg8initGet8,		m76initSet8,	m76initChrGet8,		m206initChrSet8,	NULL, NULL },
-	{ NULL,			NULL,				NULL,			NULL,				NULL,				NULL, NULL },
+	{ m206init,		prg8initGet8,		m76initSet8,	m76initPPUGet8,		m206initPPUSet8,	NULL, NULL },
+	{ m77init,		prg32initGet8,		m77initSet8,	m77initPPUGet8,		m77initPPUSet8,		NULL, NULL },
 	{ p16c8init,	prg16initGet8,		m78_initSet8,	chr8initPPUGet8,	chr8initPPUSet8,	NULL, NULL },
 	{ p32c8init,	prg32initGet8,		m79_initSet8,	chr8initPPUGet8,	chr8initPPUSet8,	NULL, NULL },
 	{ NULL,			NULL,				NULL,			NULL,				NULL,				NULL, NULL },
@@ -137,14 +139,14 @@ mapperList_t mapperList[256] = {
 	{ vrc7init,		vrc7initGet8,		vrc7initSet8,	chr1initPPUGet8,	chr1initPPUSet8,	vrc_irq_cycle, NULL },
 	{ NULL,			NULL,				NULL,			NULL,				NULL,				NULL, NULL },
 	{ p32c8init,	prg32initGet8,		m87_initSet8,	chr8initPPUGet8,	chr8initPPUSet8,	NULL, NULL },
-	{ m206init,		prg8initGet8,		m88initSet8,	m206initChrGet8,	m206initChrSet8,	NULL, NULL },
+	{ m206init,		prg8initGet8,		m88initSet8,	m206initPPUGet8,	m206initPPUSet8,	NULL, NULL },
 	{ p16c8init,	prg16initGet8,		m89_initSet8,	chr8initPPUGet8,	chr8initPPUSet8,	NULL, NULL },
 	{ NULL,			NULL,				NULL,			NULL,				NULL,				NULL, NULL },
 	{ NULL,			NULL,				NULL,			NULL,				NULL,				NULL, NULL },
 	{ NULL,			NULL,				NULL,			NULL,				NULL,				NULL, NULL },
 	{ p16c8init,	prg16initGet8,		m93_initSet8,	chr8initPPUGet8,	chr8initPPUSet8,	NULL, NULL },
 	{ p16c8init,	prg16initGet8,		m94_initSet8,	chr8initPPUGet8,	chr8initPPUSet8,	NULL, NULL },
-	{ m95init,		prg8initGet8,		m95initSet8,	m206initChrGet8,	m206initChrSet8,	NULL, NULL },
+	{ m95init,		prg8initGet8,		m95initSet8,	m206initPPUGet8,	m206initPPUSet8,	NULL, NULL },
 	{ NULL,			NULL,				NULL,			NULL,				NULL,				NULL, NULL },
 	{ m97_init,		prg16initGet8,		m97_initSet8,	chr8initPPUGet8,	chr8initPPUSet8,	NULL, NULL },
 	{ NULL,			NULL,				NULL,			NULL,				NULL,				NULL, NULL },
@@ -161,7 +163,7 @@ mapperList_t mapperList[256] = {
 	{ NULL,			NULL,				NULL,			NULL,				NULL,				NULL, NULL },
 	{ NULL,			NULL,				NULL,			NULL,				NULL,				NULL, NULL },
 	{ NULL,			NULL,				NULL,			NULL,				NULL,				NULL, NULL },
-	{ m112init,		m112initGet8,		m112initSet8,	m206initChrGet8,	m206initChrSet8,	NULL, NULL },
+	{ m112init,		m112initGet8,		m112initSet8,	m206initPPUGet8,	m206initPPUSet8,	NULL, NULL },
 	{ p32c8init,	prg32initGet8,		m113_initSet8,	chr8initPPUGet8,	chr8initPPUSet8,	NULL, NULL },
 	{ NULL,			NULL,				NULL,			NULL,				NULL,				NULL, NULL },
 	{ NULL,			NULL,				NULL,			NULL,				NULL,				NULL, NULL },
@@ -203,11 +205,11 @@ mapperList_t mapperList[256] = {
 	{ NULL,			NULL,				NULL,			NULL,				NULL,				NULL, NULL },
 	{ p16c8init,	prg16initGet8,		m152_initSet8,	chr8initPPUGet8,	chr8initPPUSet8,	NULL, NULL },
 	{ NULL,			NULL,				NULL,			NULL,				NULL,				NULL, NULL },
-	{ m206init,		prg8initGet8,		m154initSet8,	m206initChrGet8,	m206initChrSet8,	NULL, NULL },
+	{ m206init,		prg8initGet8,		m154initSet8,	m206initPPUGet8,	m206initPPUSet8,	NULL, NULL },
 	{ mmc1init,		mmc1initGet8,		mmc1initSet8,	chr4initPPUGet8,	chr4initPPUSet8,	NULL, NULL },
 	{ m156init,		m156initGet8,		m156initSet8,	chr1initPPUGet8,	chr1initPPUSet8,	NULL, NULL },
 	{ NULL,			NULL,				NULL,			NULL,				NULL,				NULL, NULL },
-	{ NULL,			NULL,				NULL,			NULL,				NULL,				NULL, NULL },
+	{ m158init,		prg8initGet8,		m158initSet8,	rambo1initPPUGet8,	rambo1initPPUSet8,	rambo1cycle, NULL },
 	{ NULL,			NULL,				NULL,			NULL,				NULL,				NULL, NULL },
 	{ NULL,			NULL,				NULL,			NULL,				NULL,				NULL, NULL },
 	{ NULL,			NULL,				NULL,			NULL,				NULL,				NULL, NULL },
@@ -255,7 +257,7 @@ mapperList_t mapperList[256] = {
 	{ m200_init,	prg16initGet8,		m203_initSet8,	chr8initPPUGet8,	chr8initPPUSet8,	NULL, NULL },
 	{ NULL,			NULL,				NULL,			NULL,				NULL,				NULL, NULL },
 	{ m205_init,	mmc3NoRAMInitGet8,	m205_initSet8,	mmc3initPPUGet8,	mmc3initPPUSet8,	NULL, m205_reset },
-	{ m206init,		prg8initGet8,		m206initSet8,	m206initChrGet8,	m206initChrSet8,	NULL, NULL },
+	{ m206init,		prg8initGet8,		m206initSet8,	m206initPPUGet8,	m206initPPUSet8,	NULL, NULL },
 	{ NULL,			NULL,				NULL,			NULL,				NULL,				NULL, NULL },
 	{ NULL,			NULL,				NULL,			NULL,				NULL,				NULL, NULL },
 	{ NULL,			NULL,				NULL,			NULL,				NULL,				NULL, NULL },

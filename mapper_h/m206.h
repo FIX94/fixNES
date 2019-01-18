@@ -24,8 +24,8 @@ void m95initSet8(uint16_t addr);
 void m112initSet8(uint16_t addr);
 void m154initSet8(uint16_t addr);
 void m206initSet8(uint16_t addr);
-void m76initChrGet8(uint16_t addr);
-void m206initChrGet8(uint16_t addr);
-void m206initChrSet8(uint16_t addr);
+void m76initPPUGet8(uint16_t addr);
+void m206initPPUGet8(uint16_t addr);
+void m206initPPUSet8(uint16_t addr);
 
 #endif

@@ -305,7 +305,7 @@ static uint8_t m76getCHRBank3(uint16_t addr) { return m206CHRBank3Ptr[addr&0x7FF
 static uint8_t m76getCHRBank4(uint16_t addr) { return m206CHRBank4Ptr[addr&0x7FF]; }
 static uint8_t m76getCHRBank5(uint16_t addr) { return m206CHRBank5Ptr[addr&0x7FF]; }
 
-void m76initChrGet8(uint16_t addr)
+void m76initPPUGet8(uint16_t addr)
 {
 	if(addr < 0x800) memInitMapperPPUGetPointer(addr, m76getCHRBank2);
 	else if(addr < 0x1000) memInitMapperPPUGetPointer(addr, m76getCHRBank3);
@@ -320,7 +320,7 @@ static uint8_t m206getCHRBank3(uint16_t addr) { return m206CHRBank3Ptr[addr&0x3F
 static uint8_t m206getCHRBank4(uint16_t addr) { return m206CHRBank4Ptr[addr&0x3FF]; }
 static uint8_t m206getCHRBank5(uint16_t addr) { return m206CHRBank5Ptr[addr&0x3FF]; }
 
-void m206initChrGet8(uint16_t addr)
+void m206initPPUGet8(uint16_t addr)
 {
 	if(addr < 0x800) memInitMapperPPUGetPointer(addr, m206getCHRBank0);
 	else if(addr < 0x1000) memInitMapperPPUGetPointer(addr, m206getCHRBank1);
@@ -330,7 +330,7 @@ void m206initChrGet8(uint16_t addr)
 	else if(addr < 0x2000) memInitMapperPPUGetPointer(addr, m206getCHRBank5);
 }
 
-void m206initChrSet8(uint16_t addr)
+void m206initPPUSet8(uint16_t addr)
 {
 	(void)addr;
 }

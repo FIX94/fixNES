@@ -38,7 +38,7 @@
 #define DEBUG_KEY 0
 #define DEBUG_LOAD_INFO 1
 
-const char *VERSION_STRING = "fixNES Alpha v1.2.4";
+const char *VERSION_STRING = "fixNES Alpha v1.2.5";
 static char window_title[256];
 static char window_title_pause[256];
 
@@ -98,7 +98,7 @@ uint16_t textureImage[0xF000];
 #endif
 bool nesPause = false;
 bool ppuDebugPauseFrame = false;
-bool doOverscan = true;
+bool doOverscan = false;
 bool nesPAL = false;
 bool nesEmuNSFPlayback = false;
 uint8_t emuInitialNT = NT_UNKNOWN;
@@ -172,9 +172,11 @@ int main(int argc, char** argv)
 	emuFdsHasSideB = false;
 	nesPause = false;
 	ppuDebugPauseFrame = false;
-	doOverscan = true;
+	doOverscan = false;
 	nesPAL = false;
 	nesEmuNSFPlayback = false;
+	m30_flashable = false;
+	m30_singlescreen = false;
 	m32_singlescreen = false;
 	m78_m78a = false;
 	ppuMapper5 = false;
@@ -263,7 +265,13 @@ int main(int argc, char** argv)
 		memInit();
 		apuInit();
 		inputInit();
-		if(emuNesROM[6] & 8)
+		//special 1-screen case
+		if(mapper == 30 && (emuNesROM[6] & 9) == 8)
+		{
+			printf("Using Single Screen for Mapper 30\n");
+			m30_singlescreen = true;
+		}
+		else if(emuNesROM[6] & 8)
 		{
 			emuInitialNT = NT_4SCREEN;
 			ppuSetNameTbl4Screen();
@@ -284,11 +292,6 @@ int main(int argc, char** argv)
 		#endif
 		if(mapper == 5)
 			ppuMapper5 = true;
-		else if(mapper == 30)
-		{
-			//TODO: add single screen ones here
-			m30_singlescreen = false;
-		}
 		else if(mapper == 32)
 		{
 			if(strstr(emuFileName,"Major League") != NULL)

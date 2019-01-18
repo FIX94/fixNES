@@ -118,7 +118,7 @@ static void m30sidExit()
 
 static void m30setParams8000(uint16_t addr, uint8_t val)
 {
-	//printf("%04x %02x\n", addr, val);
+	//printf("%04x %02x %02x\n", addr, val, m30.step);
 	if(val == 0xF0 && m30.software_id)
 		m30sidExit();
 	switch(m30.step)
@@ -174,19 +174,19 @@ static void m30setParams8000(uint16_t addr, uint8_t val)
 				if(m30.prgRAMptr && m30.prgRAMsize)
 					memset(m30.prgRAMptr, 0xFF, m30.prgRAMsize);
 			}
-			else if(val == 30) //sector erase
+			else if(val == 0x30) //sector erase
 			{
-				//printf("M30 Sector Erase %04x\n", (addr&0x7000));
+				//printf("M30 Sector Erase %04x\n", (addr&0x3000));
 				if(m30.prgRAMBankPtr)
-					memset(m30.prgRAMBankPtr+(addr&0x7000), 0xFF, 0x1000);
+					memset(m30.prgRAMBankPtr+(addr&0x3000), 0xFF, 0x1000);
 			}
 			goto _8000_step_reset;
 		//executes write
 		case M30_STATE_83_WRI:
 			if(m30.prgRAMBankPtr) //byte write
 			{
-				//printf("M30 Byte Write %04x %02x\n", addr&0x7FFF, val);
-				m30.prgRAMBankPtr[addr&0x7FFF] = val;
+				//printf("M30 Byte Write %04x %02x\n", addr&0x3FFF, val);
+				m30.prgRAMBankPtr[addr&0x3FFF] &= val;
 			}
 			goto _8000_step_reset;
 		//any other state or state verify fail
@@ -200,7 +200,7 @@ static void m30setParams8000(uint16_t addr, uint8_t val)
 
 static void m30setParamsC000(uint16_t addr, uint8_t val)
 {
-	//printf("%04x %02x\n", addr, val);
+	//printf("%04x %02x %02x\n", addr, val, m30.step);
 	m30setParamsNoFlash(addr, val);
 	if(val == 0xF0 && m30.software_id)
 		m30sidExit();
