@@ -216,7 +216,7 @@ static void mmc5SetPrgBankPtr()
 			}
 			else //RAM
 			{
-				tmp = ((mmc5.PRGBank[2]<<13)&mmc5.prgRAMand)|mmc5.prgRAMadd[1];
+				tmp = ((mmc5.PRGBank[2]<<13)&mmc5.prgRAMand)|mmc5.prgRAMadd[2];
 				mmc5.prgBank2Ptr = mmc5.prgRAM+(tmp|0x0000);
 				mmc5.prgBank2PtrType = 0;
 			}
@@ -235,7 +235,7 @@ static void mmc5SetPrgBankPtr()
 			}
 			else //RAM
 			{
-				tmp = ((mmc5.PRGBank[0]<<13)&mmc5.prgRAMand)|mmc5.prgRAMadd[1];
+				tmp = ((mmc5.PRGBank[0]<<13)&mmc5.prgRAMand)|mmc5.prgRAMadd[0];
 				mmc5.prgBank0Ptr = mmc5.prgRAM+(tmp|0x0000);
 				mmc5.prgBank0PtrType = 0;
 			}
@@ -261,7 +261,7 @@ static void mmc5SetPrgBankPtr()
 			}
 			else //RAM
 			{
-				tmp = ((mmc5.PRGBank[2]<<13)&mmc5.prgRAMand)|mmc5.prgRAMadd[1];
+				tmp = ((mmc5.PRGBank[2]<<13)&mmc5.prgRAMand)|mmc5.prgRAMadd[2];
 				mmc5.prgBank2Ptr = mmc5.prgRAM+(tmp|0x0000);
 				mmc5.prgBank2PtrType = 0;
 			}
