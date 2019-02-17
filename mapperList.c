@@ -24,6 +24,8 @@
 #include "mapper_h/m48.h"
 #include "mapper_h/m65.h"
 #include "mapper_h/m77.h"
+#include "mapper_h/m80.h"
+#include "mapper_h/m82.h"
 #include "mapper_h/m137.h"
 #include "mapper_h/m156.h"
 #include "mapper_h/m193.h"
@@ -131,9 +133,9 @@ mapperList_t mapperList[256] = {
 	{ m77init,		prg32initGet8,		m77initSet8,	m77initPPUGet8,		m77initPPUSet8,		NULL, NULL },
 	{ p16c8init,	prg16initGet8,		m78_initSet8,	chr8initPPUGet8,	chr8initPPUSet8,	NULL, NULL },
 	{ p32c8init,	prg32initGet8,		m79_initSet8,	chr8initPPUGet8,	chr8initPPUSet8,	NULL, NULL },
+	{ m80init,		m80initGet8,		m80initSet8,	chr1initPPUGet8,	chr1initPPUSet8,	NULL, NULL },
 	{ NULL,			NULL,				NULL,			NULL,				NULL,				NULL, NULL },
-	{ NULL,			NULL,				NULL,			NULL,				NULL,				NULL, NULL },
-	{ NULL,			NULL,				NULL,			NULL,				NULL,				NULL, NULL },
+	{ m82init,		m82initGet8,		m82initSet8,	chr1initPPUGet8,	chr1initPPUSet8,	NULL, NULL },
 	{ NULL,			NULL,				NULL,			NULL,				NULL,				NULL, NULL },
 	{ NULL,			NULL,				NULL,			NULL,				NULL,				NULL, NULL },
 	{ vrc7init,		vrc7initGet8,		vrc7initSet8,	chr1initPPUGet8,	chr1initPPUSet8,	vrc_irq_cycle, NULL },
@@ -258,7 +260,7 @@ mapperList_t mapperList[256] = {
 	{ NULL,			NULL,				NULL,			NULL,				NULL,				NULL, NULL },
 	{ m205_init,	mmc3NoRAMInitGet8,	m205_initSet8,	mmc3initPPUGet8,	mmc3initPPUSet8,	NULL, m205_reset },
 	{ m206init,		prg8initGet8,		m206initSet8,	m206initPPUGet8,	m206initPPUSet8,	NULL, NULL },
-	{ NULL,			NULL,				NULL,			NULL,				NULL,				NULL, NULL },
+	{ m207init,		m80initGet8,		m207initSet8,	chr1initPPUGet8,	chr1initPPUSet8,	NULL, NULL },
 	{ NULL,			NULL,				NULL,			NULL,				NULL,				NULL, NULL },
 	{ NULL,			NULL,				NULL,			NULL,				NULL,				NULL, NULL },
 	{ namco_init,	namco_initGet8,		namco_initSet8,	namco_initPPUGet8,	namco_initPPUSet8,	namco_cycle, NULL },

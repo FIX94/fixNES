@@ -38,7 +38,7 @@
 #define DEBUG_KEY 0
 #define DEBUG_LOAD_INFO 1
 
-const char *VERSION_STRING = "fixNES Alpha v1.2.5";
+const char *VERSION_STRING = "fixNES Alpha v1.2.6";
 static char window_title[256];
 static char window_title_pause[256];
 
@@ -245,6 +245,8 @@ int main(int argc, char** argv)
 			}
 		}
 		emuPrgRAM = malloc(emuPrgRAMsize);
+		//start out clear
+		memset(emuPrgRAM, 0, emuPrgRAMsize);
 		uint8_t *prgROM = emuNesROM+16;
 		if(m30_flashable) //initial prg fill
 			memcpy(emuPrgRAM, prgROM, prgROMsize);
