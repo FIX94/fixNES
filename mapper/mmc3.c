@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 - 2018 FIX94
+ * Copyright (C) 2017 - 2019 FIX94
  *
  * This software may be modified and distributed under the terms
  * of the MIT license.  See the LICENSE file for details.
@@ -403,6 +403,21 @@ void m119initSet8(uint16_t ori_addr)
 	//special chr ram pointers
 	if(proc_addr == 0x8000) memInitMapperSetPointer(ori_addr, m119setParams8000);
 	else if(proc_addr == 0x8001) memInitMapperSetPointer(ori_addr, m119setParams8001);
+	else //do normal mmc3 sets
+		mmc3initSet8(ori_addr);
+}
+
+static void m224setParams5XXX(uint16_t addr, uint8_t val)
+{
+	(void)addr;
+	mmc3_prgROMadd = (val&4)<<17;
+	mmc3SetPrgROMBankPtr();
+}
+void m224initSet8(uint16_t ori_addr)
+{
+	uint16_t proc_addr = ori_addr&0xF003;
+	//special pirate regs
+	if(proc_addr == 0x5000) memInitMapperSetPointer(ori_addr, m224setParams5XXX);
 	else //do normal mmc3 sets
 		mmc3initSet8(ori_addr);
 }

@@ -277,7 +277,7 @@ mapperList_t mapperList[256] = {
 	{ m221_init,	prg16initGet8,		m221_initSet8,	chr8initPPUGet8,	chr8initPPUSet8,	NULL, m221_reset },
 	{ NULL,			NULL,				NULL,			NULL,				NULL,				NULL, NULL },
 	{ NULL,			NULL,				NULL,			NULL,				NULL,				NULL, NULL },
-	{ NULL,			NULL,				NULL,			NULL,				NULL,				NULL, NULL },
+	{ mmc3init,		mmc3initGet8,		m224initSet8,	mmc3initPPUGet8,	mmc3initPPUSet8,	NULL, NULL },
 	{ m225init,		m225initGet8,		m225initSet8,	chr8initPPUGet8,	chr8initPPUSet8,	NULL, m225reset },
 	{ m226_init,	prg16initGet8,		m226_initSet8,	chr8initPPUGet8,	chr8initPPUSet8,	NULL, m226_reset },
 	{ NULL,			NULL,				NULL,			NULL,				NULL,				NULL, NULL },

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 - 2018 FIX94
+ * Copyright (C) 2017 - 2019 FIX94
  *
  * This software may be modified and distributed under the terms
  * of the MIT license.  See the LICENSE file for details.
@@ -22,25 +22,25 @@
 extern uint8_t audioExpansion;
 int32_t vrc7Out;
 
-//rainwarrior's VRC7 patches
+//https://siliconpr0n.org/archive/doku.php?id=vendor:yamaha:opl2#vrc7_instrument_rom_dump
 static const uint8_t vrc7instrumentTbl[16][8] = 
 {
 	{ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 }, 
-	{ 0x03, 0x21, 0x05, 0x06, 0xB8, 0x82, 0x42, 0x27 }, 
-	{ 0x13, 0x41, 0x13, 0x0D, 0xD8, 0xD6, 0x23, 0x12 }, 
-	{ 0x31, 0x11, 0x08, 0x08, 0xFA, 0x9A, 0x22, 0x02 }, 
-	{ 0x31, 0x61, 0x18, 0x07, 0x78, 0x64, 0x30, 0x27 }, 
-	{ 0x22, 0x21, 0x1E, 0x06, 0xF0, 0x76, 0x08, 0x28 }, 
-	{ 0x02, 0x01, 0x06, 0x00, 0xF0, 0xF2, 0x03, 0xF5 }, 
-	{ 0x21, 0x61, 0x1D, 0x07, 0x82, 0x81, 0x16, 0x07 }, 
-	{ 0x23, 0x21, 0x1A, 0x17, 0xCF, 0x72, 0x25, 0x17 }, 
-	{ 0x15, 0x11, 0x25, 0x00, 0x4F, 0x71, 0x00, 0x11 }, 
-	{ 0x85, 0x01, 0x12, 0x0F, 0x99, 0xA2, 0x40, 0x02 }, 
-	{ 0x07, 0xC1, 0x69, 0x07, 0xF3, 0xF5, 0xA7, 0x12 }, 
-	{ 0x71, 0x23, 0x0D, 0x06, 0x66, 0x75, 0x23, 0x16 }, 
-	{ 0x01, 0x02, 0xD3, 0x05, 0xA3, 0x92, 0xF7, 0x52 }, 
-	{ 0x61, 0x63, 0x0C, 0x00, 0x94, 0xAF, 0x34, 0x06 }, 
-	{ 0x21, 0x62, 0x0D, 0x00, 0xB1, 0xA0, 0x54, 0x17 }, 
+	{ 0x03, 0x21, 0x05, 0x06, 0xE8, 0x81, 0x42, 0x27 }, 
+	{ 0x13, 0x41, 0x14, 0x0D, 0xD8, 0xF6, 0x23, 0x12 }, 
+	{ 0x11, 0x11, 0x08, 0x08, 0xFA, 0xB2, 0x20, 0x12 }, 
+	{ 0x31, 0x61, 0x0C, 0x07, 0xA8, 0x64, 0x61, 0x27 }, 
+	{ 0x32, 0x21, 0x1E, 0x06, 0xE1, 0x76, 0x01, 0x28 }, 
+	{ 0x02, 0x01, 0x06, 0x00, 0xA3, 0xE2, 0xF4, 0xF4 }, 
+	{ 0x21, 0x61, 0x1D, 0x07, 0x82, 0x81, 0x11, 0x07 }, 
+	{ 0x23, 0x21, 0x22, 0x17, 0xA2, 0x72, 0x01, 0x17 }, 
+	{ 0x35, 0x11, 0x25, 0x00, 0x40, 0x73, 0x72, 0x01 }, 
+	{ 0xB5, 0x01, 0x0F, 0x0F, 0xA8, 0xA5, 0x51, 0x02 }, 
+	{ 0x17, 0xC1, 0x24, 0x07, 0xF8, 0xF8, 0x22, 0x12 }, 
+	{ 0x71, 0x23, 0x11, 0x06, 0x65, 0x74, 0x18, 0x16 }, 
+	{ 0x01, 0x02, 0xD3, 0x05, 0xC9, 0x95, 0x03, 0x02 }, 
+	{ 0x61, 0x63, 0x0C, 0x00, 0x94, 0xC0, 0x33, 0xF6 }, 
+	{ 0x21, 0x72, 0x0D, 0x00, 0xC1, 0xD5, 0x56, 0x06 }, 
 };
 
 static const uint8_t vrc7multiTbl[16] = 
@@ -92,8 +92,8 @@ enum
 	vrc7StateRelease
 };
 
-#define vrc7MaxAtten (1<<23)
-#define attenDb ((double)(1<<23)) / 48.0
+#define vrc7MaxAtten (1<<22)
+#define attenDb ((double)(1<<22)) / 48.0
 
 static inline int32_t vrc7FromDb(double in)
 {
@@ -162,7 +162,7 @@ void vrc7AudioInit()
 	// Attack Lut
 	for(i = 0; i < 256; ++i)
 	{
-		double baselog = log((double)(vrc7MaxAtten >> 15));
+		double baselog = log((double)(vrc7MaxAtten >> 14));
 		vrc7_apu.attackLut[i] = vrc7FromDb(48) - (uint32_t)(vrc7FromDb(48) * log((double)(i)) / baselog);
 	}
 
@@ -177,7 +177,7 @@ void vrc7AudioInit()
 
 	// Am Lut
 	for(i = 0; i < 256; ++i)
-		vrc7_apu.amLut[i] = (uint32_t)((1.0 + sin(M_2PI * i / 256)) * vrc7FromDb(0.6));
+		vrc7_apu.amLut[i] = (uint32_t)((1.0 + sin(M_2PI * i / 256)) * vrc7FromDb(1.2));
 
 	// Fm Lut
 	for(i = 0; i < 256; ++i)
@@ -232,7 +232,7 @@ static void vrc7CalcSlotVals(vrc7chan_t *chan, vrc7slot_t *slot, uint8_t slotNum
 		slot->releaseRate = slot->sustainRate;
 	else
 		slot->releaseRate = 7;
-
+	// sustain hold
 	if(vrc7_apu.instrument[chan->instrument][0 | slotNum] & 0x20)
 		slot->sustainRate = 0;
 
@@ -240,7 +240,10 @@ static void vrc7CalcSlotVals(vrc7chan_t *chan, vrc7slot_t *slot, uint8_t slotNum
 	if(slot->attackRate)
 	{
 		vrc7SetR(&vrc7_apu.ksr, slot->attackRate);
-		slot->attackRate = (12 * (vrc7_apu.ksr.RL+4)) << vrc7_apu.ksr.RH;
+		if(slot->attackRate < 15)
+			slot->attackRate = (3 * (vrc7_apu.ksr.RL+4)) << (vrc7_apu.ksr.RH+1);
+		else //rate 15 is like rate 0
+			slot->attackRate = 0;
 	}
 	if(slot->decayRate)
 	{
@@ -269,22 +272,16 @@ static void vrc7KeyOn(vrc7slot_t *slot)
 static void vrc7KeyOff(vrc7slot_t *slot)
 {
 	if(slot->state == vrc7StateAttack)
-		slot->envPhase = vrc7_apu.attackLut[(slot->envPhase >> 15) & 0xFF];
+		slot->envPhase = vrc7_apu.attackLut[(slot->envPhase >> 14) & 0xFF];
 	slot->state = vrc7StateRelease;
 }
 
-static void vrc7UpdateEnable(vrc7chan_t *chan, vrc7slot_t *slot)
+static void vrc7UpdateEnable(vrc7chan_t *chan, vrc7slot_t *slot, uint8_t slotNum, bool wasenabled)
 {
-	if(chan->enabled)
-	{
-		if((slot->state == vrc7StateIdle) || (slot->state == vrc7StateRelease))
-			vrc7KeyOn(slot);
-	}
-	else
-	{
-		if((slot->state != vrc7StateIdle) && (slot->state != vrc7StateRelease))
-			vrc7KeyOff(slot);
-	}
+	if(chan->enabled && !wasenabled)
+		vrc7KeyOn(slot);
+	else if(wasenabled && !chan->enabled && slotNum)
+		vrc7KeyOff(slot);
 }
 
 static uint32_t vrc7Env(vrc7chan_t *chan, vrc7slot_t *slot, uint8_t slotNum)
@@ -294,9 +291,9 @@ static uint32_t vrc7Env(vrc7chan_t *chan, vrc7slot_t *slot, uint8_t slotNum)
 	switch(slot->state)
 	{
 		case vrc7StateAttack:
-			out = vrc7_apu.attackLut[(slot->envPhase >> 15) & 0xFF];
+			out = vrc7_apu.attackLut[(slot->envPhase >> 14) & 0xFF];
 			slot->envPhase += slot->attackRate;
-			if(slot->envPhase >= vrc7MaxAtten)
+			if(slot->envPhase >= vrc7MaxAtten || (vrc7_apu.instrument[chan->instrument][4 | slotNum] >> 4) == 0xF)
 			{
 				slot->envPhase = 0;
 				slot->state = vrc7StateDecay;
@@ -408,10 +405,11 @@ void vrc7AudioSet9030(uint16_t addr, uint8_t val)
 		c->freq &= 0xFF;
 		c->freq |= (val&1)<<8;
 		c->block = (val>>1)&7;
+		bool prevenabled = c->enabled;
 		c->enabled = ((val&0x10) != 0);
 		c->s = ((val&0x20) != 0);
-		vrc7UpdateEnable(c, &c->mod);
-		vrc7UpdateEnable(c, &c->carry);
+		vrc7UpdateEnable(c, &c->mod, 0, prevenabled);
+		vrc7UpdateEnable(c, &c->carry, 1, prevenabled);
 		vrc7CalcSlotVals(c, &c->mod, 0);
 		vrc7CalcSlotVals(c, &c->carry, 1);
 	}

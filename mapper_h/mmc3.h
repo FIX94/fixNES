@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 - 2018 FIX94
+ * Copyright (C) 2017 - 2019 FIX94
  *
  * This software may be modified and distributed under the terms
  * of the MIT license.  See the LICENSE file for details.
@@ -25,6 +25,7 @@ void mmc3initSet8(uint16_t addr);
 void m12initSet8(uint16_t addr);
 void m118initSet8(uint16_t ori_addr);
 void m119initSet8(uint16_t ori_addr);
+void m224initSet8(uint16_t ori_addr);
 void mmc3initPPUGet8(uint16_t addr);
 void mmc3initPPUSet8(uint16_t addr);
 void m119initPPUSet8(uint16_t addr);
