@@ -36,6 +36,7 @@ static struct {
 	uint32_t PRGBank[4];
 	uint8_t PRGBankType[3];
 	uint32_t CHRBank[12];
+	uint32_t upperCHRBank;
 	uint8_t vramBankMode[4];
 	uint8_t prg_bank_mode;
 	uint8_t chr_bank_mode;
@@ -306,6 +307,7 @@ void mmc5init(uint8_t *prgROMin, uint32_t prgROMsizeIn,
 	memset(mmc5.exRAM,0,0x400);
 	memset(mmc5.vramBankMode,0,4);
 	memset(mmc5.CHRBank,0,12*sizeof(uint32_t));
+	mmc5.upperCHRBank = 0;
 	mmc5.irqCtr = 0;
 	mmc5.irqEnable = false;
 	mmc5.irqPending = false;
@@ -504,64 +506,67 @@ static void mmc5setParams51XX(uint16_t addr, uint8_t val)
 			mmc5SetPrgBankPtr();
 			break;
 		case 0x20:
-			mmc5.CHRBank[0] = val;
+			mmc5.CHRBank[0] = val|(mmc5.upperCHRBank<<8);
 			mmc5.chrSet = false;
 			mmc5SetChrBankPtrLower();
 			break;
 		case 0x21:
-			mmc5.CHRBank[1] = val;
+			mmc5.CHRBank[1] = val|(mmc5.upperCHRBank<<8);
 			mmc5.chrSet = false;
 			mmc5SetChrBankPtrLower();
 			break;
 		case 0x22:
-			mmc5.CHRBank[2] = val;
+			mmc5.CHRBank[2] = val|(mmc5.upperCHRBank<<8);
 			mmc5.chrSet = false;
 			mmc5SetChrBankPtrLower();
 			break;
 		case 0x23:
-			mmc5.CHRBank[3] = val;
+			mmc5.CHRBank[3] = val|(mmc5.upperCHRBank<<8);
 			mmc5.chrSet = false;
 			mmc5SetChrBankPtrLower();
 			break;
 		case 0x24:
-			mmc5.CHRBank[4] = val;
+			mmc5.CHRBank[4] = val|(mmc5.upperCHRBank<<8);
 			mmc5.chrSet = false;
 			mmc5SetChrBankPtrLower();
 			break;
 		case 0x25:
-			mmc5.CHRBank[5] = val;
+			mmc5.CHRBank[5] = val|(mmc5.upperCHRBank<<8);
 			mmc5.chrSet = false;
 			mmc5SetChrBankPtrLower();
 			break;
 		case 0x26:
-			mmc5.CHRBank[6] = val;
+			mmc5.CHRBank[6] = val|(mmc5.upperCHRBank<<8);
 			mmc5.chrSet = false;
 			mmc5SetChrBankPtrLower();
 			break;
 		case 0x27:
-			mmc5.CHRBank[7] = val;
+			mmc5.CHRBank[7] = val|(mmc5.upperCHRBank<<8);
 			mmc5.chrSet = false;
 			mmc5SetChrBankPtrLower();
 			break;
 		case 0x28:
-			mmc5.CHRBank[0x8] = val;
+			mmc5.CHRBank[0x8] = val|(mmc5.upperCHRBank<<8);
 			mmc5.chrSet = true;
 			mmc5SetChrBankPtrUpper();
 			break;
 		case 0x29:
-			mmc5.CHRBank[0x9] = val;
+			mmc5.CHRBank[0x9] = val|(mmc5.upperCHRBank<<8);
 			mmc5.chrSet = true;
 			mmc5SetChrBankPtrUpper();
 			break;
 		case 0x2A:
-			mmc5.CHRBank[0xA] = val;
+			mmc5.CHRBank[0xA] = val|(mmc5.upperCHRBank<<8);
 			mmc5.chrSet = true;
 			mmc5SetChrBankPtrUpper();
 			break;
 		case 0x2B:
-			mmc5.CHRBank[0xB] = val;
+			mmc5.CHRBank[0xB] = val|(mmc5.upperCHRBank<<8);
 			mmc5.chrSet = true;
 			mmc5SetChrBankPtrUpper();
+			break;
+		case 0x30:
+			mmc5.upperCHRBank = val&3;
 			break;
 	}
 }
@@ -629,7 +634,7 @@ void mmc5initSet8(uint16_t addr)
 {
 	if(addr >= 0x5000 && addr < 0x5016)
 		memInitMapperSetPointer(addr, mmc5AudioSet8);
-	else if(addr >= 0x5100 && addr < 0x512C)
+	else if((addr >= 0x5100 && addr < 0x512C) || addr == 0x5130)
 		memInitMapperSetPointer(addr, mmc5setParams51XX);
 	else if(addr >= 0x5200 && addr < 0x5207)
 		memInitMapperSetPointer(addr, mmc5setParams52XX);
@@ -687,7 +692,7 @@ uint8_t mmc5vramGetNT(uint16_t addr)
 	else if(mmc5.exMode == 1)
 	{
 		uint8_t tmp = mmc5.exRAM[addr&0x3FF];
-		mmc5.mode1Bank = tmp&0x3F;
+		mmc5.mode1Bank = (tmp&0x3F)|(mmc5.upperCHRBank<<6);
 		mmc5.mode1Attrib = (tmp>>6)|((tmp>>4)&0xC)|((tmp>>2)&0x30)|(tmp&0xC0);
 	}
 	switch(mmc5.vramBankMode[(addr>>10)&3])
