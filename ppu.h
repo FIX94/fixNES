@@ -54,4 +54,20 @@ enum {
 	NT_4SCREEN,
 };
 
+//general defines for dots and line totals
+#define DOTS 341
+#define LINES_NTSC 262
+#define LINES_PAL 312
+
+#define VISIBLE_DOTS 256
+#define VISIBLE_LINES 240
+
+#ifdef DISPLAY_PPUWRITES
+#define TEX_DOTS DOTS
+#define TEX_LINES LINES_PAL
+#else
+#define TEX_DOTS VISIBLE_DOTS
+#define TEX_LINES VISIBLE_LINES
+#endif //end DISPLAY_PPUWRITES
+
 #endif

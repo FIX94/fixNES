@@ -80,16 +80,16 @@ uint8_t *emuPrgRAM = NULL;
 uint32_t emuPrgRAMsize = 0;
 //used externally
 #ifdef COL_32BIT
-uint32_t textureImage[0xF000];
-#define TEXIMAGE_LEN VISIBLE_DOTS*VISIBLE_LINES*4
+uint32_t textureImage[TEX_DOTS*TEX_LINES];
+#define TEXIMAGE_LEN TEX_DOTS*TEX_LINES*4
 #ifdef COL_GL_BSWAP
 #define GL_TEX_FMT GL_UNSIGNED_INT_8_8_8_8_REV
 #else //no REVerse
 #define GL_TEX_FMT GL_UNSIGNED_INT_8_8_8_8
 #endif
 #else //COL_16BIT
-uint16_t textureImage[0xF000];
-#define TEXIMAGE_LEN VISIBLE_DOTS*VISIBLE_LINES*2
+uint16_t textureImage[TEX_DOTS*TEX_LINES];
+#define TEXIMAGE_LEN TEX_DOTS*TEX_LINES*2
 #ifdef COL_GL_BSWAP
 #define GL_TEX_FMT GL_UNSIGNED_SHORT_5_6_5_REV
 #else //no REVerse
@@ -128,11 +128,6 @@ static DWORD emuMainTotalElapsed = 0;
 #endif
 #endif // __LIBRETRO__
 
-#define DOTS 341
-
-#define VISIBLE_DOTS 256
-#define VISIBLE_LINES 240
-
 static uint32_t linesToDraw = VISIBLE_LINES;
 static uint8_t scaleFactor = 2;
 bool emuSaveEnabled = false;
@@ -166,7 +161,11 @@ int main(int argc, char** argv)
 	strcpy(window_title, VERSION_STRING);
 	memset(textureImage,0,TEXIMAGE_LEN);
 	emuFileType = FTYPE_UNK;
+#ifdef DISPLAY_PPUWRITES
+	linesToDraw = LINES_NTSC;
+#else
 	linesToDraw = VISIBLE_LINES;
+#endif //end DISPLAY_PPUWRITES
 	scaleFactor = 2;
 	emuSaveEnabled = false;
 	emuFdsHasSideB = false;
@@ -201,6 +200,9 @@ int main(int argc, char** argv)
 		nesPAL = (strstr(emuFileName,"(E)") != NULL) || (strstr(emuFileName,"(Europe)") != NULL) || (strstr(emuFileName,"(Australia)") != NULL)
 			|| (strstr(emuFileName,"(France)") != NULL) || (strstr(emuFileName,"(Germany)") != NULL) || (strstr(emuFileName,"(Italy)") != NULL)
 			|| (strstr(emuFileName,"(Spain)") != NULL) || (strstr(emuFileName,"(Sweden)") != NULL) || (strstr(emuFileName,"(PAL)") != NULL);
+#ifdef DISPLAY_PPUWRITES
+		if(nesPAL) linesToDraw = LINES_PAL;
+#endif
 		uint8_t mapper = ((emuNesROM[6] & 0xF0) >> 4) | ((emuNesROM[7] & 0xF0));
 		emuSaveEnabled = (emuNesROM[6] & (1<<1)) != 0;
 		bool trainer = (emuNesROM[6] & (1<<2)) != 0;
@@ -525,7 +527,7 @@ int main(int argc, char** argv)
 	//mainLoopPos = mainLoopRuns;
 #ifndef __LIBRETRO__
 	glutInit(&argc, argv);
-	glutInitWindowSize(VISIBLE_DOTS*scaleFactor, linesToDraw*scaleFactor);
+	glutInitWindowSize(TEX_DOTS*scaleFactor, linesToDraw*scaleFactor);
 	glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGBA);
 	glutCreateWindow(nesPause ? window_title_pause : window_title);
 	audioInit();
@@ -545,14 +547,14 @@ int main(int argc, char** argv)
 #ifdef COL_32BIT
 #ifdef COL_BGRA
 	printf("Drawing onto BGRA8 Texture\n");
-	glTexImage2D(GL_TEXTURE_2D, 0, 4, VISIBLE_DOTS, linesToDraw, 0, GL_BGRA, GL_TEX_FMT, textureImage);
+	glTexImage2D(GL_TEXTURE_2D, 0, 4, TEX_DOTS, linesToDraw, 0, GL_BGRA, GL_TEX_FMT, textureImage);
 #else //case RGBA
 	printf("Drawing onto RGBA8 Texture\n");
-	glTexImage2D(GL_TEXTURE_2D, 0, 4, VISIBLE_DOTS, linesToDraw, 0, GL_RGBA, GL_TEX_FMT, textureImage);
+	glTexImage2D(GL_TEXTURE_2D, 0, 4, TEX_DOTS, linesToDraw, 0, GL_RGBA, GL_TEX_FMT, textureImage);
 #endif //end COL_BGRA
 #else //case COL_16BIT
 	printf("Drawing onto RGB565 Texture\n");
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, VISIBLE_DOTS, linesToDraw, 0, GL_RGB, GL_TEX_FMT, textureImage);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, TEX_DOTS, linesToDraw, 0, GL_RGB, GL_TEX_FMT, textureImage);
 #endif //end COL_32BIT
 	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
 	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
@@ -813,6 +815,11 @@ void nesEmuMainLoop(void)
 		return;
 	}
 #endif
+#ifdef DISPLAY_PPUWRITES
+	//clear out previous frame dots
+	if(!nesEmuNSFPlayback)
+		memset(textureImage,0,TEXIMAGE_LEN);
+#endif
 	while(1)
 	{
 		//main CPU clock
@@ -958,63 +965,63 @@ static void nesEmuHandleKeyDown(unsigned char key, int x, int y)
 			if(!inResize)
 			{
 				inResize = true;
-				glutReshapeWindow(VISIBLE_DOTS*1, linesToDraw*1);
+				glutReshapeWindow(TEX_DOTS*1, linesToDraw*1);
 			}
 			break;
 		case '2':
 			if(!inResize)
 			{
 				inResize = true;
-				glutReshapeWindow(VISIBLE_DOTS*2, linesToDraw*2);
+				glutReshapeWindow(TEX_DOTS*2, linesToDraw*2);
 			}
 			break;
 		case '3':
 			if(!inResize)
 			{
 				inResize = true;
-				glutReshapeWindow(VISIBLE_DOTS*3, linesToDraw*3);
+				glutReshapeWindow(TEX_DOTS*3, linesToDraw*3);
 			}
 			break;
 		case '4':
 			if(!inResize)
 			{
 				inResize = true;
-				glutReshapeWindow(VISIBLE_DOTS*4, linesToDraw*4);
+				glutReshapeWindow(TEX_DOTS*4, linesToDraw*4);
 			}
 			break;
 		case '5':
 			if(!inResize)
 			{
 				inResize = true;
-				glutReshapeWindow(VISIBLE_DOTS*5, linesToDraw*5);
+				glutReshapeWindow(TEX_DOTS*5, linesToDraw*5);
 			}
 			break;
 		case '6':
 			if(!inResize)
 			{
 				inResize = true;
-				glutReshapeWindow(VISIBLE_DOTS*6, linesToDraw*6);
+				glutReshapeWindow(TEX_DOTS*6, linesToDraw*6);
 			}
 			break;
 		case '7':
 			if(!inResize)
 			{
 				inResize = true;
-				glutReshapeWindow(VISIBLE_DOTS*7, linesToDraw*7);
+				glutReshapeWindow(TEX_DOTS*7, linesToDraw*7);
 			}
 			break;
 		case '8':
 			if(!inResize)
 			{
 				inResize = true;
-				glutReshapeWindow(VISIBLE_DOTS*8, linesToDraw*8);
+				glutReshapeWindow(TEX_DOTS*8, linesToDraw*8);
 			}
 			break;
 		case '9':
 			if(!inResize)
 			{
 				inResize = true;
-				glutReshapeWindow(VISIBLE_DOTS*9, linesToDraw*9);
+				glutReshapeWindow(TEX_DOTS*9, linesToDraw*9);
 			}
 			break;
 		case 'o':
@@ -1224,12 +1231,12 @@ static void nesEmuDisplayFrame()
 		#endif
 #ifdef COL_32BIT
 #ifdef COL_BGRA
-	glTexImage2D(GL_TEXTURE_2D, 0, 4, VISIBLE_DOTS, linesToDraw, 0, GL_BGRA, GL_TEX_FMT, textureImage);
+	glTexImage2D(GL_TEXTURE_2D, 0, 4, TEX_DOTS, linesToDraw, 0, GL_BGRA, GL_TEX_FMT, textureImage);
 #else //case RGBA
-	glTexImage2D(GL_TEXTURE_2D, 0, 4, VISIBLE_DOTS, linesToDraw, 0, GL_RGBA, GL_TEX_FMT, textureImage);
+	glTexImage2D(GL_TEXTURE_2D, 0, 4, TEX_DOTS, linesToDraw, 0, GL_RGBA, GL_TEX_FMT, textureImage);
 #endif //end COL_BGRA
 #else //case COL_16BIT
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, VISIBLE_DOTS, linesToDraw, 0, GL_RGB, GL_TEX_FMT, textureImage);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, TEX_DOTS, linesToDraw, 0, GL_RGB, GL_TEX_FMT, textureImage);
 #endif //end COL_32BIT
 		emuRenderFrame = false;
 
@@ -1243,7 +1250,7 @@ static void nesEmuDisplayFrame()
 
 		double upscaleVal = round((((double)glutGet(GLUT_WINDOW_HEIGHT))/((double)linesToDraw))*20.0)/20.0;
 		double windowMiddle = ((double)glutGet(GLUT_WINDOW_WIDTH))/2.0;
-		double drawMiddle = (((double)VISIBLE_DOTS)*upscaleVal)/2.0;
+		double drawMiddle = (((double)TEX_DOTS)*upscaleVal)/2.0;
 		double drawHeight = ((double)linesToDraw)*upscaleVal;
 
 		glBegin(GL_QUADS);

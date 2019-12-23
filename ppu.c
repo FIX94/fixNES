@@ -41,11 +41,6 @@
 #define PPU_FLAG_SPRITEZERO (1<<6)
 #define PPU_FLAG_VBLANK (1<<7)
 
-#define DOTS 341
-
-#define VISIBLE_DOTS 256
-#define VISIBLE_LINES 240
-
 #define PPU_VRAM_HORIZONTAL_MASK 0x41F
 #define PPU_VRAM_VERTICAL_MASK (~PPU_VRAM_HORIZONTAL_MASK)
 
@@ -62,7 +57,7 @@ bool ppuInFrame = false;
 
 //from main.c
 #ifdef COL_32BIT
-extern uint32_t textureImage[0xF000];
+extern uint32_t textureImage[TEX_DOTS*TEX_LINES];
 #define TEXCOL_WHITE 0xFFFFFFFF
 #ifdef COL_TEX_BSWAP
 #define TEXCOL_BLACK 0xFF000000
@@ -78,7 +73,7 @@ extern uint32_t textureImage[0xF000];
 #define COL_LS4 0
 #endif //end COL_TEX_BSWAP
 #else //COL_16BIT
-extern uint16_t textureImage[0xF000];
+extern uint16_t textureImage[TEX_DOTS*TEX_LINES];
 #define TEXCOL_WHITE 0xFFFF
 #define TEXCOL_BLACK 0x0000
 #ifdef COL_TEX_BSWAP
@@ -123,9 +118,15 @@ static struct
 	uint8_t SprLUT[0x100];
 #ifdef COL_32BIT
 	uint32_t BGRLUT[0x200];
-#else
-	uint16_t BGRLUT[0x200];
+#ifdef DISPLAY_PPUWRITES
+	uint32_t highlightcolor;
 #endif
+#else //COL_16BIT
+	uint16_t BGRLUT[0x200];
+#ifdef DISPLAY_PPUWRITES
+	uint16_t highlightcolor;
+#endif
+#endif //end COL_32BIT
 	uint8_t TILELUT[0x400][4];
 	uint16_t PALRAM2[0x20];
 	uint16_t NameTbl[4];
@@ -183,6 +184,9 @@ static struct
 	bool SprEnable;
 	bool DoOAMBug;
 	bool reqReset;
+#ifdef DISPLAY_PPUWRITES
+	bool ppuwrite;
+#endif
 } ppu;
 
 static void ppuSetVRAMBankPtr()
@@ -277,7 +281,7 @@ void ppuInit()
 	//start out being in vblank
 	ppu.Reg[2] |= PPU_FLAG_VBLANK;
 	ppu.spriteEvalB = spriteEvalB_P1;
-	ppu.LinesTotal = nesPAL ? 312 : 262;
+	ppu.LinesTotal = nesPAL ? LINES_PAL : LINES_NTSC;
 	ppu.PreRenderLine = ppu.LinesTotal - 1;
 	ppu.curLine = ppu.LinesTotal - 11;
 	ppu.curDot = ppuSetDotType(0, ppu.curLine);
@@ -316,6 +320,9 @@ void ppuInit()
 	ppu.BGEnable = false;
 	ppu.SprEnable = false;
 	ppu.reqReset = false;
+#ifdef DISPLAY_PPUWRITES
+	ppu.ppuwrite = false;
+#endif
 	//only do OAM Bug on NTSC NES games
 	ppu.DoOAMBug = !nesEmuNSFPlayback && !nesPAL;
 	//generate full BGR LUT
@@ -350,21 +357,30 @@ void ppuInit()
 		//save new color into LUT
 		ppu.BGRLUT[i] = 
 #ifdef COL_32BIT
-#ifdef COL_BRGA
+#ifdef COL_BGRA
 			(b<<COL_LS1) //Blue
 			| (g<<COL_LS2) //Green
 			| (r<<COL_LS3) //Red
 			| (0xFF<<COL_LS4); //Alpha
+#ifdef DISPLAY_PPUWRITES
+		ppu.highlightcolor = (0xFF<<COL_LS3)|(0xFF<<COL_LS4);
+#endif
 #else //RGBA
 			(r<<COL_LS1) //Red
 			| (g<<COL_LS2) //Green
 			| (b<<COL_LS3) //Blue
 			| (0xFF<<COL_LS4); //Alpha
+#ifdef DISPLAY_PPUWRITES
+		ppu.highlightcolor = (0xFF<<COL_LS1)|(0xFF<<COL_LS4);
+#endif
 #endif
 #else //COL_16BIT
 			(r<<COL_LS1) //Red
 			| (g<<COL_LS2) //Green
 			| (b<<COL_LS3); //Blue
+#ifdef DISPLAY_PPUWRITES
+		ppu.highlightcolor = (0x1F<<COL_LS1);
+#endif
 #endif
 	}
 	//tile LUT from nestopia
@@ -746,7 +762,12 @@ static uint16_t ppuLastDot(uint16_t line)
 
 FIXNES_ALWAYSINLINE void ppuCycle()
 {
-	uint16_t dot = ppu.curDot, line = ppu.curLine, drawPos;
+	uint16_t dot = ppu.curDot, line = ppu.curLine;
+#ifdef DISPLAY_PPUWRITES
+	uint32_t drawPos;
+#else
+	uint16_t drawPos;
+#endif
 	uint8_t curCol;
 	//these 2 stats are set by cpu, no need to have them in loop
 	ppu.CurNMIStat = !!(ppu.Reg[0] & PPU_FLAG_NMI);
@@ -770,7 +791,11 @@ FIXNES_ALWAYSINLINE void ppuCycle()
 				if(ppu.SprEnable) curCol = ppuDoSprites(curCol, dot);
 				ppu.SprLUT[dot] = 0; //always clear for next sprite eval
 				/* Draw current dot on screen */
+				#ifdef DISPLAY_PPUWRITES
+				drawPos = (dot)+(line*TEX_DOTS);
+				#else
 				drawPos = (dot)+(line<<8);
+				#endif
 				if(ppu.DoOverscan) /* Draw clipped area as black */
 					textureImage[drawPos] = TEXCOL_BLACK;
 				else
@@ -1033,7 +1058,11 @@ FIXNES_ALWAYSINLINE void ppuCycle()
 			do_render_pixel_off:
 				ppu.SprLUT[dot-PPU_OFF] = 0; //always clear for next sprite eval
 				/* Draw current dot on screen */
+				#ifdef DISPLAY_PPUWRITES
+				drawPos = (dot-PPU_OFF)+(line*TEX_DOTS);
+				#else
 				drawPos = (dot-PPU_OFF)+(line<<8);
+				#endif
 				if(ppu.DoOverscan) /* Draw clipped area as black */
 					textureImage[drawPos] = TEXCOL_BLACK;
 				else
@@ -1599,6 +1628,11 @@ FIXNES_ALWAYSINLINE void ppuCycle()
 				dot = ppuSetDotType(0,line);
 				break;
 			add_dot:
+				#ifdef DISPLAY_PPUWRITES
+				if(ppu.ppuwrite)
+					textureImage[(dot%DOTS)+(line*DOTS)] = ppu.highlightcolor;
+				ppu.ppuwrite = false;
+				#endif
 				dot++;
 				break;
 			default:
@@ -1650,6 +1684,9 @@ FIXNES_ALWAYSINLINE bool ppuDrawDone()
 void ppuSet8(uint16_t addr, uint8_t val)
 {
 	ppu.lastVal = val;
+#ifdef DISPLAY_PPUWRITES
+	ppu.ppuwrite = true;
+#endif
 	switch(addr&7)
 	{
 		case 0:
@@ -1979,7 +2016,7 @@ static void ppuDrawRest(uint8_t curX, uint8_t sym)
 	{
 		for(j = 0; j < 10; j++)
 		{
-			size_t drawPos = (j+curX)+((i+9)*VISIBLE_DOTS);
+			size_t drawPos = (j+curX)+((i+9)*TEX_DOTS);
 			uint8_t xSel = (j+(sym*10));
 			if(ppuNsfTextRest[((11-i)<<4)+(xSel>>3)]&(0x80>>(xSel&7)))
 				textureImage[drawPos] = TEXCOL_WHITE; //White
@@ -1990,9 +2027,9 @@ static void ppuDrawRest(uint8_t curX, uint8_t sym)
 }
 
 #ifdef COL_32BIT
-#define NSF_TEX_CLEAR 30*VISIBLE_DOTS*4
+#define NSF_TEX_CLEAR 30*TEX_DOTS*4
 #else //COL_16BIT
-#define NSF_TEX_CLEAR 30*VISIBLE_DOTS*2
+#define NSF_TEX_CLEAR 30*TEX_DOTS*2
 #endif
 
 void ppuDrawNSFTrackNum(uint8_t cTrack, uint8_t trackTotal)
@@ -2005,7 +2042,7 @@ void ppuDrawNSFTrackNum(uint8_t cTrack, uint8_t trackTotal)
 	{
 		for(j = 0; j < 50; j++)
 		{
-			size_t drawPos = (j+curX)+((i+9)*VISIBLE_DOTS);
+			size_t drawPos = (j+curX)+((i+9)*TEX_DOTS);
 			if(ppuNSFTextTrack[((11-i)<<3)+(j>>3)]&(0x80>>(j&7)))
 				textureImage[drawPos] = TEXCOL_WHITE; //White
 			else

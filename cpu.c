@@ -330,11 +330,11 @@ FIXNES_ALWAYSINLINE inline static void cpuBIT()
 		cpu.p &= ~P_FLAG_NEGATIVE;
 }
 
-FIXNES_ALWAYSINLINE inline static void cpuSLO() {	cpuASLt(); cpuORA(); }
-FIXNES_ALWAYSINLINE inline static void cpuRLA() {	cpuROLt(); cpuAND(); }
+FIXNES_ALWAYSINLINE inline static void cpuSLO() { cpuASLt(); cpuORA(); }
+FIXNES_ALWAYSINLINE inline static void cpuRLA() { cpuROLt(); cpuAND(); }
 FIXNES_ALWAYSINLINE inline static void cpuSRE() { cpuLSRt(); cpuEOR(); }
 FIXNES_ALWAYSINLINE inline static void cpuRRA() { cpuRORt(); cpuADC(); }
-FIXNES_ALWAYSINLINE inline static void cpuASR() {	cpuAND(); cpuLSRa(); }
+FIXNES_ALWAYSINLINE inline static void cpuASR() { cpuAND(); cpuLSRa(); }
 
 FIXNES_ALWAYSINLINE inline static void cpuARR()
 {
@@ -382,8 +382,9 @@ FIXNES_ALWAYSINLINE inline static void cpuTAX() { cpuSetX(cpu.a); }
 FIXNES_ALWAYSINLINE inline static void cpuLDA() { cpuSetA(cpu.tmp); }
 FIXNES_ALWAYSINLINE inline static void cpuLDX() { cpuSetX(cpu.tmp); }
 FIXNES_ALWAYSINLINE inline static void cpuLDY() { cpuSetY(cpu.tmp); }
-FIXNES_ALWAYSINLINE inline static void cpuXAA() { cpuSetA(cpu.x&cpu.tmp); }
-FIXNES_ALWAYSINLINE inline static void cpuAXT() { cpuSetA(cpu.tmp); cpuSetX(cpu.a); }
+//written out XAA and ATX to what they could technically do depending on the magic (fixed to 0xFF here)
+FIXNES_ALWAYSINLINE inline static void cpuXAA() { cpuSetA(/*(cpu.a|0xFF)&*/cpu.x&cpu.tmp); }
+FIXNES_ALWAYSINLINE inline static void cpuATX() { cpuSetA(/*(cpu.a|0xFF)&*/cpu.tmp); cpuSetX(cpu.a); }
 FIXNES_ALWAYSINLINE inline static void cpuLAX() { cpuSetA(cpu.tmp); cpuSetX(cpu.tmp); }
 FIXNES_ALWAYSINLINE inline static void cpuLAR() { cpu.a = cpu.s; cpuAND(); cpuSetX(cpu.a); cpu.s = cpu.a; }
 
@@ -1173,7 +1174,7 @@ FIXNES_ALWAYSINLINE bool cpuCycle()
 					cpuTAX();
 					break;
 				case 0xAB:
-					cpuAXT();
+					cpuATX();
 					break; 
 				case 0xB8:
 					cpuCLV();
