@@ -54,3 +54,6 @@ WINDOWS_BUILD
 Changes some calls to make it easily compilable on windows with something like mingw gcc  
 ZIPSUPPORT  
 Allows you to load roms directly from .zip files if you have a usable zlib installation  
+DISPLAY_PPUWRITES  
+Will show red dots each frame of when the PPU was written to which can be useful for understanding certain rendering aspects.  
+Also extends the emu window size to show all the normally invisible Hblank/Vblank areas so you can see all write activity.  
