@@ -56,9 +56,6 @@ void retro_get_system_info(struct retro_system_info *info)
    info->valid_extensions = "nes|fds|qd|nsf";
 }
 
-#define DOTS 341
-#define VISIBLE_DOTS 256
-#define VISIBLE_LINES 240
 extern bool nesPAL;
 
 void retro_get_system_av_info(struct retro_system_av_info *info)
