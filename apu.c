@@ -256,7 +256,8 @@ void apuInit()
 	apu.p1LengthCtr = 0; apu.p2LengthCtr = 0;
 	apu.noiseLengthCtr = 0;	apu.triLengthCtr = 0;
 	apu.triLinearCtr = 0; apu.triCurLinearCtr = 0;
-	apu.dmcAddr = 0, apu.dmcLen = 0, apu.dmcVol = 0;
+	//make sure to properly init dmc values
+	apu.dmcAddr = 0xC000, apu.dmcLen = 1, apu.dmcVol = 0;
 	apu.dmcSampleBuf = 0; apu.dmcCpuBuf = 0;
 	apu.dmcCurAddr = 0, apu.dmcCurLen = 0; apu.dmcCurVol = 0;
 	apu.dmcSampleRemain = 0;
@@ -299,8 +300,6 @@ void apuWriteDMCBuf(uint8_t val)
 	apu.dmcready = true;
 	apu.dmcCpuBuf = val;
 	apu.dmcCurAddr++;
-	if(apu.dmcCurAddr < 0x8000)
-		apu.dmcCurAddr |= 0x8000;
 	if(!apu.dmcCurLen)
 	{
 		if(apu.dmchaltloop)

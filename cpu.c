@@ -837,6 +837,7 @@ FIXNES_ALWAYSINLINE inline static bool cpuDoAddrIndFix()
 		return false;
 }
 
+extern bool nesPAL;
 static bool cpuDMATryHalt()
 {
 	bool ret = true;
@@ -844,30 +845,38 @@ static bool cpuDMATryHalt()
 	switch(cpuType)
 	{
 		case CPU_READ_PC:
+			if(nesPAL) break;
 			memGet8(cpu.pc);
 			break;
 		case CPU_READ_CPUTMP:
+			if(nesPAL) break;
 			memGet8(cpu.tmp);
 			break;
 		case CPU_READ_ABSADDR:
+			if(nesPAL) break;
 			memGet8(cpu.absAddr);
 			break;
 		case CPU_READ_STACK:
+			if(nesPAL) break;
 			memGet8(0x100+cpu.s);
 			break;
 		case CPU_READ_RESETVECL:
+			if(nesPAL) break;
 			memGet8(0xFFFC);
 			break;
 		case CPU_READ_RESETVECH:
+			if(nesPAL) break;
 			memGet8(0xFFFD);
 			break;
 		case CPU_READ_NMI_IRQ_VECL:
+			if(nesPAL) break;
 			if(cpu.irq & PPU_NMI) //NMI
 				memGet8(0xFFFA);
 			else //IRQ
 				memGet8(0xFFFE);
 			break;
 		case CPU_READ_NMI_IRQ_VECH:
+			if(nesPAL) break;
 			if(cpu.irq & PPU_NMI) //NMI
 				memGet8(0xFFFB);
 			else //IRQ
@@ -1614,7 +1623,7 @@ void cpuDoOAM_DMA(uint16_t addr, uint8_t val)
 void cpuDoDMC_DMA(uint16_t addr)
 {
 	cpu.dma |= CPU_DMC_DMA;
-	cpu.dmc_dma_addr = addr;
+	cpu.dmc_dma_addr = addr|0x8000;
 }
 
 bool cpuInDMC_DMA()
