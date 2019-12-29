@@ -46,6 +46,7 @@
 #include "mapper_h/s3.h"
 #include "mapper_h/s4.h"
 #include "mapper_h/s5b.h"
+#include "mapper_h/smb2c.h"
 #include "mapper_h/common.h"
 #include "mapper.h"
 #include "mapperList.h"
@@ -93,17 +94,17 @@ mapperList_t mapperList[256] = {
 	{ m37_init,		mmc3NoRAMInitGet8,	m37_initSet8,	mmc3initPPUGet8,	mmc3initPPUSet8,	NULL, m37_reset },
 	{ p32c8init,	prg32initGet8,		m38_initSet8,	chr8initPPUGet8,	chr8initPPUSet8,	NULL, NULL },
 	{ NULL,			NULL,				NULL,			NULL,				NULL,				NULL, NULL },
-	{ NULL,			NULL,				NULL,			NULL,				NULL,				NULL, NULL },
+	{ m40init,		m40initGet8,		m40initSet8,	chr8initPPUGet8,	chr8initPPUSet8,	smb2c_cycle, smb2c_reset },
 	{ m41_init,		prg32initGet8,		m41_initSet8,	chr8initPPUGet8,	chr8initPPUSet8,	NULL, m41_reset },
 	{ NULL,			NULL,				NULL,			NULL,				NULL,				NULL, NULL },
-	{ NULL,			NULL,				NULL,			NULL,				NULL,				NULL, NULL },
+	{ m43init,		m43initGet8,		m43initSet8,	chr8initPPUGet8,	chr8initPPUSet8,	smb2c_cycle, smb2c_reset },
 	{ m44_init,		mmc3initGet8,		m44_initSet8,	mmc3initPPUGet8,	mmc3initPPUSet8,	NULL, m44_reset },
 	{ m45_init,		mmc3initGet8,		m45_initSet8,	mmc3initPPUGet8,	mmc3initPPUSet8,	NULL, m45_reset },
 	{ m46_init,		prg32initGet8,		m46_initSet8,	chr8initPPUGet8,	chr8initPPUSet8,	NULL, m46_reset },
 	{ m47_init,		mmc3NoRAMInitGet8,	m47_initSet8,	mmc3initPPUGet8,	mmc3initPPUSet8,	NULL, m47_reset },
 	{ m48init,		prg8initGet8,		m48initSet8,	m48initPPUGet8,		m48initPPUSet8,		m48cycle, NULL },
 	{ m49_init,		m49_initGet8,		m49_initSet8,	mmc3initPPUGet8,	mmc3initPPUSet8,	NULL, m49_reset },
-	{ NULL,			NULL,				NULL,			NULL,				NULL,				NULL, NULL },
+	{ m50init,		m50initGet8,		m50initSet8,	chr8initPPUGet8,	chr8initPPUSet8,	smb2c_cycle, smb2c_reset },
 	{ NULL,			NULL,				NULL,			NULL,				NULL,				NULL, NULL },
 	{ m52_init,		mmc3initGet8,		m52_initSet8,	mmc3initPPUGet8,	mmc3initPPUSet8,	NULL, m52_reset },
 	{ NULL,			NULL,				NULL,			NULL,				NULL,				NULL, NULL },

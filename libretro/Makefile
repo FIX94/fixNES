@@ -383,6 +383,7 @@ OBJS += ../mapper/s1.o
 OBJS += ../mapper/s3.o
 OBJS += ../mapper/s4.o
 OBJS += ../mapper/s5b.o
+OBJS += ../mapper/smb2c.o
 OBJS += ../mapper/vrc1.o
 OBJS += ../mapper/vrc2_4.o
 OBJS += ../mapper/vrc3.o
