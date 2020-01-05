@@ -57,5 +57,5 @@ Allows you to load roms directly from .zip files if you have a usable zlib insta
 DISPLAY_PPUWRITES  
 Will show red dots each frame of when the PPU was written to which can be useful for understanding certain rendering aspects.  
 Also extends the emu window size to show all the normally invisible Hblank/Vblank areas so you can see all write activity.  
-DO_4_3_ASPECT
+DO_4_3_ASPECT  
 Instead of rendering at a 1:1 pixel aspect ratio will render the image at a 4:3 aspect ratio, while using interpolation on scaling the image to avoid shimmering and obviously uneven pixels, this is done by first upscaling the image 4x its normal size and then rescaling it using bilinear scaling.
