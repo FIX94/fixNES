@@ -11,7 +11,7 @@ To start a file, simply drag and drop it into the fixNES Application or call it 
 You can also load from a .zip file, the first found supported file from that .zip will be used.    
 
 Supported .nes Mappers:  
-0,1,2,3,4,5,7,9,10,11,12,13,15,19,21,22,23,24,25,26,28,30,31,32,33,34,36,37,38,40,41,43,44,45,46,47,48,49,50,52,57,58,60,61,62,64,65,66,67,68,69,70,71,73,75,76,77,78,79,80,82,85,87,88,89,93,94,95,97,101,107,112,113,118,119,132,133,136,137,138,139,140,141,144,145,146,147,148,149,152,154,155,156,158,172,173,174,180,184,185,193,200,201,202,203,205,206,207,210,212,221,224,225,226,228,229,230,231,232,235,237,240 and 242.  
+0,1,2,3,4,5,7,9,10,11,12,13,15,19,21,22,23,24,25,26,28,30,31,32,33,34,36,37,38,40,41,43,44,45,46,47,48,49,50,52,57,58,60,61,62,64,65,66,67,68,69,70,71,73,75,76,77,78,79,80,82,85,87,88,89,93,94,95,97,101,107,112,113,118,119,132,133,136,137,138,139,140,141,144,145,146,147,148,149,152,154,155,156,158,162,163,164,172,173,174,180,184,185,193,200,201,202,203,205,206,207,210,212,221,224,225,226,228,229,230,231,232,235,237,240 and 242.  
 Supported Audio Expansions (for both ROMs and NSF Files):  
 VRC6, VRC7, FDS, MMC5, N163, Sunsoft 5B    
 
@@ -57,3 +57,5 @@ Allows you to load roms directly from .zip files if you have a usable zlib insta
 DISPLAY_PPUWRITES  
 Will show red dots each frame of when the PPU was written to which can be useful for understanding certain rendering aspects.  
 Also extends the emu window size to show all the normally invisible Hblank/Vblank areas so you can see all write activity.  
+DO_4_3_ASPECT
+Instead of rendering at a 1:1 pixel aspect ratio will render the image at a 4:3 aspect ratio, while using interpolation on scaling the image to avoid shimmering and obviously uneven pixels, this is done by first upscaling the image 4x its normal size and then rescaling it using bilinear scaling.
