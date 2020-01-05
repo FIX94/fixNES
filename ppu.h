@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 - 2018 FIX94
+ * Copyright (C) 2017 - 2020 FIX94
  *
  * This software may be modified and distributed under the terms
  * of the MIT license.  See the LICENSE file for details.
@@ -65,6 +65,9 @@ enum {
 #ifdef DISPLAY_PPUWRITES
 #define TEX_DOTS DOTS
 #define TEX_LINES LINES_PAL
+#elif defined(DO_4_3_ASPECT)
+#define TEX_DOTS VISIBLE_DOTS*4
+#define TEX_LINES VISIBLE_LINES*4
 #else
 #define TEX_DOTS VISIBLE_DOTS
 #define TEX_LINES VISIBLE_LINES

@@ -353,6 +353,7 @@ OBJS += ../mapper/m13.o
 OBJS += ../mapper/m15.o
 OBJS += ../mapper/m137.o
 OBJS += ../mapper/m156.o
+OBJS += ../mapper/m162.o
 OBJS += ../mapper/m193.o
 OBJS += ../mapper/m28.o
 OBJS += ../mapper/m206.o

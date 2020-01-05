@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 - 2019 FIX94
+ * Copyright (C) 2017 - 2020 FIX94
  *
  * This software may be modified and distributed under the terms
  * of the MIT license.  See the LICENSE file for details.
@@ -28,6 +28,7 @@
 #include "mapper_h/m82.h"
 #include "mapper_h/m137.h"
 #include "mapper_h/m156.h"
+#include "mapper_h/m162.h"
 #include "mapper_h/m193.h"
 #include "mapper_h/m206.h"
 #include "mapper_h/m225.h"
@@ -216,9 +217,9 @@ mapperList_t mapperList[256] = {
 	{ NULL,			NULL,				NULL,			NULL,				NULL,				NULL, NULL },
 	{ NULL,			NULL,				NULL,			NULL,				NULL,				NULL, NULL },
 	{ NULL,			NULL,				NULL,			NULL,				NULL,				NULL, NULL },
-	{ NULL,			NULL,				NULL,			NULL,				NULL,				NULL, NULL },
-	{ NULL,			NULL,				NULL,			NULL,				NULL,				NULL, NULL },
-	{ NULL,			NULL,				NULL,			NULL,				NULL,				NULL, NULL },
+	{ m162_init,	m162_initGet8,		m162_initSet8,	m162_initPPUGet8,	m162_initPPUSet8,	NULL, m162_reset },
+	{ m163_init,	m163_initGet8,		m163_initSet8,	m162_initPPUGet8,	m162_initPPUSet8,	NULL, m163_reset },
+	{ m162_init,	m164_initGet8,		m164_initSet8,	m162_initPPUGet8,	m162_initPPUSet8,	NULL, m162_reset },
 	{ NULL,			NULL,				NULL,			NULL,				NULL,				NULL, NULL },
 	{ NULL,			NULL,				NULL,			NULL,				NULL,				NULL, NULL },
 	{ NULL,			NULL,				NULL,			NULL,				NULL,				NULL, NULL },

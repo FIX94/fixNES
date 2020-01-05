@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 - 2019 FIX94
+ * Copyright (C) 2017 - 2020 FIX94
  *
  * This software may be modified and distributed under the terms
  * of the MIT license.  See the LICENSE file for details.
@@ -38,7 +38,7 @@
 #define DEBUG_KEY 0
 #define DEBUG_LOAD_INFO 1
 
-const char *VERSION_STRING = "fixNES Alpha v1.2.8";
+const char *VERSION_STRING = "fixNES Alpha v1.3.0";
 static char window_title[256];
 static char window_title_pause[256];
 
@@ -118,14 +118,25 @@ PFNWGLSWAPINTERVALEXTPROC wglSwapIntervalEXT = NULL;
 static DWORD emuFrameStart = 0;
 static DWORD emuTimesCalled = 0;
 static DWORD emuTotalElapsed = 0;
-#endif
+#endif //DEBUG_HZ
 #if DEBUG_MAIN_CALLS
 static DWORD emuMainFrameStart = 0;
 static DWORD emuMainTimesCalled = 0;
 static DWORD emuMainTimesSkipped = 0;
 static DWORD emuMainTotalElapsed = 0;
-#endif
-#endif
+#endif //DEBUG_MAIN_CALLS
+#endif //WINDOWS_BUILD
+
+#ifdef DO_4_3_ASPECT
+#define FIXNES_GL_SCALE_MODE GL_LINEAR
+#define DOTS_TO_DRAW 320
+static uint32_t linesToDrawTex = TEX_LINES;
+#else
+#define FIXNES_GL_SCALE_MODE GL_NEAREST
+#define DOTS_TO_DRAW 256
+static uint32_t linesToDrawTex = TEX_LINES;
+#endif //DO_4_3_ASPECT
+
 #endif // __LIBRETRO__
 
 static uint32_t linesToDraw = VISIBLE_LINES;
@@ -527,7 +538,7 @@ int main(int argc, char** argv)
 	//mainLoopPos = mainLoopRuns;
 #ifndef __LIBRETRO__
 	glutInit(&argc, argv);
-	glutInitWindowSize(TEX_DOTS*scaleFactor, linesToDraw*scaleFactor);
+	glutInitWindowSize(DOTS_TO_DRAW*scaleFactor, linesToDraw*scaleFactor);
 	glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGBA);
 	glutCreateWindow(nesPause ? window_title_pause : window_title);
 	audioInit();
@@ -543,23 +554,29 @@ int main(int argc, char** argv)
 	wglSwapIntervalEXT = (PFNWGLSWAPINTERVALEXTPROC)wglGetProcAddress("wglSwapIntervalEXT");
 	nesEmuSetWindowsVSync(1);
 	#endif
+	/* Set used texture height */
+	#ifdef DO_4_3_ASPECT
+	linesToDrawTex = linesToDraw*4;
+	#else
+	linesToDrawTex = linesToDraw;
+	#endif
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 #ifdef COL_32BIT
 #ifdef COL_BGRA
 	printf("Drawing onto BGRA8 Texture\n");
-	glTexImage2D(GL_TEXTURE_2D, 0, 4, TEX_DOTS, linesToDraw, 0, GL_BGRA, GL_TEX_FMT, textureImage);
+	glTexImage2D(GL_TEXTURE_2D, 0, 4, TEX_DOTS, linesToDrawTex, 0, GL_BGRA, GL_TEX_FMT, textureImage);
 #else //case RGBA
 	printf("Drawing onto RGBA8 Texture\n");
-	glTexImage2D(GL_TEXTURE_2D, 0, 4, TEX_DOTS, linesToDraw, 0, GL_RGBA, GL_TEX_FMT, textureImage);
+	glTexImage2D(GL_TEXTURE_2D, 0, 4, TEX_DOTS, linesToDrawTex, 0, GL_RGBA, GL_TEX_FMT, textureImage);
 #endif //end COL_BGRA
 #else //case COL_16BIT
 	printf("Drawing onto RGB565 Texture\n");
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, TEX_DOTS, linesToDraw, 0, GL_RGB, GL_TEX_FMT, textureImage);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, TEX_DOTS, linesToDrawTex, 0, GL_RGB, GL_TEX_FMT, textureImage);
 #endif //end COL_32BIT
 	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
 	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
-	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, FIXNES_GL_SCALE_MODE);
+	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, FIXNES_GL_SCALE_MODE);
 	glEnable(GL_TEXTURE_2D);
 	glShadeModel(GL_FLAT);
 
@@ -965,63 +982,63 @@ static void nesEmuHandleKeyDown(unsigned char key, int x, int y)
 			if(!inResize)
 			{
 				inResize = true;
-				glutReshapeWindow(TEX_DOTS*1, linesToDraw*1);
+				glutReshapeWindow(DOTS_TO_DRAW*1, linesToDraw*1);
 			}
 			break;
 		case '2':
 			if(!inResize)
 			{
 				inResize = true;
-				glutReshapeWindow(TEX_DOTS*2, linesToDraw*2);
+				glutReshapeWindow(DOTS_TO_DRAW*2, linesToDraw*2);
 			}
 			break;
 		case '3':
 			if(!inResize)
 			{
 				inResize = true;
-				glutReshapeWindow(TEX_DOTS*3, linesToDraw*3);
+				glutReshapeWindow(DOTS_TO_DRAW*3, linesToDraw*3);
 			}
 			break;
 		case '4':
 			if(!inResize)
 			{
 				inResize = true;
-				glutReshapeWindow(TEX_DOTS*4, linesToDraw*4);
+				glutReshapeWindow(DOTS_TO_DRAW*4, linesToDraw*4);
 			}
 			break;
 		case '5':
 			if(!inResize)
 			{
 				inResize = true;
-				glutReshapeWindow(TEX_DOTS*5, linesToDraw*5);
+				glutReshapeWindow(DOTS_TO_DRAW*5, linesToDraw*5);
 			}
 			break;
 		case '6':
 			if(!inResize)
 			{
 				inResize = true;
-				glutReshapeWindow(TEX_DOTS*6, linesToDraw*6);
+				glutReshapeWindow(DOTS_TO_DRAW*6, linesToDraw*6);
 			}
 			break;
 		case '7':
 			if(!inResize)
 			{
 				inResize = true;
-				glutReshapeWindow(TEX_DOTS*7, linesToDraw*7);
+				glutReshapeWindow(DOTS_TO_DRAW*7, linesToDraw*7);
 			}
 			break;
 		case '8':
 			if(!inResize)
 			{
 				inResize = true;
-				glutReshapeWindow(TEX_DOTS*8, linesToDraw*8);
+				glutReshapeWindow(DOTS_TO_DRAW*8, linesToDraw*8);
 			}
 			break;
 		case '9':
 			if(!inResize)
 			{
 				inResize = true;
-				glutReshapeWindow(TEX_DOTS*9, linesToDraw*9);
+				glutReshapeWindow(DOTS_TO_DRAW*9, linesToDraw*9);
 			}
 			break;
 		case 'o':
@@ -1231,12 +1248,12 @@ static void nesEmuDisplayFrame()
 		#endif
 #ifdef COL_32BIT
 #ifdef COL_BGRA
-	glTexImage2D(GL_TEXTURE_2D, 0, 4, TEX_DOTS, linesToDraw, 0, GL_BGRA, GL_TEX_FMT, textureImage);
+	glTexImage2D(GL_TEXTURE_2D, 0, 4, TEX_DOTS, linesToDrawTex, 0, GL_BGRA, GL_TEX_FMT, textureImage);
 #else //case RGBA
-	glTexImage2D(GL_TEXTURE_2D, 0, 4, TEX_DOTS, linesToDraw, 0, GL_RGBA, GL_TEX_FMT, textureImage);
+	glTexImage2D(GL_TEXTURE_2D, 0, 4, TEX_DOTS, linesToDrawTex, 0, GL_RGBA, GL_TEX_FMT, textureImage);
 #endif //end COL_BGRA
 #else //case COL_16BIT
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, TEX_DOTS, linesToDraw, 0, GL_RGB, GL_TEX_FMT, textureImage);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, TEX_DOTS, linesToDrawTex, 0, GL_RGB, GL_TEX_FMT, textureImage);
 #endif //end COL_32BIT
 		emuRenderFrame = false;
 
@@ -1250,7 +1267,7 @@ static void nesEmuDisplayFrame()
 
 		double upscaleVal = round((((double)glutGet(GLUT_WINDOW_HEIGHT))/((double)linesToDraw))*20.0)/20.0;
 		double windowMiddle = ((double)glutGet(GLUT_WINDOW_WIDTH))/2.0;
-		double drawMiddle = (((double)TEX_DOTS)*upscaleVal)/2.0;
+		double drawMiddle = (((double)DOTS_TO_DRAW)*upscaleVal)/2.0;
 		double drawHeight = ((double)linesToDraw)*upscaleVal;
 
 		glBegin(GL_QUADS);

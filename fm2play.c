@@ -50,7 +50,7 @@ extern uint8_t inValReads[8];
 void fm2playUpdate()
 {
 	if(!fm2playIn) return;
-	if(fm2playCur == '\0')
+	if(*fm2playCur == '\0')
 	{
 		free(fm2playIn);
 		fm2playIn = NULL;

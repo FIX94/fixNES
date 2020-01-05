@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 - 2018 FIX94
+ * Copyright (C) 2017 - 2020 FIX94
  *
  * This software may be modified and distributed under the terms
  * of the MIT license.  See the LICENSE file for details.
@@ -507,7 +507,7 @@ FIXNES_ALWAYSINLINE inline static void updateBGYAddress()
 	else switch(ppu.VramAddr & 0x3E0)
 	{
 		default:      ppu.VramAddr = (ppu.VramAddr & 0xFFF) + (1 << 5); break;
-		case (29<<5): ppu.VramAddr ^= 0x800;
+		case (29<<5): ppu.VramAddr ^= 0x800; /* Falls through. */
 		case (31<<5): ppu.VramAddr &= 0xC1F; break;
 	}
 }
@@ -759,11 +759,22 @@ static uint16_t ppuLastDot(uint16_t line)
 	//printf("Line done\n");
 	return line;
 }
-
+#ifdef DO_4_3_ASPECT //4x horizontal and vertical scaling for interpolation
+#define TEX_AT_POS 	textureImage[drawPos]=textureImage[drawPos+1]= \
+					textureImage[drawPos+2]=textureImage[drawPos+3]= \
+					textureImage[drawPos+TEX_DOTS]=textureImage[drawPos+TEX_DOTS+1]= \
+					textureImage[drawPos+TEX_DOTS+2]=textureImage[drawPos+TEX_DOTS+3]= \
+					textureImage[drawPos+(TEX_DOTS*2)]=textureImage[drawPos+(TEX_DOTS*2)+1]= \
+					textureImage[drawPos+(TEX_DOTS*2)+2]=textureImage[drawPos+(TEX_DOTS*2)+3]= \
+					textureImage[drawPos+(TEX_DOTS*3)]=textureImage[drawPos+(TEX_DOTS*3)+1]= \
+					textureImage[drawPos+(TEX_DOTS*3)+2]=textureImage[drawPos+(TEX_DOTS*3)+3]
+#else //1x horizontal and vertical scaling for pure integer scale display
+#define TEX_AT_POS 	textureImage[drawPos]
+#endif
 FIXNES_ALWAYSINLINE void ppuCycle()
 {
 	uint16_t dot = ppu.curDot, line = ppu.curLine;
-#ifdef DISPLAY_PPUWRITES
+#if defined(DISPLAY_PPUWRITES) || defined(DO_4_3_ASPECT)
 	uint32_t drawPos;
 #else
 	uint16_t drawPos;
@@ -793,15 +804,17 @@ FIXNES_ALWAYSINLINE void ppuCycle()
 				/* Draw current dot on screen */
 				#ifdef DISPLAY_PPUWRITES
 				drawPos = (dot)+(line*TEX_DOTS);
+				#elif defined(DO_4_3_ASPECT)
+				drawPos = (dot<<2)+(line<<12);
 				#else
 				drawPos = (dot)+(line<<8);
 				#endif
 				if(ppu.DoOverscan) /* Draw clipped area as black */
-					textureImage[drawPos] = TEXCOL_BLACK;
+					TEX_AT_POS = TEXCOL_BLACK;
 				else
 				{
 					//use color from bg or sprite input
-					textureImage[drawPos] = ppu.BGRLUT[ppu.PALRAM2[curCol&0x1F]];
+					TEX_AT_POS = ppu.BGRLUT[ppu.PALRAM2[curCol&0x1F]];
 				}
 				goto add_dot;
 			case 0:
@@ -1060,17 +1073,19 @@ FIXNES_ALWAYSINLINE void ppuCycle()
 				/* Draw current dot on screen */
 				#ifdef DISPLAY_PPUWRITES
 				drawPos = (dot-PPU_OFF)+(line*TEX_DOTS);
+				#elif defined(DO_4_3_ASPECT)
+				drawPos = ((dot-PPU_OFF)<<2)+(line<<12);
 				#else
 				drawPos = (dot-PPU_OFF)+(line<<8);
 				#endif
 				if(ppu.DoOverscan) /* Draw clipped area as black */
-					textureImage[drawPos] = TEXCOL_BLACK;
+					TEX_AT_POS = TEXCOL_BLACK;
 				else
 				{
 					if((ppu.VramAddr & 0x3F00) == 0x3F00) //bg and sprite disabled but address within PALRAM
-						textureImage[drawPos] = ppu.BGRLUT[ppu.PALRAM2[ppu.VramAddr&0x1F]];
+						TEX_AT_POS = ppu.BGRLUT[ppu.PALRAM2[ppu.VramAddr&0x1F]];
 					else //bg and sprite disabled and address not within PALRAM
-						textureImage[drawPos] = ppu.BGRLUT[ppu.PALRAM2[0]];
+						TEX_AT_POS = ppu.BGRLUT[ppu.PALRAM2[0]];
 				}
 				goto add_dot;
 			case PPU_OFF+1: case PPU_OFF+3: case PPU_OFF+5: case PPU_OFF+7:
@@ -2016,20 +2031,24 @@ static void ppuDrawRest(uint8_t curX, uint8_t sym)
 	{
 		for(j = 0; j < 10; j++)
 		{
+			#ifdef DO_4_3_ASPECT
+			size_t drawPos = ((j+curX)<<2)+(((i+9)*TEX_DOTS)<<2);
+			#else
 			size_t drawPos = (j+curX)+((i+9)*TEX_DOTS);
+			#endif
 			uint8_t xSel = (j+(sym*10));
 			if(ppuNsfTextRest[((11-i)<<4)+(xSel>>3)]&(0x80>>(xSel&7)))
-				textureImage[drawPos] = TEXCOL_WHITE; //White
+				TEX_AT_POS = TEXCOL_WHITE; //White
 			else
-				textureImage[drawPos] = TEXCOL_BLACK; //Black
+				TEX_AT_POS = TEXCOL_BLACK; //Black
 		}
 	}
 }
 
 #ifdef COL_32BIT
-#define NSF_TEX_CLEAR 30*TEX_DOTS*4
+#define NSF_TEX_CLEAR TEX_LINES*TEX_DOTS*4
 #else //COL_16BIT
-#define NSF_TEX_CLEAR 30*TEX_DOTS*2
+#define NSF_TEX_CLEAR TEX_LINES*TEX_DOTS*2
 #endif
 
 void ppuDrawNSFTrackNum(uint8_t cTrack, uint8_t trackTotal)
@@ -2042,11 +2061,15 @@ void ppuDrawNSFTrackNum(uint8_t cTrack, uint8_t trackTotal)
 	{
 		for(j = 0; j < 50; j++)
 		{
+			#ifdef DO_4_3_ASPECT
+			size_t drawPos = ((j+curX)<<2)+(((i+9)*TEX_DOTS)<<2);
+			#else
 			size_t drawPos = (j+curX)+((i+9)*TEX_DOTS);
+			#endif
 			if(ppuNSFTextTrack[((11-i)<<3)+(j>>3)]&(0x80>>(j&7)))
-				textureImage[drawPos] = TEXCOL_WHITE; //White
+				TEX_AT_POS = TEXCOL_WHITE; //White
 			else
-				textureImage[drawPos] = TEXCOL_BLACK; //Black
+				TEX_AT_POS = TEXCOL_BLACK; //Black
 		}
 	}
 	//"Track" len+space
