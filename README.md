@@ -36,6 +36,8 @@ Also you can use this as a core for retroarch by using the Makefile in the libre
 There are several defines you can add/remove for different options for both the standalone version and the retroarch core:
 AUDIO_LOWERFREQ  
 Reduces the output frequency of the emulator for more performance  
+FAKE_STEREO  
+Adds 8ms of delay to the right channel to give a stereo effect to the output  
 COL_32BIT  
 Changes the output texture to be 32bit per pixel (RGBA8) instead of 16bit (RGB565)  
 COL_BGRA  
