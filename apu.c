@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 - 2019 FIX94
+ * Copyright (C) 2017 - 2020 FIX94
  *
  * This software may be modified and distributed under the terms
  * of the MIT license.  See the LICENSE file for details.
@@ -88,6 +88,17 @@ static struct {
 	int32_t lastHPOut;
 	int32_t lastLPOut;
 	int32_t *ampVol;
+	#endif
+
+	#if FAKE_STEREO
+	uint32_t DelaySize;
+	uint32_t DelaySizeBytes;
+	uint32_t DelayCnt;
+	#if AUDIO_FLOAT
+	float *DelayBuf;
+	#else
+	int16_t *DelayBuf;
+	#endif
 	#endif
 
 	const uint16_t *dmcPeriod, *noisePeriod;
@@ -217,11 +228,25 @@ void apuInitBufs()
 #if AUDIO_FLOAT
 	apu.BufSizeBytes = apu.BufSize*sizeof(float);
 	apu.OutBuf = (float*)malloc(apu.BufSizeBytes);
-	printf("Audio: 32-bit Float Output at %iHz\n", apu.Frequency); 
+	printf("Audio: 32-bit Float Output at %iHz\n", apu.Frequency);
 #else
 	apu.BufSizeBytes = apu.BufSize*sizeof(int16_t);
 	apu.OutBuf = (int16_t*)malloc(apu.BufSizeBytes);
 	printf("Audio: 16-bit Short Output at %iHz\n", apu.Frequency);
+#endif
+	//extra delay
+#if FAKE_STEREO
+	apu.DelaySize = apu.Frequency/125; //8ms
+	apu.DelayCnt = 0;
+#if AUDIO_FLOAT
+	apu.DelaySizeBytes = apu.DelaySize*sizeof(float);
+	apu.DelayBuf = (float*)malloc(apu.DelaySizeBytes);
+#else
+	apu.DelaySizeBytes = apu.DelaySize*sizeof(int16_t);
+	apu.DelayBuf = (int16_t*)malloc(apu.DelaySizeBytes);
+#endif
+	memset(apu.DelayBuf, 0, apu.DelaySizeBytes);
+	printf("Audio: Enabled Fake Stereo Delay of 8ms\n");
 #endif
 	/* https://wiki.nesdev.com/w/index.php/APU_Mixer#Lookup_Table */
 	uint8_t i;
@@ -243,6 +268,11 @@ void apuDeinitBufs()
 	if(apu.OutBuf)
 		free(apu.OutBuf);
 	apu.OutBuf = NULL;
+#if FAKE_STEREO
+	if(apu.DelayBuf)
+		free(apu.DelayBuf);
+	apu.DelayBuf = NULL;
+#endif
 }
 
 void apuInit()
@@ -505,7 +535,7 @@ FIXNES_ALWAYSINLINE void apuCycle()
 			ampVolPos++;
 		}
 		//amplify input
-		curIn *= ampVol[ampVolPos];
+		curIn *= apu.ampVol[ampVolPos];
 		float curLPout = apu.lastLPOut+(apu.lpVal*(curIn-apu.lastLPOut));
 		float curHPOut = apu.hpVal*(apu.lastHPOut+apu.lastLPOut-curLPout);
 		//set output
@@ -563,7 +593,14 @@ FIXNES_ALWAYSINLINE void apuCycle()
 		//Save Clipped Highpass Output
 		apu.OutBuf[apu.curBufPos] = (curOut > 32767)?(32767):((curOut < -32768)?(-32768):curOut);
 #endif
+#if FAKE_STEREO //add slight delay for stereo effect
+		apu.OutBuf[apu.curBufPos+1] = apu.DelayBuf[apu.DelayCnt];
+		apu.DelayBuf[apu.DelayCnt] = apu.OutBuf[apu.curBufPos];
+		apu.DelayCnt++;
+		apu.DelayCnt%=apu.DelaySize;
+#else //just copy same output
 		apu.OutBuf[apu.curBufPos+1] = apu.OutBuf[apu.curBufPos];
+#endif
 		apu.curBufPos+=2;
 	}
 	apu.apuClock++;
