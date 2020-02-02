@@ -38,7 +38,7 @@
 #define DEBUG_KEY 0
 #define DEBUG_LOAD_INFO 1
 
-const char *VERSION_STRING = "fixNES Alpha v1.3.0";
+const char *VERSION_STRING = "fixNES Alpha v1.3.1";
 static char window_title[256];
 static char window_title_pause[256];
 

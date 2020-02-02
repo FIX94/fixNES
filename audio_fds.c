@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 - 2018 FIX94
+ * Copyright (C) 2017 - 2020 FIX94
  *
  * This software may be modified and distributed under the terms
  * of the MIT license.  See the LICENSE file for details.
@@ -23,48 +23,50 @@ uint8_t fdsOut;
 
 static struct {
 	uint8_t wave[0x40];
-	uint8_t modulation[0x40];
-	uint8_t curWavePos, curModPos;
+	uint8_t modulation[0x20];
+	uint8_t curModPos;
 	uint8_t curWave;
-	uint8_t envSpeed;
-	uint8_t volEnvSpeed, volEnvGain, volEnvMode;
-	uint8_t sweepSpeed, sweepModGain, sweepMode;
+	uint8_t envSpeed, volEnvSpeed, sweepSpeed;
+	uint8_t volEnvGain, volEnvMode;
+	uint8_t sweepModGain, sweepMode;
 	uint8_t masterVol;
+	uint8_t tickCnt;
 	int8_t modCounter;
 	uint16_t freq, modFreq;
-	int16_t modChange;
-	uint32_t curMasterClock, curModClock, curVolEnvClock, curSweepClock;
-	uint32_t volEnvClock, sweepClock;
+	uint32_t curMasterClock;
+	uint16_t curModClock;
+	uint32_t volEnvClock, sweepClock, curVolEnvClock, curSweepClock;
 	bool masterEnable;
 	bool volEnvEnabled;
 	bool envMasterEnable;
 	bool sweepEnabled;
 	bool modEnabled;
+	bool modForce;
 	bool wavWrite;
 } fds_apu;
 
 static void fdsUpdateClockRates()
 {
-	fds_apu.volEnvClock = 8 * fds_apu.envSpeed * (fds_apu.volEnvSpeed + 1);
-	fds_apu.sweepClock = 8 * fds_apu.envSpeed * (fds_apu.sweepSpeed + 1);
+	fds_apu.volEnvClock = 8 * (fds_apu.envSpeed + 1) * (fds_apu.volEnvSpeed + 1);
+	fds_apu.sweepClock = 8 * (fds_apu.envSpeed + 1) * (fds_apu.sweepSpeed + 1);
 }
 
 void fdsAudioInit()
 {
 	memset(fds_apu.wave, 0, 0x40);
-	memset(fds_apu.modulation, 0, 0x40);
+	memset(fds_apu.modulation, 0, 0x20);
 	audioExpansion |= EXP_FDS;
 	fdsOut = 0;
-	fds_apu.curWavePos = 0, fds_apu.curModPos = 0;
+	fds_apu.curModPos = 0;
 	fds_apu.curWave = 0;
 	fds_apu.envSpeed = 0xE8; //from FDS BIOS
 	fds_apu.volEnvSpeed = 0, fds_apu.volEnvGain = 0, fds_apu.volEnvMode = 0;
 	fds_apu.sweepSpeed = 0, fds_apu.sweepModGain = 0, fds_apu.sweepMode = 0;
 	fdsUpdateClockRates();
 	fds_apu.masterVol = 0;
+	fds_apu.tickCnt = 0;
 	fds_apu.modCounter = 0;
 	fds_apu.freq = 0, fds_apu.modFreq = 0;
-	fds_apu.modChange = 0;
 	fds_apu.curMasterClock = 0;
 	fds_apu.curModClock = 0;
 	fds_apu.curVolEnvClock = fds_apu.volEnvClock;
@@ -74,6 +76,7 @@ void fdsAudioInit()
 	fds_apu.envMasterEnable = false;
 	fds_apu.sweepEnabled = false;
 	fds_apu.modEnabled = false;
+	fds_apu.modForce = false;
 	fds_apu.wavWrite = false;
 }
 
@@ -94,11 +97,8 @@ FIXNES_NOINLINE void fdsAudioCycle()
 	fdsOut = (tmp>>5)&0x3F;
 }
 
-void fdsAudioClockTimers()
+static void fdsDoEnv()
 {
-	if(!fds_apu.masterEnable || !fds_apu.envMasterEnable)
-		return;
-
 	if(fds_apu.volEnvEnabled)
 	{
 		if(fds_apu.curVolEnvClock)
@@ -142,88 +142,82 @@ void fdsAudioClockTimers()
 	}
 }
 
+void fdsAudioClockTimers()
+{
+	if(!fds_apu.envMasterEnable || !fds_apu.envSpeed)
+		return;
+	fdsDoEnv();
+	//when master is off but envs on, envs runs 4x faster
+	if(!fds_apu.masterEnable)
+	{
+		fdsDoEnv();
+		fdsDoEnv();
+		fdsDoEnv();
+	}
+}
+
+//mostly follows logic of http://forums.nesdev.com/viewtopic.php?p=232662#p232662
 FIXNES_NOINLINE void fdsAudioMasterUpdate()
 {
-	if(fds_apu.masterEnable)
+	if(!fds_apu.masterEnable) //when master is off, keep timer locked
+		fds_apu.tickCnt = 0;
+	else if((fds_apu.tickCnt&0xF) == 0) //do updates on counter wrap
 	{
-		fds_apu.curMasterClock += (fds_apu.freq + fds_apu.modChange);
-		if(fds_apu.curMasterClock&(~0xFFFF))
+		//see if mod is enabled
+		if(fds_apu.modEnabled)
 		{
-			fds_apu.curMasterClock &= 0xFFFF;
-			//do master stuff
-			fds_apu.curWave = fds_apu.wave[fds_apu.curWavePos];
-			fds_apu.curWavePos++;
-			if(fds_apu.curWavePos >= 0x40)
-				fds_apu.curWavePos = 0;
-		}
-	}
-
-	if(fds_apu.modEnabled)
-	{
-		fds_apu.curModClock += fds_apu.modFreq;
-		if(fds_apu.curModClock&(~0xFFFF))
-		{
-			fds_apu.curModClock &= 0xFFFF;
-			//do mod stuff
-			switch((fds_apu.modulation[fds_apu.curModPos]&7))
+			fds_apu.curModClock += fds_apu.modFreq;
+			//see if real overflow or force bit was set
+			if(fds_apu.curModClock&(~0xFFF) || fds_apu.modForce)
 			{
-				case 1:
-					fds_apu.modCounter++;
-					break;
-				case 2:
-					fds_apu.modCounter += 2;
-					break;
-				case 3:
-					fds_apu.modCounter += 4;
-					break;
-				case 4:
-					fds_apu.modCounter = 0;
-					break;
-				case 5:
-					fds_apu.modCounter -= 4;
-					break;
-				case 6:
-					fds_apu.modCounter -= 2;
-					break;
-				case 7:
-					fds_apu.modCounter -= 1;
-					break;
-				default:
-					break;
-			}
-			if(fds_apu.modCounter & 0x40) //7-bit signed
-				fds_apu.modCounter |= 0x80;
-			else
-				fds_apu.modCounter &= ~0x80;
-			//move along mod pos
-			fds_apu.curModPos++; fds_apu.curModPos &= 0x3F;
-			// from https://forums.nesdev.com/viewtopic.php?f=3&t=10233
-			// 1. multiply counter by gain, lose lowest 4 bits of result but "round" in a strange way
-			int16_t temp = fds_apu.modCounter * fds_apu.sweepModGain;
-			uint8_t remainder = temp & 0xF;
-			temp >>= 4;
-			if((remainder > 0) && ((temp & 0x80) == 0))
-			{
-				if (fds_apu.modCounter < 0)
-					temp -= 1;
+				fds_apu.curModClock &= 0xFFF;
+				//do mod stuff
+				switch((fds_apu.modulation[fds_apu.curModPos>>1]))
+				{
+					case 1:
+						fds_apu.modCounter++;
+						break;
+					case 2:
+						fds_apu.modCounter += 2;
+						break;
+					case 3:
+						fds_apu.modCounter += 4;
+						break;
+					case 4:
+						fds_apu.modCounter = 0;
+						break;
+					case 5:
+						fds_apu.modCounter -= 4;
+						break;
+					case 6:
+						fds_apu.modCounter -= 2;
+						break;
+					case 7:
+						fds_apu.modCounter -= 1;
+						break;
+					default:
+						break;
+				}
+				if(fds_apu.modCounter & 0x40) //7-bit signed
+					fds_apu.modCounter |= 0x80;
 				else
-					temp += 2;
+					fds_apu.modCounter &= ~0x80;
+				//move along mod pos AFTER handling the overflow
+				fds_apu.curModPos++; fds_apu.curModPos &= 0x3F;
 			}
-			// 2. wrap if a certain range is exceeded
-			if(temp >= 192)
-				temp -= 256;
-			else if(temp < -64)
-				temp += 256;
-			// 3. multiply result by pitch, then round to nearest while dropping 6 bits
-			temp = fds_apu.freq * temp;
-			remainder = temp & 0x3F;
-			temp >>= 6;
-			if(remainder >= 32)
-				temp += 1;
-			// final mod result is in temp
-			fds_apu.modChange = temp;
 		}
+		//update master always
+		int16_t temp = fds_apu.modCounter * fds_apu.sweepModGain;
+		if((temp & 0x0f) && !(temp & 0x800))
+			temp += 0x20;
+		temp += 0x400;
+		uint8_t multi = (temp >> 4);
+		//add change to accumulator and update wave
+		fds_apu.curMasterClock += fds_apu.freq * multi;
+		fds_apu.curMasterClock &= 0xFFFFFF; //24-bit overall
+		fds_apu.curWave = fds_apu.wave[fds_apu.curMasterClock>>18];
 	}
+	fds_apu.tickCnt++;
 }
 
 void fdsAudioSet8(uint16_t addr, uint8_t val)
@@ -245,14 +239,11 @@ void fdsAudioSet8(uint16_t addr, uint8_t val)
 		case 3:
 			fds_apu.masterEnable = ((val&0x80) == 0);
 			fds_apu.freq = (fds_apu.freq&0xFF) | ((val&0xF)<<8);
-			if(fds_apu.freq == 0)
-				fds_apu.masterEnable = false;
 			if(!fds_apu.masterEnable)
 			{
 				//disabling resets clock and wave pos
 				fds_apu.curMasterClock = 0;
-				fds_apu.curWavePos = 0;
-				fds_apu.curWave = fds_apu.wave[fds_apu.curWavePos];
+				fds_apu.curWave = fds_apu.wave[0];
 			}
 			fds_apu.envMasterEnable = ((val&0x40) == 0);
 			if(!fds_apu.envMasterEnable)
@@ -283,24 +274,21 @@ void fdsAudioSet8(uint16_t addr, uint8_t val)
 			break;
 		case 7:
 			fds_apu.modEnabled = ((val&0x80) == 0);
+			fds_apu.modForce = ((val&0x40) != 0);
 			fds_apu.modFreq = (fds_apu.modFreq&0xFF) | ((val&0xF)<<8);
-			if(fds_apu.modFreq == 0)
-				fds_apu.modEnabled = false;
 			if(!fds_apu.modEnabled)
 			{
 				//disabling resets clock 
 				fds_apu.curModClock = 0;
-				//make sure to clear old change too
-				fds_apu.modChange = 0;
+				//clears lower bit of this too
+				fds_apu.curModPos &= ~1;
 			}
 			break;
 		case 8:
 			if(!fds_apu.modEnabled)
 			{
-				fds_apu.modulation[fds_apu.curModPos] = val;
-				fds_apu.curModPos++; fds_apu.curModPos&=0x3F;
-				fds_apu.modulation[fds_apu.curModPos] = val;
-				fds_apu.curModPos++; fds_apu.curModPos&=0x3F;
+				fds_apu.modulation[fds_apu.curModPos>>1] = val&7;
+				fds_apu.curModPos += 2; fds_apu.curModPos &= 0x3F;
 			}
 			break;
 		case 9:
