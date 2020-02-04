@@ -531,7 +531,11 @@ int main(int argc, char** argv)
 	#endif
 	#endif
 	cpuCycleTimer = nesPAL ? 16 : 12;
+	#if NUKEDOPLL
+	vrc7CycleTimer = 24 / cpuCycleTimer;
+	#else
 	vrc7CycleTimer = 432 / cpuCycleTimer;
+	#endif
 	//do one scanline per idle loop
 	//ppuCycleTimer = nesPAL ? 5 : 4;
 	//mainLoopRuns = nesPAL ? DOTS*ppuCycleTimer : DOTS*ppuCycleTimer;

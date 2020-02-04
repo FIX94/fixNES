@@ -22,6 +22,11 @@
 extern uint8_t audioExpansion;
 int32_t vrc7Out;
 
+#if NUKEDOPLL
+#include "opll.h"
+static opll_t nukedchip;
+static int32_t nukedout;
+#else
 //https://siliconpr0n.org/archive/doku.php?id=vendor:yamaha:opl2#vrc7_instrument_rom_dump
 static const uint8_t vrc7instrumentTbl[16][8] = 
 {
@@ -129,11 +134,17 @@ static struct {
 #define M_2PI 6.28318530717958647692
 #endif
 
+#endif //NUKEDOPLL
+
 void vrc7AudioInit()
 {
-	vrc7_apu.amPhase = 0; vrc7_apu.amOut = 0; vrc7_apu.fmPhase = 0; vrc7_apu.fmOut = 0; vrc7_apu.reg = 0;
 	audioExpansion |= EXP_VRC7;
 	vrc7Out = 0;
+#if NUKEDOPLL
+	nukedout = 0;
+	OPLL_Reset(&nukedchip, opll_type_ds1001);
+#else
+	vrc7_apu.amPhase = 0; vrc7_apu.amOut = 0; vrc7_apu.fmPhase = 0; vrc7_apu.fmOut = 0; vrc7_apu.reg = 0;
 	memset(vrc7_apu.channel, 0, sizeof(vrc7chan_t)*6);
 
 	uint32_t i;
@@ -186,8 +197,13 @@ void vrc7AudioInit()
 	// Fm Lut
 	for(i = 0; i < 256; ++i)
 		vrc7_apu.fmLut[i] = pow(2.0, 13.75 / 1200 * sin(M_2PI * i / 256));
+#endif //NUKEDOPLL
 }
 
+
+#if NUKEDOPLL
+//none of the following functions used in nuked core
+#else
 void vrc7SetR(vrc7Ksr_t *k, int32_t r)
 {
 	r = (r * 4) + k->K;
@@ -364,9 +380,20 @@ static int32_t vrc7GetOut(vrc7chan_t *chan, vrc7slot_t *slot, uint8_t slotNum, u
 	slot->fbOut = (slot->out + slot->out2) / 2;
 	return slot->fbOut;
 }
+#endif //NUKEDOPLL
 
 FIXNES_NOINLINE void vrc7AudioCycle()
 {
+#if NUKEDOPLL
+	int32_t tmp[2];
+	OPLL_Clock(&nukedchip,tmp);
+	nukedout+=tmp[0]; nukedout+=tmp[1];
+	if(nukedchip.cycles == 0) //back to start, output
+	{
+		vrc7Out = nukedout*4096; //amplify out
+		nukedout = 0; //reset accumulator
+	}
+#else
 	vrc7Out = 0;
 	//update am and fm for all chans
 	vrc7_apu.amPhase += 78;
@@ -382,17 +409,25 @@ FIXNES_NOINLINE void vrc7AudioCycle()
 		int32_t carryOut = vrc7GetOut(c, &c->carry, 1, modOut);
 		vrc7Out += carryOut;
 	}
+#endif //NUKEDOPLL
 }
 
 void vrc7AudioSet9010(uint16_t addr, uint8_t val)
 {
 	(void)addr;
+#if NUKEDOPLL
+	OPLL_Write(&nukedchip,0,val);
+#else
 	vrc7_apu.reg = (val&0x3F);
+#endif //NUKEDOPLL
 }
 
 void vrc7AudioSet9030(uint16_t addr, uint8_t val)
 {
 	(void)addr;
+#if NUKEDOPLL
+	OPLL_Write(&nukedchip,1,val);
+#else
 	if(vrc7_apu.reg < 8)
 		vrc7_apu.instrument[0][vrc7_apu.reg] = val;
 	else if(vrc7_apu.reg >= 0x10 && vrc7_apu.reg <= 0x15)
@@ -425,4 +460,5 @@ void vrc7AudioSet9030(uint16_t addr, uint8_t val)
 		vrc7CalcSlotVals(c, &c->mod, 0);
 		vrc7CalcSlotVals(c, &c->carry, 1);
 	}
+#endif //NUKEDOPLL
 }
