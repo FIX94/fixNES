@@ -38,6 +38,8 @@ AUDIO_LOWERFREQ
 Reduces the output frequency of the emulator for more performance  
 FAKE_STEREO  
 Adds 8ms of delay to the right channel to give a stereo effect to the output  
+NUKEDOPLL  
+Uses [Nuked-OPLL](https://github.com/nukeykt/Nuked-OPLL) for VRC7 audio emulation, make sure to put opll.c and opll.h into the code directory for this to work as they are not provided in this repo  
 COL_32BIT  
 Changes the output texture to be 32bit per pixel (RGBA8) instead of 16bit (RGB565)  
 COL_BGRA  
